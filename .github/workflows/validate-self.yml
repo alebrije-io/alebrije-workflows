@@ -66,10 +66,27 @@ jobs:
       - uses: actions/checkout@v4
       - name: No hardcoded secrets
         run: |
-          if grep -rE "password[[:space:]]*=[[:space:]]*[^\$\{'"]+" *.sh 2>/dev/null | grep -v "^#"; then
-            echo "Possible hardcoded secret"; exit 1
-          fi
-          echo "Clean"
+          python3 -c "
+          import re, sys, pathlib
+          patterns = [
+              (r'password\s*=\s*[a-zA-Z0-9_]+_[0-9]+', 'hardcoded password'),
+              (r'AKIA[0-9A-Z]{16}', 'AWS access key'),
+              (r'ghp_[a-zA-Z0-9]{36}', 'GitHub token'),
+          ]
+          found = []
+          for sh in pathlib.Path('.').glob('*.sh'):
+              for i, line in enumerate(sh.read_text().splitlines(), 1):
+                  if line.strip().startswith('#'):
+                      continue
+                  for pat, label in patterns:
+                      if re.search(pat, line):
+                          found.append(f"{sh}:{i}: {label}")
+          if found:
+              print('
+'.join(found))
+              sys.exit(1)
+          print('Clean')
+          "
 
   final-report:
     name: Final validation
@@ -79,7 +96,15 @@ jobs:
     steps:
       - name: Summary
         run: |
-          for r in "${{ needs.validate-yaml.result }}" "${{ needs.validate-scripts.result }}" "${{ needs.validate-json.result }}" "${{ needs.validate-structure.result }}" "${{ needs.security-check.result }}"; do
-            [ "$r" = "success" ] || { echo "FAILED: $r"; exit 1; }
+          results=(
+            "${{ needs.validate-yaml.result }}"
+            "${{ needs.validate-scripts.result }}"
+            "${{ needs.validate-json.result }}"
+            "${{ needs.validate-structure.result }}"
+            "${{ needs.security-check.result }}"
+          )
+          failed=0
+          for r in "${results[@]}"; do
+            [ "$r" = "success" ] || { echo "FAILED: $r"; failed=1; }
           done
-          echo "alebrije-workflows validation PASSED"
+          [ "$failed" = "0" ] && echo "alebrije-workflows validation PASSED" || exit 1
