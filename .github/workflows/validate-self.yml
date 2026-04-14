@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -66,8 +67,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: No hardcoded tokens
         run: |
-          ! grep -rn 'AKIA[A-Z0-9]\{16\}' *.sh 2>/dev/null
-          ! grep -rn 'ghp_[a-zA-Z0-9]\{36\}' *.sh 2>/dev/null
+          grep -rn 'AKIA[A-Z0-9]\{16\}' *.sh 2>/dev/null && { echo 'AWS key found'; exit 1; } || true
+          grep -rn 'ghp_[a-zA-Z0-9]\{36\}' *.sh 2>/dev/null && { echo 'GH token found'; exit 1; } || true
           echo "Clean"
 
   final-report:
