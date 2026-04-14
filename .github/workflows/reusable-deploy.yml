@@ -1,0 +1,245 @@
+name: Reusable Deploy to Kubernetes
+
+# Este workflow reusable centraliza la lógica de deployment a K8s OVH
+# Implementa estándares Alebrije:
+# - Kubeconfig desde secrets (base64 encoded)
+# - Namespace always: platform
+# - Reemplazo de __VERSION__ en manifests via sed
+# - kubectl apply --server-side (strategic merge)
+# - rollout status check con timeout de 300s
+# - Smoke test (exec + curl /health o cmd personalizado)
+# - Validación de conectividad de cluster y namespace
+#
+# Uso en repo individual:
+#   - name: Deploy
+#     uses: ./alebrije-workflows/.github/workflows/03-reusable-deploy.yml@main
+#     with:
+#       deployment-name: "alebrije-auth"
+#       version: "0.1.2"  # Viene de outputs de build-push
+#       manifest-path: "k8s/deployment.yml"
+#     secrets: inherit
+
+on:
+  workflow_call:
+    inputs:
+      deployment-name:
+        description: "Kubernetes deployment name (e.g., alebrije-auth)"
+        required: true
+        type: string
+      namespace:
+        description: "Kubernetes namespace (default: platform)"
+        required: false
+        default: platform
+        type: string
+      version:
+        description: "Image version/tag to deploy (from VERSION file, e.g., 0.1.2)"
+        required: false
+        default: ""
+        type: string
+      manifest-path:
+        description: "Path to K8s deployment manifest (default: k8s/deployment.yml)"
+        required: false
+        default: k8s/deployment.yml
+        type: string
+      smoke-test-cmd:
+        description: "Smoke test command to run in pod (default: python3 healthcheck)"
+        required: false
+        default: "python3 -c \"import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health').read().decode())\""
+        type: string
+      extra-rollout-restart:
+        description: "Force a rollout restart after apply (ensures new image is pulled)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to OVH Kubernetes
+    runs-on: ubuntu-latest
+    # Serializa todos los deploys al mismo namespace para evitar throttling
+    # en el OVH K8s API server cuando múltiples repos corren simultáneamente.
+    # Cada deploy espera a que el anterior termine (cancel-in-progress: false).
+    concurrency:
+      group: deploy-ovh-${{ inputs.namespace }}
+      cancel-in-progress: false
+
+    steps:
+      # ====================================================================
+      # 1. CHECKOUT & SETUP KUBECTL
+      # ====================================================================
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: latest
+
+      # ====================================================================
+      # 2. CONFIGURE KUBECONFIG FROM SECRET
+      # ====================================================================
+      # KUBECONFIG está base64 encoded en secrets (por si contiene newlines)
+      # Se decodifica y se coloca en ~/.kube/config con chmod 600
+      - name: Configure kubeconfig
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG }}
+        run: |
+          if [ -z "$KUBECONFIG_B64" ]; then
+            echo "::error::KUBECONFIG secret not found"
+            exit 1
+          fi
+          mkdir -p $HOME/.kube
+          echo "$KUBECONFIG_B64" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+          echo "Kubeconfig configured"
+
+      # ====================================================================
+      # 2b. READ VERSION IF NOT PROVIDED
+      # ====================================================================
+      - name: Read version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "tag=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          elif [ -f VERSION ]; then
+            echo "tag=$(cat VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+          else
+            echo "::error::No version provided and no VERSION file found"
+            exit 1
+          fi
+
+      # ====================================================================
+      # 3. VERIFY CLUSTER CONNECTIVITY & NAMESPACE
+      # ====================================================================
+      # Si el cluster no es alcanzable → el pipeline FALLA (no salta silenciosamente)
+      # Esto garantiza que un deploy fallido sea visible y no pase desapercibido
+      - name: Verify cluster connectivity
+        run: |
+          MAX_RETRIES=3
+          for i in $(seq 1 $MAX_RETRIES); do
+            if kubectl cluster-info &> /dev/null; then
+              echo "✅ Cluster reachable (attempt $i/$MAX_RETRIES)"
+              exit 0
+            fi
+            if [ $i -lt $MAX_RETRIES ]; then
+              WAIT=$((10 * i))
+              echo "⚠️ Connection failed (attempt $i/$MAX_RETRIES), waiting ${WAIT}s before retry..."
+              sleep $WAIT
+            fi
+          done
+          echo "::error::OVH Kubernetes cluster not reachable after $MAX_RETRIES attempts (10s, 20s backoff)"
+          echo "::error::Check OVH cluster status and KUBECONFIG secret validity"
+          exit 1
+
+      - name: Verify namespace exists
+        id: ns_check
+        run: |
+          if kubectl get namespace ${{ inputs.namespace }} &> /dev/null; then
+            echo "namespace_exists=true" >> $GITHUB_OUTPUT
+            echo "✅ Namespace '${{ inputs.namespace }}' exists"
+          else
+            echo "namespace_exists=false" >> $GITHUB_OUTPUT
+            echo "::error::Namespace '${{ inputs.namespace }}' does not exist in cluster"
+            exit 1
+          fi
+
+      # ====================================================================
+      # 4. VALIDATE MANIFEST EXISTS
+      # ====================================================================
+      - name: Validate manifest exists
+        run: |
+          if [ ! -f "${{ inputs.manifest-path }}" ]; then
+            echo "::error::Manifest file not found: ${{ inputs.manifest-path }}"
+            exit 1
+          fi
+          echo "✅ Manifest found: ${{ inputs.manifest-path }}"
+
+      # ====================================================================
+      # 5. REPLACE VERSION PLACEHOLDER IN MANIFEST
+      # ====================================================================
+      - name: Replace __VERSION__ in manifest
+        run: |
+          if ! grep -q "__VERSION__" "${{ inputs.manifest-path }}"; then
+            echo "::warning::No __VERSION__ placeholder found in manifest"
+            echo "Manifest will be applied as-is"
+          else
+            sed -i "s/__VERSION__/${{ steps.version.outputs.tag }}/g" "${{ inputs.manifest-path }}"
+            echo "✅ Replaced __VERSION__ with ${{ steps.version.outputs.tag }}"
+          fi
+
+      # ====================================================================
+      # 6. APPLY MANIFEST (SERVER-SIDE, FORCE-CONFLICTS)
+      # ====================================================================
+      # --server-side: kubectl realiza merge en server (mejor para reconciliación)
+      # --force-conflicts: resuelve conflictos a favor del manifest actual
+      - name: Apply Kubernetes manifest
+        run: |
+          kubectl apply -f "${{ inputs.manifest-path }}" \
+            --server-side \
+            --force-conflicts \
+            -n ${{ inputs.namespace }}
+          echo "✅ Manifest applied to namespace '${{ inputs.namespace }}'"
+
+      - name: Force rollout restart
+        if: inputs.extra-rollout-restart
+        run: |
+          kubectl rollout restart deployment/${{ inputs.deployment-name }} -n ${{ inputs.namespace }}
+          echo "✅ Rollout restart triggered"
+
+      # ====================================================================
+      # 7. VERIFY ROLLOUT STATUS
+      # ====================================================================
+      # Espera a que el deployment esté ready con timeout de 300s
+      # Si timeout, falla el deployment
+      - name: Verify rollout status
+        run: |
+          echo "Waiting for deployment/${{ inputs.deployment-name }} to rollout..."
+          kubectl rollout status \
+            deployment/${{ inputs.deployment-name }} \
+            -n ${{ inputs.namespace }} \
+            --timeout=300s
+          echo "✅ Rollout completed successfully"
+
+      # ====================================================================
+      # 8. SMOKE TEST (HEALTH CHECK)
+      # ====================================================================
+      # Espera 15s a que el pod esté completamente listo
+      # Ejecuta el smoke-test-cmd en el pod
+      # Parsea respuesta JSON y verifica status==ok
+      - name: Run smoke test
+        env:
+          SMOKE_CMD: ${{ inputs.smoke-test-cmd }}
+        run: |
+          echo "Waiting 15s for pod to stabilize..."
+          sleep 15
+
+          echo "Running smoke test: $SMOKE_CMD"
+          RESPONSE=$(kubectl exec -n ${{ inputs.namespace }} \
+            deployment/${{ inputs.deployment-name }} \
+            -- bash -c "$SMOKE_CMD" || echo '{"status":"error","error":"exec failed"}')
+
+          echo "Response:"
+          echo "$RESPONSE"
+
+          # Parsea JSON y valida status==ok o status==degraded (ambos indican servicio vivo)
+          if echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); sys.exit(0) if data.get('status') in ('ok','degraded') else sys.exit(1)"; then
+            echo "✅ Health check passed"
+          else
+            echo "❌ Health check failed: $RESPONSE"
+            exit 1
+          fi
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "## Deployment Summary"
+          echo "- Deployment: ${{ inputs.deployment-name }}"
+          echo "- Namespace: ${{ inputs.namespace }}"
+          echo "- Version: ${{ steps.version.outputs.tag }}"
+          echo "- Manifest: ${{ inputs.manifest-path }}"
+          echo ""
+          echo "### Pod Status"
+          kubectl get pods -n ${{ inputs.namespace }} -l app=${{ inputs.deployment-name }} -o wide || true

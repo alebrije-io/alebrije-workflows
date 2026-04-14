@@ -1,0 +1,319 @@
+name: Reusable Test Workflow
+
+# This workflow is designed to be called from individual repositories via workflow_call.
+# It abstracts the common testing pattern across all Alebrije Python services:
+# - Matrix testing (Python 3.12, 3.13)
+# - Services: PostgreSQL 16 + Redis 7 (configurable)
+# - Git config for private repos (GH_TOKEN)
+# - Ruff lint + format check
+# - Per-file pytest execution with group annotations (CI log grouping)
+# - Coverage report + codecov upload
+# - Automatic orphaned test detection (fails if test_*.py exists but not in declared test-files)
+# - Concurrency group to cancel stale runs
+#
+# Design decisions:
+# 1. inputs.python-versions is a JSON string (not multiselect) to support
+#    complex workflow serialization and avoid escaping nightmares.
+# 2. inputs.test-files is multiline (one per line) for readability in caller repos.
+# 3. Services are always spun up (postgres:16-alpine, redis:7-alpine) but the
+#    .github/workflows/ci.yml in each repo can override via container settings if needed.
+# 4. Env vars include sensible defaults (DATABASE_URL, REDIS_URL, JWT keys for testing);
+#    inputs.extra-env allows repos to inject additional or override vars.
+# 5. The orphaned-test-detection step uses find + grep to catch any test_*.py
+#    file not explicitly declared, preventing silent test omissions.
+# 6. Concurrency key is github.workflow + github.ref to allow one active run per branch.
+
+on:
+  workflow_call:
+    inputs:
+      python-versions:
+        description: "JSON array of Python versions to test (e.g., '[\"3.12\", \"3.13\"]')"
+        type: string
+        default: '["3.12", "3.13"]'
+        required: false
+      test-files:
+        description: "Newline-separated list of test files to run (e.g., tests/test_auth.py)"
+        type: string
+        required: true
+      extra-env:
+        description: "JSON object of additional environment variables (e.g., '{\"VAR1\": \"val1\"}')"
+        type: string
+        default: '{}'
+        required: false
+      run-pact:
+        description: "Whether to run Pact contract verification tests"
+        type: boolean
+        default: false
+        required: false
+    secrets:
+      inherit
+
+# Concurrency: Cancel previous runs on the same branch to avoid queue buildup.
+# This is critical for fast feedback on push events. If the user pushes again
+# while a run is in progress, the old run is cancelled immediately.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Main test job: runs per-file pytest with matrix Python versions.
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    # Services run alongside the job. These are standard for all Alebrije services.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: alebrije
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: alebrije
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    strategy:
+      # Parse the python-versions input as JSON.
+      # This allows repos to customize without modifying the workflow.
+      matrix:
+        python-version: ${{ fromJson(inputs.python-versions) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      # Configure git to fetch private repos via GH_TOKEN instead of HTTPS prompt.
+      # This is required because all Alebrije services depend on alebrije-common,
+      # which is private and hosted on GitHub.
+      - name: Configure git for private repos
+        run: git config --global url."https://${{ secrets.GH_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Export extra environment variables
+        if: inputs.extra-env != '{}'
+        run: |
+          echo '${{ inputs.extra-env }}' | python3 -c "import sys, json; [print(f'{k}={v}') for k, v in json.load(sys.stdin).items()]" >> $GITHUB_ENV
+
+      # Ruff lint check: enforces code style and common mistakes.
+      - name: Lint with ruff
+        run: ruff check app/
+
+      # Ruff format check: ensures consistent code formatting.
+      - name: Format check with ruff
+        run: ruff format --check app/
+
+      # Orphaned test detection: fail if there are test_*.py files in tests/
+      # that are NOT declared in the test-files input. This prevents silent
+      # test skips due to copy-paste errors or missing updates.
+      #
+      # How it works:
+      # 1. Find all test_*.py files in tests/ directory
+      # 2. For each discovered file, check if it's in the declared test-files input
+      # 3. If any file is found but not declared, exit with code 1 (CI failure)
+      #
+      # This is a safety net: if someone adds a new test file, they MUST update
+      # the caller workflow (ci.yml) to include it, or CI will fail. This prevents
+      # the common mistake of adding tests that are never run.
+      - name: Detect orphaned test files
+        run: |
+          # Get all test_*.py files in the tests directory
+          DISCOVERED_TESTS=$(find tests -name "test_*.py" -type f | sort)
+          DECLARED_TESTS=$(echo "${{ inputs.test-files }}" | grep -v '^$' | sort)
+
+          ORPHANED=""
+          while IFS= read -r test_file; do
+            if ! echo "$DECLARED_TESTS" | grep -q "^${test_file}$"; then
+              ORPHANED="${ORPHANED}${test_file}"$'\n'
+            fi
+          done <<< "$DISCOVERED_TESTS"
+
+          if [ -n "$ORPHANED" ]; then
+            echo "❌ ERROR: Found orphaned test files (not declared in test-files input):"
+            echo "$ORPHANED"
+            echo ""
+            echo "These test files exist but are not included in the declared test-files input."
+            echo "Either run them or remove them."
+            exit 1
+          fi
+
+          echo "✅ All discovered test files are properly declared."
+
+      # Per-file test execution with group annotations.
+      # Each test file runs separately to:
+      # 1. Isolate failures (if test_auth.py fails, test_users.py still runs)
+      # 2. Enable CI log grouping (::group:: and ::endgroup::)
+      # 3. Report pass/fail per-file for better visibility
+      #
+      # Environment variables are set here for test execution.
+      # Default values are provided for common Alebrije patterns; repos can override
+      # by passing extra-env input with a JSON object containing additional vars.
+      - name: Run tests (per-file)
+        env:
+          # Standard test DB connection strings
+          DATABASE_URL: postgresql+asyncpg://alebrije:test@localhost:5432/alebrije
+          DB_HOST: localhost
+          DB_USER: alebrije
+          DB_PASSWORD: test
+          DB_PORT: "5432"
+          REDIS_URL: redis://localhost:6379/0
+
+          # Default JWT settings for testing (repos may override via extra-env)
+          JWT_SECRET_KEY: test-secret-key-do-not-use-in-production
+          JWT_ALGORITHM: HS256
+
+          # Mark environment as testing
+          APP_ENV: testing
+
+        run: |
+          # Run each test file with coverage accumulation
+          EXIT_CODE=0
+          while IFS= read -r test_file; do
+            # Skip empty lines
+            [ -z "$test_file" ] && continue
+
+            echo "::group::Running $test_file"
+            if pytest -v --tb=short --cov=app --cov-append --durations=10 "$test_file"; then
+              echo "✅ $test_file passed"
+            else
+              echo "❌ $test_file FAILED"
+              EXIT_CODE=1
+            fi
+            echo "::endgroup::"
+          done <<< "${{ inputs.test-files }}"
+
+          exit $EXIT_CODE
+
+      # Generate coverage XML and text report.
+      # Always runs (if: always()) to capture coverage even if tests fail.
+      - name: Generate coverage report
+        if: always()
+        run: |
+          coverage xml -o coverage.xml
+          coverage report --show-missing --skip-covered
+
+      # Upload coverage to Codecov for tracking trends and PR comments.
+      # Uses the codecov/codecov-action action with v4 API.
+      # fail_ci_if_error: false prevents transient Codecov outages from blocking CI.
+      #
+      # NOTE: The 'flags' parameter should be set in the caller workflow
+      # (e.g., flags: auth) to distinguish coverage by service in the Codecov UI.
+      # This template does not set flags because the value varies per repo.
+      - name: Upload coverage
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false
+
+  # Optional Pact contract verification job.
+  # Only runs if run-pact input is true and the push is to main branch.
+  # This requires PACT_BROKER_* secrets to be set in the caller repo.
+  pact-verify:
+    name: Verify Pact Contracts
+    runs-on: ubuntu-latest
+    needs: test
+
+    # Only run if:
+    # 1. run-pact input is true
+    # 2. This is a push event (not a PR)
+    # 3. The push is to main branch
+    if: |
+      inputs.run-pact &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: alebrije
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: alebrije
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Configure git for private repos
+        run: git config --global url."https://${{ secrets.GH_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Run Pact verification tests.
+      # These tests connect to a Pact Broker to verify that provider implementations
+      # match consumer expectations (contract-driven development).
+      #
+      # Requires secrets:
+      # - PACT_BROKER_URL: Pact Broker instance URL
+      # - PACT_BROKER_USERNAME: Broker authentication
+      # - PACT_BROKER_PASSWORD: Broker authentication
+      - name: Run Pact verification
+        env:
+          DATABASE_URL: postgresql+asyncpg://alebrije:test@localhost:5432/alebrije
+          DB_HOST: localhost
+          DB_USER: alebrije
+          DB_PASSWORD: test
+          DB_PORT: "5432"
+          REDIS_URL: redis://localhost:6379/0
+
+          JWT_SECRET_KEY: test-secret-key-do-not-use-in-production
+          JWT_ALGORITHM: HS256
+
+          APP_ENV: testing
+
+          # Pact Broker credentials (must be set in caller repo secrets)
+          PACT_BROKER_URL: ${{ secrets.PACT_BROKER_URL }}
+          PACT_BROKER_USERNAME: ${{ secrets.PACT_BROKER_USERNAME }}
+          PACT_BROKER_PASSWORD: ${{ secrets.PACT_BROKER_PASSWORD }}
+
+          # Publish pact results back to the broker
+          PUBLISH_PACT_RESULTS: "true"
+          GIT_COMMIT: ${{ github.sha }}
+
+        run: |
+          pytest tests/pact/ -v --timeout=60

@@ -1,0 +1,85 @@
+name: Validate alebrije-workflows
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate-yaml:
+    name: Validate YAML workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install yamllint
+        run: pip install yamllint
+      - name: Validate GitHub Actions YAML
+        run: yamllint -d relaxed .github/workflows/
+
+  validate-scripts:
+    name: Validate shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y shellcheck
+      - name: Shellcheck
+        run: shellcheck *.sh
+      - name: Syntax check
+        run: bash -n validate-test-pool.sh && bash -n smoke_test.sh && echo OK
+
+  validate-json:
+    name: Validate JSON policies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get update -qq && sudo apt-get install -y jq
+      - name: Validate JSON
+        run: |
+          for f in *.json; do
+            jq empty "$f" || exit 1
+            echo "  OK $f"
+          done
+
+  validate-structure:
+    name: Validate repository structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required files
+        run: |
+          for item in .github/workflows validate-test-pool.sh smoke_test.sh python-versions.json node-version.json approved-base-images.json README.md; do
+            [ -e "$item" ] || { echo "Missing: $item"; exit 1; }
+            echo "  OK $item"
+          done
+
+  security-check:
+    name: Security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No hardcoded secrets
+        run: |
+          if grep -rE "password[[:space:]]*=[[:space:]]*[^\$\{'"]+" *.sh 2>/dev/null | grep -v "^#"; then
+            echo "Possible hardcoded secret"; exit 1
+          fi
+          echo "Clean"
+
+  final-report:
+    name: Final validation
+    runs-on: ubuntu-latest
+    needs: [validate-yaml, validate-scripts, validate-json, validate-structure, security-check]
+    if: always()
+    steps:
+      - name: Summary
+        run: |
+          for r in "${{ needs.validate-yaml.result }}" "${{ needs.validate-scripts.result }}" "${{ needs.validate-json.result }}" "${{ needs.validate-structure.result }}" "${{ needs.security-check.result }}"; do
+            [ "$r" = "success" ] || { echo "FAILED: $r"; exit 1; }
+          done
+          echo "alebrije-workflows validation PASSED"

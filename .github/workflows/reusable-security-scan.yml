@@ -1,0 +1,244 @@
+name: Reusable Security Scan
+
+# Este workflow reusable consolida TODOS los security checks en un job dedicado.
+# Se utiliza DESPUES del build-and-push para scannear la imagen resultante.
+#
+# Implementa:
+# - Trivy CRITICAL scan (bloquea si falla: exit-code 1)
+# - Trivy CRITICAL SARIF report → GitHub Security tab
+# - Trivy HIGH scan (solo tabla, no bloquea)
+# - Trivy CycloneDX SBOM → artifact (retention 30 days)
+# - Docker Scout CVE analysis + recommendations
+# - detect-secrets scan con .secrets.baseline
+# - Cosign keyless signing (solo en main + push real)
+#
+# Inputs:
+#   image-ref: ej: "ileonelperea/alebrije-svc-auth:1.0.0"
+#   fail-on-critical: bloquea el job si hay CVEs CRITICAL (default: true)
+#   scan-secrets: ejecuta detect-secrets (default: true)
+#   sign-image: firma con Cosign (default: true, solo en main)
+#
+# Ejemplo de uso en CI:
+#   - name: Security Scan
+#     uses: ./alebrije-workflows/.github/workflows/04-reusable-security-scan.yml@main
+#     with:
+#       image-ref: "ileonelperea/alebrije-svc-auth:1.0.0"
+#       fail-on-critical: true
+#       scan-secrets: true
+#       sign-image: true
+#     secrets: inherit
+
+on:
+  workflow_call:
+    inputs:
+      image-ref:
+        description: "Docker image reference (e.g., ileonelperea/alebrije-svc-auth:1.0.0)"
+        required: true
+        type: string
+      fail-on-critical:
+        description: "Fail job if CRITICAL vulnerabilities found (exit-code 1)"
+        required: false
+        default: true
+        type: boolean
+      scan-secrets:
+        description: "Run detect-secrets scan with baseline comparison"
+        required: false
+        default: true
+        type: boolean
+      sign-image:
+        description: "Sign image with Cosign (keyless, Sigstore OIDC)"
+        required: false
+        default: true
+        type: boolean
+    secrets:
+      inherit
+
+permissions:
+  contents: read
+  id-token: write  # required for Cosign keyless signing via Sigstore OIDC
+  security-events: write  # required to upload SARIF reports
+
+jobs:
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      # ====================================================================
+      # 1. CHECKOUT (para acceder a .secrets.baseline y archivos de repo)
+      # ====================================================================
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ====================================================================
+      # 2. TRIVY VULNERABILITY SCANNING - CRITICAL (BLOCKING)
+      # ====================================================================
+      # Escanea imagen por CVEs de severidad CRITICAL.
+      # Si fail-on-critical=true y hay vulns, exit-code 1 → bloquea el job.
+      # Format: tabla para legibilidad humana en logs.
+      - name: Trivy - CRITICAL vulnerabilities scan (blocking)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ inputs.image-ref }}
+          format: table
+          severity: CRITICAL
+          exit-code: ${{ inputs.fail-on-critical && 1 || 0 }}
+          ignore-unfixed: true
+
+      # ====================================================================
+      # 3. TRIVY VULNERABILITY SCANNING - CRITICAL (SARIF REPORT)
+      # ====================================================================
+      # Genera SARIF para upload a GitHub Security tab.
+      # always() asegura que corra incluso si step anterior falla.
+      # exit-code: 0 permite continuar (el bloqueo ya ocurrió arriba).
+      - name: Trivy - CRITICAL vulnerabilities (SARIF report)
+        if: always()
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ inputs.image-ref }}
+          format: sarif
+          output: trivy-critical.sarif
+          severity: CRITICAL
+          exit-code: 0
+          ignore-unfixed: true
+
+      # ====================================================================
+      # 4. TRIVY VULNERABILITY SCANNING - HIGH (INFORMATIONAL)
+      # ====================================================================
+      # Escanea por HIGH severity (bloqueo disabled para visibilidad).
+      # Útil para triage y priorización de parcheado.
+      - name: Trivy - HIGH vulnerabilities scan (non-blocking)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ inputs.image-ref }}
+          format: table
+          severity: HIGH
+          exit-code: 0
+          ignore-unfixed: true
+
+      # ====================================================================
+      # 5. GENERATE SBOM (CYCLONEDX FORMAT)
+      # ====================================================================
+      # Genera Software Bill of Materials en formato CycloneDX (JSON).
+      # Útil para compliance, auditorías y trazabilidad de dependencias.
+      - name: Generate SBOM - CycloneDX
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ inputs.image-ref }}
+          format: cyclonedx
+          output: sbom.cyclonedx.json
+
+      # ====================================================================
+      # 6. DOCKER SCOUT ANALYSIS
+      # ====================================================================
+      # Análisis complementario de CVEs desde Docker Scout.
+      # Proporciona CVE details, base image info, y recomendaciones de remediation.
+      # Non-blocking (informational).
+      - name: Docker Scout - CVE analysis
+        uses: docker/scout-action@v1
+        with:
+          command: cves,recommendations
+          image: ${{ inputs.image-ref }}
+          sarif-file: scout-results.sarif
+          summary: true
+        continue-on-error: true
+
+      # ====================================================================
+      # 7. DETECT-SECRETS SCAN
+      # ====================================================================
+      # Escanea repo por secretos hardcodeados (API keys, tokens, passwords).
+      # Compara contra .secrets.baseline para auditoría.
+      # Non-blocking (informational).
+      - name: Install and run detect-secrets
+        if: inputs.scan-secrets
+        run: |
+          pip install detect-secrets
+          echo "::group::Scanning for secrets..."
+          # Scan: si baseline no existe, lo crea; si existe, lo usa como referencia
+          detect-secrets scan --baseline .secrets.baseline || true
+          echo "::endgroup::"
+          echo "::group::Auditing against baseline..."
+          # Audit: reporta cambios vs baseline (no falla)
+          detect-secrets audit --report .secrets.baseline || true
+          echo "::endgroup::"
+
+      # ====================================================================
+      # 8. UPLOAD REPORTS (SARIF)
+      # ====================================================================
+      # Sube Trivy SARIF a GitHub Security tab para visibilidad integrada.
+      - name: Upload Trivy SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true  # Private repos sin GHAS no fallan
+        with:
+          sarif_file: trivy-critical.sarif
+          category: Trivy-CRITICAL
+
+      # Scout SARIF es informational, upload sin fallar
+      - name: Upload Scout SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true
+        with:
+          sarif_file: scout-results.sarif
+          category: Docker-Scout
+
+      # ====================================================================
+      # 9. UPLOAD SBOM ARTIFACT
+      # ====================================================================
+      # Artifact retention: 90 días (configurable).
+      # Util para compliance audits y trazabilidad.
+      - name: Upload SBOM artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx-${{ github.run_number }}
+          path: sbom.cyclonedx.json
+          retention-days: 90
+
+      # ====================================================================
+      # 10. COSIGN KEYLESS SIGNING
+      # ====================================================================
+      # Firma la imagen con Cosign via Sigstore OIDC (no requiere keys).
+      # Solo ejecuta en:
+      #   - inputs.sign-image = true
+      #   - push event (no PRs)
+      #   - rama main
+      - name: Install Cosign
+        if: |
+          inputs.sign-image &&
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image with Cosign (keyless)
+        if: |
+          inputs.sign-image &&
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main'
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          echo "Signing image: ${{ inputs.image-ref }}"
+          cosign sign --yes "${{ inputs.image-ref }}"
+          echo "✅ Image signed successfully"
+
+      # ====================================================================
+      # 11. SUMMARY
+      # ====================================================================
+      - name: Print security summary
+        if: always()
+        run: |
+          echo "📋 Security Scan Summary"
+          echo "========================"
+          echo "Image: ${{ inputs.image-ref }}"
+          echo "CRITICAL scan: ${{ inputs.fail-on-critical && 'BLOCKING' || 'INFORMATIONAL' }}"
+          echo "Secrets scan: ${{ inputs.scan-secrets && 'ENABLED' || 'DISABLED' }}"
+          echo "Cosign signing: ${{ inputs.sign-image && 'ENABLED' || 'DISABLED' }}"
+          echo ""
+          echo "Artifacts generated:"
+          echo "  - trivy-critical.sarif (GitHub Security tab)"
+          echo "  - scout-results.sarif (Docker Scout analysis)"
+          echo "  - sbom.cyclonedx.json (SBOM artifact)"
+          echo ""
+          echo "✅ Security scan complete"

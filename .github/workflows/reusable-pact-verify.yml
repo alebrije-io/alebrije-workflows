@@ -1,0 +1,277 @@
+name: Reusable Pact Contract Verification
+
+# Este workflow reusable verifica contratos Pact entre frontend y backend services.
+# Resuelve el problema: PACT_BROKER_URL secret no configurado → falla por K8s URL interna.
+#
+# Solución implementada:
+# 1. Connectivity pre-check: antes de correr pytest, verifica que el broker sea accesible
+# 2. Si no es accesible → pytest se skipea con warning (no falla)
+# 3. Si sí es accesible → corre verificación completa contra contratos en broker
+#
+# El connectivity check usa socket.create_connection() (pattern de test_auth_provider.py)
+# para detectar:
+#   - URLs vacías o falsy
+#   - Hosts internos K8s (.svc.cluster.local) — nunca alcanzables desde GitHub Actions
+#   - Timeouts de conexión TCP (3s)
+#
+# Inputs:
+#   provider-name: "alebrije-svc-auth"
+#   python-version: "3.12" (default)
+#   pact-dir: "tests/pact/" (default)
+#   skip-if-unreachable: true (default) — no falla si broker inaccesible
+#   publish-results: true (default) — publica verificación al broker en main
+#
+# Secrets (heredadas):
+#   PACT_BROKER_URL: Pact Broker URL (puede ser K8s interna — se detecta y skipea)
+#   PACT_BROKER_USERNAME: Broker auth
+#   PACT_BROKER_PASSWORD: Broker auth
+#   GH_TOKEN: para repos privados
+#
+# Roadmap futuro:
+#   1. Exponer Pact Broker via Traefik ingress en OVH prod
+#   2. Usar ngrok temporal o Cloudflare Tunnel para GitHub Actions
+#   3. Variable de environment PACT_BROKER_PUBLIC_URL para CI
+
+on:
+  workflow_call:
+    inputs:
+      provider-name:
+        description: "Provider service name (e.g., alebrije-svc-auth)"
+        required: true
+        type: string
+      python-version:
+        description: "Python version for test environment"
+        required: false
+        default: "3.12"
+        type: string
+      pact-dir:
+        description: "Directory containing Pact test files"
+        required: false
+        default: "tests/pact/"
+        type: string
+      skip-if-unreachable:
+        description: "Skip verification (don't fail) if Pact Broker is unreachable"
+        required: false
+        default: true
+        type: boolean
+      publish-results:
+        description: "Publish verification results back to broker (only on main)"
+        required: false
+        default: true
+        type: boolean
+    secrets:
+      inherit
+
+jobs:
+  pact-verify:
+    name: Pact Contract Verification
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: alebrije
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: alebrije
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      # ====================================================================
+      # 1. CHECKOUT & SETUP
+      # ====================================================================
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+
+      # Configure git to pull private repos (alebrije-common, etc)
+      - name: Configure git for private repos
+        run: |
+          git config --global url."https://${{ secrets.GH_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ====================================================================
+      # 2. CONNECTIVITY PRE-CHECK
+      # ====================================================================
+      # Verifica que el Pact Broker sea alcanzable ANTES de correr pytest.
+      # Patrones detectados:
+      #   - URL vacía → skip
+      #   - Host interno K8s (.svc.cluster.local) → skip
+      #   - TCP timeout → skip
+      #
+      # Este step genera un flag que el siguiente step usa para decidir si
+      # ejecutar pytest o saltarlo gracefully.
+      - name: Check Pact Broker connectivity
+        id: broker-check
+        run: |
+          python3 << 'EOF'
+          import socket
+          import os
+          from urllib.parse import urlparse
+
+          pact_broker_url = os.getenv('PACT_BROKER_URL', '')
+
+          def broker_is_reachable(url):
+              """Check if Pact Broker is reachable via TCP socket."""
+              if not url:
+                  return False
+              try:
+                  parsed = urlparse(url)
+                  host = parsed.hostname or ''
+                  port = parsed.port or (443 if parsed.scheme == 'https' else 80)
+
+                  # K8s internal DNS — unreachable outside cluster
+                  if host.endswith('.svc.cluster.local') or host.endswith('.cluster.local'):
+                      print(f"⚠️  Detected K8s internal hostname: {host}")
+                      return False
+
+                  # Try TCP connection with 3s timeout
+                  sock = socket.create_connection((host, port), timeout=3)
+                  sock.close()
+                  return True
+              except (OSError, socket.timeout) as e:
+                  print(f"⚠️  Connection failed: {e}")
+                  return False
+
+          reachable = broker_is_reachable(pact_broker_url)
+
+          if reachable:
+              print(f"✅ Pact Broker is reachable at: {pact_broker_url}")
+              with open(os.getenv('GITHUB_OUTPUT', '/dev/null'), 'a') as f:
+                  f.write("BROKER_REACHABLE=true\n")
+          else:
+              print(f"⚠️  Pact Broker is NOT reachable: {pact_broker_url}")
+              with open(os.getenv('GITHUB_OUTPUT', '/dev/null'), 'a') as f:
+                  f.write("BROKER_REACHABLE=false\n")
+          EOF
+
+      # ====================================================================
+      # 3. RUN PACT VERIFICATION (CONDITIONAL)
+      # ====================================================================
+      # Ejecuta pytest si:
+      #   - Broker es alcanzable, O
+      #   - skip-if-unreachable = false (falla si no alcanzable)
+      #
+      # Genera artifacts: pact results (JSON) para publicación al broker.
+      - name: Run Pact contract verification
+        if: |
+          steps.broker-check.outputs.BROKER_REACHABLE == 'true' ||
+          !inputs.skip-if-unreachable
+        env:
+          DATABASE_URL: postgresql+asyncpg://alebrije:test@localhost:5432/alebrije
+          DB_HOST: localhost
+          DB_USER: alebrije
+          DB_PASSWORD: test
+          DB_PORT: "5432"
+          REDIS_URL: redis://localhost:6379/0
+
+          JWT_SECRET_KEY: test-secret-key-do-not-use-in-production
+          JWT_ALGORITHM: HS256
+
+          APP_ENV: testing
+
+          # Pact Broker credentials
+          PACT_BROKER_URL: ${{ secrets.PACT_BROKER_URL }}
+          PACT_BROKER_USERNAME: ${{ secrets.PACT_BROKER_USERNAME }}
+          PACT_BROKER_PASSWORD: ${{ secrets.PACT_BROKER_PASSWORD }}
+
+          # Publish results only on main branch
+          PUBLISH_PACT_RESULTS: ${{ inputs.publish-results && github.event_name == 'push' && github.ref == 'refs/heads/main' && 'true' || 'false' }}
+          GIT_COMMIT: ${{ github.sha }}
+
+        run: |
+          echo "::group::Pact Verification for ${{ inputs.provider-name }}"
+          pytest "${{ inputs.pact-dir }}" -v --timeout=60 --tb=short
+          EXIT_CODE=$?
+          echo "::endgroup::"
+          exit $EXIT_CODE
+
+      # ====================================================================
+      # 4. SKIP NOTICE (IF BROKER UNREACHABLE)
+      # ====================================================================
+      # Si el broker no era alcanzable y skip-if-unreachable = true,
+      # mostrar advertencia clara.
+      - name: Pact verification skipped
+        if: |
+          steps.broker-check.outputs.BROKER_REACHABLE == 'false' &&
+          inputs.skip-if-unreachable
+        run: |
+          echo "⚠️  NOTICE: Pact contract verification was SKIPPED"
+          echo ""
+          echo "Reason: Pact Broker is not reachable"
+          echo "Broker URL: [configured via PACT_BROKER_URL secret]"
+          echo ""
+          echo "To enable Pact verification in CI:"
+          echo "  1. Expose Pact Broker via public URL (Traefik ingress, ngrok, or Cloudflare Tunnel)"
+          echo "  2. Set PACT_BROKER_URL GitHub secret to the public URL"
+          echo "  3. Ensure PACT_BROKER_USERNAME and PACT_BROKER_PASSWORD are configured"
+          echo ""
+          echo "For local development:"
+          echo "  - Run: kubectl port-forward -n platform svc/pact-broker 9292:9292"
+          echo "  - Then set: export PACT_BROKER_URL=http://localhost:9292"
+          echo ""
+          echo "This is not a failure — it's a temporary skip until Pact Broker is publicly accessible."
+
+      # ====================================================================
+      # 5. UPLOAD PACT RESULTS (IF PUBLISHED)
+      # ====================================================================
+      # Si los resultados fueron publicados al broker, mostrar confirmación.
+      # Artifacts pueden servir para debugging o auditoría local.
+      - name: Upload Pact verification results
+        if: always()
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: pact-results-${{ inputs.provider-name }}-${{ github.run_number }}
+          path: ${{ inputs.pact-dir }}
+          retention-days: 30
+
+      # ====================================================================
+      # 6. SUMMARY
+      # ====================================================================
+      - name: Print Pact verification summary
+        if: always()
+        run: |
+          echo "📋 Pact Verification Summary"
+          echo "============================="
+          echo "Provider: ${{ inputs.provider-name }}"
+          echo "Pact directory: ${{ inputs.pact-dir }}"
+          echo "Python version: ${{ inputs.python-version }}"
+          echo ""
+          echo "Broker reachable: ${{ steps.broker-check.outputs.BROKER_REACHABLE }}"
+          echo "Publish results: ${{ inputs.publish-results }}"
+          echo "Skip if unreachable: ${{ inputs.skip-if-unreachable }}"
+          echo ""
+
+          if [ "${{ steps.broker-check.outputs.BROKER_REACHABLE }}" = "true" ]; then
+            echo "✅ Pact verification completed"
+          else
+            if [ "${{ inputs.skip-if-unreachable }}" = "true" ]; then
+              echo "⚠️  Pact verification skipped (broker unreachable, skip-if-unreachable=true)"
+            else
+              echo "❌ Pact verification failed (broker unreachable, skip-if-unreachable=false)"
+            fi
+          fi

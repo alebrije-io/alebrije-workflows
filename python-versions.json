@@ -1,0 +1,6 @@
+{
+  "versions": ["3.12", "3.13"],
+  "default": "3.12",
+  "ci_matrix": "[\"3.12\", \"3.13\"]",
+  "notes": "Python 3.12 is the primary version. 3.13 for forward-compatibility."
+}
