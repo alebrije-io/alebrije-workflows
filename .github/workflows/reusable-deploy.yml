@@ -58,7 +58,7 @@ permissions:
 jobs:
   deploy:
     name: Deploy to OVH Kubernetes
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
     # Serializa todos los deploys al mismo namespace para evitar throttling
     # en el OVH K8s API server cuando múltiples repos corren simultáneamente.
     # Cada deploy espera a que el anterior termine (cancel-in-progress: false).

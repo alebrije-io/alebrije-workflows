@@ -14,7 +14,7 @@ permissions:
 jobs:
   validate-yaml:
     name: Validate YAML workflows
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
     steps:
       - uses: actions/checkout@v4
       - name: Install yamllint
@@ -24,7 +24,7 @@ jobs:
 
   validate-scripts:
     name: Validate shell scripts
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
     steps:
       - uses: actions/checkout@v4
       - name: Install shellcheck
@@ -36,7 +36,7 @@ jobs:
 
   validate-json:
     name: Validate JSON policies
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
     steps:
       - uses: actions/checkout@v4
       - name: Install jq
@@ -50,7 +50,7 @@ jobs:
 
   validate-structure:
     name: Validate repository structure
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
     steps:
       - uses: actions/checkout@v4
       - name: Check required files
@@ -62,7 +62,7 @@ jobs:
 
   security-check:
     name: Security scan
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
     steps:
       - uses: actions/checkout@v4
       - name: No hardcoded tokens
@@ -73,7 +73,7 @@ jobs:
 
   final-report:
     name: Final validation
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
     needs: [validate-yaml, validate-scripts, validate-json, validate-structure, security-check]
     if: always()
     steps:

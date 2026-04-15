@@ -60,7 +60,7 @@ permissions:
 jobs:
   build-and-push:
     name: Build & Push
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
     outputs:
       image-tag: ${{ steps.build.outputs.image-tag }}
       image-digest: ${{ steps.build.outputs.image-digest }}
@@ -104,14 +104,15 @@ jobs:
       # (torch + sentence-transformers + baked model weights) can exceed that.
       # Freeing pre-installed tools (~13GB) prevents "No space left on device".
       - name: Free disk space
+        continue-on-error: true
         run: |
           echo "Disk before cleanup:"
           df -h /
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo docker image prune --all --force || true
+          rm -rf /usr/share/dotnet
+          rm -rf /usr/local/lib/android
+          rm -rf /opt/ghc
+          rm -rf /opt/hostedtoolcache/CodeQL
+          docker image prune --all --force || true
           echo "Disk after cleanup:"
           df -h /
 
@@ -122,7 +123,7 @@ jobs:
       # - platforms: linux/amd64 (NO multiarch, Alebrije es x86-64)
       # - sbom: true (generar SBOM durante build)
       # - provenance: mode=max (attestations para cadena de custodia)
-      # - cache-from/cache-to: GHA cache para velocidad
+      # - cache-from/cache-to: BuildKit registry cache (type=registry, compatible ARC)
       # - push: input configurable (test sin push)
       - name: Build and push Docker image
         id: build
@@ -139,8 +140,8 @@ jobs:
           tags: |
             ${{ inputs.image-name }}:${{ steps.version.outputs.tag }}
             ${{ inputs.image-name }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=registry,ref=${{ inputs.image-name }}:buildcache
+          cache-to: type=registry,ref=${{ inputs.image-name }}:buildcache,mode=max
 
       # ====================================================================
       # 5. SECURITY: TRIVY VULNERABILITY SCANNING

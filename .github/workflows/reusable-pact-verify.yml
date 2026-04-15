@@ -65,7 +65,7 @@ on:
 jobs:
   pact-verify:
     name: Pact Contract Verification
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
 
     services:
       postgres:

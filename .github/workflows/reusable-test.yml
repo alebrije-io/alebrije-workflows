@@ -59,7 +59,7 @@ jobs:
   # Main test job: runs per-file pytest with matrix Python versions.
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
 
     # Services run alongside the job. These are standard for all Alebrije services.
     services:
@@ -232,7 +232,7 @@ jobs:
   # This requires PACT_BROKER_* secrets to be set in the caller repo.
   pact-verify:
     name: Verify Pact Contracts
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
     needs: test
 
     # Only run if:
