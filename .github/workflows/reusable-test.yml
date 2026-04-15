@@ -45,8 +45,6 @@ on:
         type: boolean
         default: false
         required: false
-    secrets:
-      inherit
 
 # Concurrency: Cancel previous runs on the same branch to avoid queue buildup.
 # This is critical for fast feedback on push events. If the user pushes again

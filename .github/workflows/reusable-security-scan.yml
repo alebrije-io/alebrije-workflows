@@ -50,8 +50,6 @@ on:
         required: false
         default: true
         type: boolean
-    secrets:
-      inherit
 
 permissions:
   contents: read
