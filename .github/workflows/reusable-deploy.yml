@@ -229,7 +229,7 @@ jobs:
           echo "Running smoke test: $SMOKE_CMD"
           RESPONSE=$(kubectl exec -n ${{ inputs.namespace }} \
             deployment/${{ inputs.deployment-name }} \
-            -- bash -c "$SMOKE_CMD" || echo '{"status":"error","error":"exec failed"}')
+            -- sh -c "$SMOKE_CMD" || echo '{"status":"error","error":"exec failed"}')
           echo "Response:"
           echo "$RESPONSE"
           # Parsea JSON y valida status==ok o status==degraded (ambos indican servicio vivo)
