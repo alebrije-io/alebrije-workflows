@@ -215,15 +215,18 @@ jobs:
       # 8. SECURITY: DETECT-SECRETS BASELINE AUDIT
       # ====================================================================
       # Escanea cambios en repo para credenciales/tokens hardcodeados
+      - name: Set up Python for security tools
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Install and run detect-secrets
         run: |
-          # ARC runner image no tiene pip3 en PATH — usar python3 -m pip
-          sudo apt-get install -y python3-pip -qq || true
-          python3 -m pip install detect-secrets --quiet
+          pip install detect-secrets --quiet
           # Scan (si no existe baseline, crea uno; si existe, lo usa)
-          python3 -m detect_secrets scan --baseline .secrets.baseline || true
+          detect-secrets scan --baseline .secrets.baseline || true
           # Audit contra baseline (reporta, no falla)
-          python3 -m detect_secrets audit --report .secrets.baseline || true
+          detect-secrets audit --report .secrets.baseline || true
 
       # ====================================================================
       # 9. SECURITY: COSIGN KEYLESS SIGNING
