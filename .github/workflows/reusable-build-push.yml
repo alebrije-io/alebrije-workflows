@@ -130,7 +130,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ inputs.context }}
-          dockerfile: ${{ inputs.context }}/${{ inputs.dockerfile }}
+          file: ${{ inputs.context }}/${{ inputs.dockerfile }}
           push: ${{ inputs.push }}
           sbom: true
           provenance: mode=max
@@ -230,7 +230,7 @@ jobs:
       # Escanea cambios en repo para credenciales/tokens hardcodeados
       - name: Install and run detect-secrets
         run: |
-          pip install detect-secrets
+          pip3 install detect-secrets
           # Scan (si no existe baseline, crea uno; si existe, lo usa)
           detect-secrets scan --baseline .secrets.baseline || true
           # Audit contra baseline (reporta, no falla)
