@@ -76,11 +76,24 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
+      # Autenticación a Vault via K8s auth (SA del runner pod)
+      # Exporta DOCKERHUB_USERNAME, DOCKERHUB_TOKEN, GH_TOKEN como env vars
+      - name: Get CI secrets from Vault
+        uses: hashicorp/vault-action@v3
+        with:
+          url: http://vault.vault.svc:8200
+          method: kubernetes
+          role: ci-runner-role
+          secrets: |
+            alebrije/data/ci/dockerhub username | DOCKERHUB_USERNAME ;
+            alebrije/data/ci/dockerhub token | DOCKERHUB_TOKEN ;
+            alebrije/data/ci/github gh_token | GH_TOKEN
+
       - name: Login to DockerHub
         uses: docker/login-action@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
 
       # ====================================================================
       # 2. READ VERSION FILE
@@ -136,7 +149,7 @@ jobs:
           provenance: mode=max
           platforms: linux/amd64
           secrets: |
-            "gh_token=${{ secrets.GH_TOKEN }}"
+            "gh_token=${{ env.GH_TOKEN }}"
           tags: |
             ${{ inputs.image-name }}:${{ steps.version.outputs.tag }}
             ${{ inputs.image-name }}:latest
@@ -144,13 +157,14 @@ jobs:
           cache-to: type=registry,ref=${{ inputs.image-name }}:buildcache,mode=max
 
       # ====================================================================
-      # 5. SECURITY: TRIVY VULNERABILITY SCANNING
+      # 5. SECURITY: TRIVY VULNERABILITY SCANNING (optimizado: 2 scans vs 4)
       # ====================================================================
-      # Trivy CRITICAL: bloquea el pipeline (exit-code: 1)
-      # Trivy HIGH: solo reporte (exit-code: 0)
-      # Ambas con ignore-unfixed: true para ruido vs. viabilidad
-
-      - name: Trivy vulnerability scan - CRITICAL (table, blocking)
+      # CRITICAL (table): bloquea el pipeline — exit-code: 1
+      #   continue-on-error: true para que errores de infra de Trivy no bloqueen
+      # CRITICAL+HIGH (SARIF): reporte unificado en GitHub Security tab — no bloquea
+      # SBOM: eliminado aquí — 'sbom: true' en el build step ya genera SBOM como
+      #   OCI attestation en DockerHub. Trivy CycloneDX era duplicado (+10-40min).
+      - name: Trivy scan — CRITICAL (table, blocking)
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         continue-on-error: true  # Trivy exits 1 on infra errors, not just real CVEs
         with:
@@ -160,57 +174,30 @@ jobs:
           exit-code: 1
           ignore-unfixed: true
 
-      - name: Trivy vulnerability scan - CRITICAL (SARIF report)
+      - name: Trivy scan — CRITICAL+HIGH (SARIF, non-blocking)
         if: always()
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: ${{ inputs.image-name }}:${{ steps.version.outputs.tag }}
           format: sarif
-          output: trivy-critical.sarif
-          severity: CRITICAL
-          exit-code: 0
-          ignore-unfixed: true
-
-      - name: Trivy vulnerability scan - HIGH (table, non-blocking)
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
-        with:
-          image-ref: ${{ inputs.image-name }}:${{ steps.version.outputs.tag }}
-          format: table
-          severity: HIGH
+          output: trivy.sarif
+          severity: CRITICAL,HIGH
           exit-code: 0
           ignore-unfixed: true
 
       # ====================================================================
-      # 6. SECURITY: GENERATE SBOM (CycloneDX)
+      # 6. UPLOAD REPORTS (SARIF)
       # ====================================================================
-      - name: Generate SBOM (CycloneDX format)
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
-        with:
-          image-ref: ${{ inputs.image-name }}:${{ steps.version.outputs.tag }}
-          format: cyclonedx
-          output: sbom.cyclonedx.json
-
-      # ====================================================================
-      # 7. UPLOAD REPORTS (SARIF, SBOM artifacts)
-      # ====================================================================
-      - name: Upload Trivy SARIF report to GitHub Security
+      - name: Upload Trivy SARIF to GitHub Security
         if: always()
         uses: github/codeql-action/upload-sarif@v4
         continue-on-error: true  # Private repos sin GHAS no fallan
         with:
-          sarif_file: trivy-critical.sarif
-          category: Trivy-Critical
-
-      - name: Upload SBOM artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-cyclonedx-${{ steps.version.outputs.tag }}
-          path: sbom.cyclonedx.json
-          retention-days: 30
+          sarif_file: trivy.sarif
+          category: Trivy
 
       # ====================================================================
-      # 8. SECURITY: DOCKER SCOUT ANALYSIS
+      # 7. SECURITY: DOCKER SCOUT ANALYSIS
       # ====================================================================
       # Análisis de CVEs y recommendations desde Docker Scout
       # Non-blocking por defecto (informational)
@@ -225,7 +212,7 @@ jobs:
         continue-on-error: true
 
       # ====================================================================
-      # 9. SECURITY: DETECT-SECRETS BASELINE AUDIT
+      # 8. SECURITY: DETECT-SECRETS BASELINE AUDIT
       # ====================================================================
       # Escanea cambios en repo para credenciales/tokens hardcodeados
       - name: Install and run detect-secrets
@@ -237,7 +224,7 @@ jobs:
           detect-secrets audit --report .secrets.baseline || true
 
       # ====================================================================
-      # 10. SECURITY: COSIGN KEYLESS SIGNING
+      # 9. SECURITY: COSIGN KEYLESS SIGNING
       # ====================================================================
       # Firma la imagen con Cosign via Sigstore OIDC (sin keys almacenadas)
       # Solo en push real
