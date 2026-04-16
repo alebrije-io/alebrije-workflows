@@ -217,11 +217,13 @@ jobs:
       # Escanea cambios en repo para credenciales/tokens hardcodeados
       - name: Install and run detect-secrets
         run: |
-          pip3 install detect-secrets
+          # ARC runner image no tiene pip3 en PATH — usar python3 -m pip
+          sudo apt-get install -y python3-pip -qq || true
+          python3 -m pip install detect-secrets --quiet
           # Scan (si no existe baseline, crea uno; si existe, lo usa)
-          detect-secrets scan --baseline .secrets.baseline || true
+          python3 -m detect_secrets scan --baseline .secrets.baseline || true
           # Audit contra baseline (reporta, no falla)
-          detect-secrets audit --report .secrets.baseline || true
+          python3 -m detect_secrets audit --report .secrets.baseline || true
 
       # ====================================================================
       # 9. SECURITY: COSIGN KEYLESS SIGNING
