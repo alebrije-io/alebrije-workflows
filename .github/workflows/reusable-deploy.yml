@@ -1,8 +1,7 @@
 name: Reusable Deploy to Kubernetes
-
 # Este workflow reusable centraliza la lógica de deployment a K8s OVH
 # Implementa estándares Alebrije:
-# - Kubeconfig desde secrets (base64 encoded)
+# - Kubeconfig desde Vault KV (cero secrets en GitHub)
 # - Namespace always: platform
 # - Reemplazo de __VERSION__ en manifests via sed
 # - kubectl apply --server-side (strategic merge)
@@ -12,7 +11,7 @@ name: Reusable Deploy to Kubernetes
 #
 # Uso en repo individual:
 #   - name: Deploy
-#     uses: ./alebrije-workflows/.github/workflows/03-reusable-deploy.yml@main
+#     uses: alebrije-io/alebrije-workflows/.github/workflows/reusable-deploy.yml@main
 #     with:
 #       deployment-name: "alebrije-auth"
 #       version: "0.1.2"  # Viene de outputs de build-push
@@ -54,6 +53,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write        # required for vault-action Kubernetes auth
 
 jobs:
   deploy:
@@ -65,7 +65,6 @@ jobs:
     concurrency:
       group: deploy-ovh-${{ inputs.namespace }}
       cancel-in-progress: false
-
     steps:
       # ====================================================================
       # 1. CHECKOUT & SETUP KUBECTL
@@ -79,16 +78,28 @@ jobs:
           version: latest
 
       # ====================================================================
-      # 2. CONFIGURE KUBECONFIG FROM SECRET
+      # 2. GET KUBECONFIG FROM VAULT
       # ====================================================================
-      # KUBECONFIG está base64 encoded en secrets (por si contiene newlines)
+      # Autenticación a Vault via K8s auth (SA del runner pod)
+      # Exporta KUBECONFIG_B64 como env var — cero secrets en GitHub
+      - name: Get CI secrets from Vault
+        uses: hashicorp/vault-action@v3
+        with:
+          url: http://vault.vault.svc:8200
+          method: kubernetes
+          role: ci-runner-role
+          secrets: |
+            alebrije/data/ci/kubeconfig kubeconfig_b64 | KUBECONFIG_B64
+
+      # ====================================================================
+      # 2b. CONFIGURE KUBECONFIG
+      # ====================================================================
+      # KUBECONFIG está base64 encoded en Vault (por si contiene newlines)
       # Se decodifica y se coloca en ~/.kube/config con chmod 600
       - name: Configure kubeconfig
-        env:
-          KUBECONFIG_B64: ${{ secrets.KUBECONFIG }}
         run: |
           if [ -z "$KUBECONFIG_B64" ]; then
-            echo "::error::KUBECONFIG secret not found"
+            echo "::error::KUBECONFIG_B64 not found — check Vault path alebrije/data/ci/kubeconfig"
             exit 1
           fi
           mkdir -p $HOME/.kube
@@ -97,7 +108,7 @@ jobs:
           echo "Kubeconfig configured"
 
       # ====================================================================
-      # 2b. READ VERSION IF NOT PROVIDED
+      # 2c. READ VERSION IF NOT PROVIDED
       # ====================================================================
       - name: Read version
         id: version
@@ -130,8 +141,8 @@ jobs:
               sleep $WAIT
             fi
           done
-          echo "::error::OVH Kubernetes cluster not reachable after $MAX_RETRIES attempts (10s, 20s backoff)"
-          echo "::error::Check OVH cluster status and KUBECONFIG secret validity"
+          echo "::error::OVH Kubernetes cluster not reachable after $MAX_RETRIES attempts"
+          echo "::error::Check OVH cluster status and KUBECONFIG in Vault at alebrije/data/ci/kubeconfig"
           exit 1
 
       - name: Verify namespace exists
@@ -215,15 +226,12 @@ jobs:
         run: |
           echo "Waiting 15s for pod to stabilize..."
           sleep 15
-
           echo "Running smoke test: $SMOKE_CMD"
           RESPONSE=$(kubectl exec -n ${{ inputs.namespace }} \
             deployment/${{ inputs.deployment-name }} \
             -- bash -c "$SMOKE_CMD" || echo '{"status":"error","error":"exec failed"}')
-
           echo "Response:"
           echo "$RESPONSE"
-
           # Parsea JSON y valida status==ok o status==degraded (ambos indican servicio vivo)
           if echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); sys.exit(0) if data.get('status') in ('ok','degraded') else sys.exit(1)"; then
             echo "✅ Health check passed"
