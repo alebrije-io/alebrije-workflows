@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alebrije.io/schemas/notifications.email.opened.v1.json",
+  "title": "notifications.email.opened v1",
+  "description": "Provider callback — tracked pixel / open beacon fired. Used by analytics and cadence conversion signals.",
+  "allOf": [
+    { "$ref": "envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "notifications.email.opened" },
+        "data": {
+          "type": "object",
+          "required": ["notification_id", "recipient", "opened_at"],
+          "properties": {
+            "notification_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "message_id": {
+              "type": ["string", "null"]
+            },
+            "recipient": {
+              "type": "string",
+              "format": "email"
+            },
+            "provider": {
+              "type": ["string", "null"]
+            },
+            "template_id": {
+              "type": ["string", "null"]
+            },
+            "opened_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "user_agent": {
+              "type": ["string", "null"]
+            },
+            "ip": {
+              "type": ["string", "null"],
+              "description": "Best-effort IP reported by the provider. May be a proxy (Gmail Image Proxy)."
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

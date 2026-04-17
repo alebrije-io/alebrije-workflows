@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alebrije.io/schemas/cadences.converted.v1.json",
+  "title": "cadences.converted v1",
+  "description": "Emitted when a cadence_instance reaches status='exited_won' because its conversion signal fired (contact replied, payment completed, appointment booked, etc.). Source publisher: alebrije-mod-cadences-ex.",
+  "allOf": [
+    { "$ref": "envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "cadences.converted" },
+        "data": {
+          "type": "object",
+          "required": ["cadence_instance_id", "cadence_id", "contact_id", "converted_at", "conversion_signal"],
+          "properties": {
+            "cadence_instance_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "cadence_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "contact_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "converted_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "conversion_signal": {
+              "type": "string",
+              "description": "What triggered the conversion (e.g. payment.completed, message.received, appointment.booked)."
+            },
+            "source_event_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "event_id of the downstream event that closed the cadence."
+            },
+            "time_to_convert_seconds": {
+              "type": ["integer", "null"],
+              "minimum": 0,
+              "description": "Elapsed time from enrollment to conversion."
+            },
+            "last_step": {
+              "type": ["integer", "null"],
+              "minimum": 0,
+              "description": "Index of the last step executed before conversion."
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alebrije.io/schemas/rewards.points.redeemed.v1.json",
+  "title": "rewards.points.redeemed v1",
+  "description": "Emitted after a successful redemption on the rewards ledger. Source publisher: alebrije-mod-rewards-go.",
+  "allOf": [
+    { "$ref": "envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "rewards.points.redeemed" },
+        "data": {
+          "type": "object",
+          "required": ["user_id", "amount", "reason", "idempotency_key", "account_id"],
+          "properties": {
+            "user_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Rewards member (user) spending the points."
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Positive points redeemed. Stored as a positive number even though the ledger effect is negative."
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 256,
+              "description": "Why the points were redeemed (e.g. redeem_reward, admin_adjustment)."
+            },
+            "idempotency_key": {
+              "type": "string",
+              "description": "Key used by the producer to guarantee once-only semantics on retry."
+            },
+            "account_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Rewards account the points are debited from."
+            },
+            "transaction_id": {
+              "type": ["string", "null"],
+              "description": "Ledger transaction id (if already persisted)."
+            },
+            "balance_after": {
+              "type": ["integer", "null"],
+              "minimum": 0,
+              "description": "Account balance after this transaction, for audit."
+            },
+            "reference": {
+              "type": ["string", "null"],
+              "description": "Free-form reference to the redemption target (e.g. reward_id)."
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

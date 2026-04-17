@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alebrije.io/schemas/payments.invoice.overdue.v1.json",
+  "title": "payments.invoice.overdue v1",
+  "description": "Emitted when an invoice crosses its due date without being fully paid. Triggers dunning cadences and WhatsApp reminders.",
+  "allOf": [
+    { "$ref": "envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "payments.invoice.overdue" },
+        "data": {
+          "type": "object",
+          "required": ["invoice_id", "amount_due", "currency", "due_date", "days_overdue"],
+          "properties": {
+            "invoice_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "contact_id": {
+              "type": ["string", "null"],
+              "format": "uuid"
+            },
+            "contact_phone": {
+              "type": ["string", "null"],
+              "description": "E.164 phone for the obliged party (convenience field)."
+            },
+            "amount_due": {
+              "type": "string",
+              "description": "Decimal string (keep precision; avoid float). Always positive.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?$"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "ISO 4217 code (MXN, USD, ...)."
+            },
+            "due_date": {
+              "type": "string",
+              "format": "date"
+            },
+            "days_overdue": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "invoice_number": {
+              "type": ["string", "null"]
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

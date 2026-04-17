@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alebrije.io/schemas/notifications.email.delivered.v1.json",
+  "title": "notifications.email.delivered v1",
+  "description": "Provider callback — an outbound email was accepted by the recipient MTA. MUST echo external_ref so the original sender can correlate the delivery with its send request (ADR-31).",
+  "allOf": [
+    { "$ref": "envelope.v1.json" },
+    {
+      "type": "object",
+      "required": ["external_ref"],
+      "properties": {
+        "event_type": { "const": "notifications.email.delivered" },
+        "external_ref": {
+          "type": "string",
+          "description": "REQUIRED for delivered callbacks. Echoes the reference the caller sent on the original notifications.send request."
+        },
+        "data": {
+          "type": "object",
+          "required": ["notification_id", "recipient", "provider", "delivered_at"],
+          "properties": {
+            "notification_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Notifications service internal id."
+            },
+            "message_id": {
+              "type": ["string", "null"],
+              "description": "Provider-level message id (SMTP Message-Id, SendGrid sg_message_id, ...)."
+            },
+            "recipient": {
+              "type": "string",
+              "format": "email"
+            },
+            "provider": {
+              "type": "string",
+              "description": "sendgrid, ses, postmark, mailgun, ..."
+            },
+            "template_id": {
+              "type": ["string", "null"]
+            },
+            "delivered_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "response_code": {
+              "type": ["string", "null"],
+              "description": "SMTP/HTTP status reported by provider."
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

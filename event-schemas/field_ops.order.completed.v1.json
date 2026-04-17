@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alebrije.io/schemas/field_ops.order.completed.v1.json",
+  "title": "field_ops.order.completed v1",
+  "description": "Emitted when a field order moves to status='completed' after the technician closes custody. Source publisher: alebrije-mod-field-ops-ex.",
+  "allOf": [
+    { "$ref": "envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "field_ops.order.completed" },
+        "data": {
+          "type": "object",
+          "required": ["order_id", "kind", "completed_at"],
+          "properties": {
+            "order_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "kind": {
+              "type": "string",
+              "enum": ["pickup_sample", "delivery", "inspection", "service_call"],
+              "description": "Work type (matches field_orders.kind enum)."
+            },
+            "assigned_technician_id": {
+              "type": ["string", "null"],
+              "format": "uuid"
+            },
+            "customer_id": {
+              "type": ["string", "null"],
+              "format": "uuid"
+            },
+            "external_ref": {
+              "type": ["string", "null"],
+              "description": "External system reference (e.g. upstream ticket / order number)."
+            },
+            "completed_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "duration_seconds": {
+              "type": ["integer", "null"],
+              "minimum": 0,
+              "description": "Elapsed time from assignment to completion."
+            },
+            "outcome": {
+              "type": ["string", "null"],
+              "description": "Free-form outcome note (success, partial, customer_absent, ...)."
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

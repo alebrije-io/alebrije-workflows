@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alebrije.io/schemas/envelope.v1.json",
+  "title": "Alebrije Event Envelope v1",
+  "description": "Base envelope shared by every event that travels the Alebrije EventBus. Per-event schemas use allOf + $ref to inherit these fields and constrain event_type + data.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "event_version",
+    "tenant_id",
+    "timestamp",
+    "producer",
+    "data"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID (preferably v7) uniquely identifying this event. Used for dedupe."
+    },
+    "event_type": {
+      "type": "string",
+      "pattern": "^[a-z_]+\\.[a-z_]+\\.[a-z_]+$",
+      "description": "Canonical <domain>.<entity>.<action> identifier (past-tense verb)."
+    },
+    "event_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+$",
+      "description": "Schema version (major.minor) matching the .vN file suffix."
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Tenant that owns this event. Present in every event without exception (ADR-25)."
+    },
+    "context_id": {
+      "type": ["string", "null"],
+      "maxLength": 36,
+      "description": "Optional multi-context selector (ADR-25)."
+    },
+    "external_ref": {
+      "type": ["string", "null"],
+      "description": "Correlation ID for callback events. Required in notifications.*.delivered and other callback events where the caller must echo the reference it sent on the original request."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp at which the event occurred (producer clock)."
+    },
+    "producer": {
+      "type": "object",
+      "required": ["service", "version"],
+      "properties": {
+        "service": {
+          "type": "string",
+          "description": "Deployment name of the emitting service (e.g. alebrije-mod-rewards-go)."
+        },
+        "version": {
+          "type": "string",
+          "description": "Image tag / app version of the emitting service."
+        }
+      }
+    },
+    "trace_id": {
+      "type": ["string", "null"],
+      "description": "OpenTelemetry trace id for cross-service correlation (32 hex chars)."
+    },
+    "data": {
+      "type": "object",
+      "description": "Per-event payload. Shape is defined by the per-event schema that refs this envelope."
+    }
+  }
+}

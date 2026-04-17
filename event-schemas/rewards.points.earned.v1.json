@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alebrije.io/schemas/rewards.points.earned.v1.json",
+  "title": "rewards.points.earned v1",
+  "description": "Emitted after a successful earn on the rewards ledger. Source publisher: alebrije-mod-rewards-go.",
+  "allOf": [
+    { "$ref": "envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "rewards.points.earned" },
+        "data": {
+          "type": "object",
+          "required": ["user_id", "amount", "reason", "idempotency_key", "account_id"],
+          "properties": {
+            "user_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Rewards member (user) receiving the points."
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Positive points awarded. Never zero, never negative."
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 256,
+              "description": "Why the points were granted (free text or enum key, e.g. purchase_earn)."
+            },
+            "idempotency_key": {
+              "type": "string",
+              "description": "Key used by the producer to guarantee once-only semantics on retry."
+            },
+            "account_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Rewards account the points land on."
+            },
+            "transaction_id": {
+              "type": ["string", "null"],
+              "description": "Ledger transaction id (if already persisted)."
+            },
+            "balance_after": {
+              "type": ["integer", "null"],
+              "minimum": 0,
+              "description": "Account balance after this transaction, for audit."
+            },
+            "reference": {
+              "type": ["string", "null"],
+              "description": "Free-form reference to the originating entity (e.g. payment_id, visit_id)."
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

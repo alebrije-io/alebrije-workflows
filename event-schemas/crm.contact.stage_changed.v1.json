@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alebrije.io/schemas/crm.contact.stage_changed.v1.json",
+  "title": "crm.contact.stage_changed v1",
+  "description": "Emitted when a contact moves between pipeline stages. MUST carry both old_stage and new_stage so downstream analytics and cadences can react to the delta without a separate lookup.",
+  "allOf": [
+    { "$ref": "envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "crm.contact.stage_changed" },
+        "data": {
+          "type": "object",
+          "required": ["contact_id", "old_stage", "new_stage"],
+          "properties": {
+            "contact_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "old_stage": {
+              "type": ["string", "null"],
+              "description": "Stage the contact is leaving. Nullable only when the contact had no prior stage (first assignment)."
+            },
+            "new_stage": {
+              "type": "string",
+              "description": "Stage the contact is moving to. Never null."
+            },
+            "old_stage_id": {
+              "type": ["string", "null"],
+              "format": "uuid"
+            },
+            "new_stage_id": {
+              "type": ["string", "null"],
+              "format": "uuid"
+            },
+            "phone": {
+              "type": ["string", "null"],
+              "description": "Denormalized phone to avoid a CRM lookup on the consumer side."
+            },
+            "changed_by": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "User id of the actor who triggered the change. Null for system/automation moves."
+            },
+            "reason": {
+              "type": ["string", "null"],
+              "maxLength": 256
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

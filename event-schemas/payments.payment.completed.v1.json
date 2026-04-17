@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alebrije.io/schemas/payments.payment.completed.v1.json",
+  "title": "payments.payment.completed v1",
+  "description": "Emitted after a successful payment settlement. Replaces the legacy 'payment.confirmed' event (ADR-31 §4.2).",
+  "allOf": [
+    { "$ref": "envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "payments.payment.completed" },
+        "data": {
+          "type": "object",
+          "required": ["payment_id", "amount", "currency", "method"],
+          "properties": {
+            "payment_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "link_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Payment link that originated this payment, if applicable."
+            },
+            "invoice_id": {
+              "type": ["string", "null"],
+              "format": "uuid"
+            },
+            "contact_id": {
+              "type": ["string", "null"],
+              "format": "uuid"
+            },
+            "contact_phone": {
+              "type": ["string", "null"]
+            },
+            "amount": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?$",
+              "description": "Decimal string, positive."
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "method": {
+              "type": "string",
+              "description": "Payment method used (card, oxxo, spei, paypal, ...)."
+            },
+            "provider": {
+              "type": ["string", "null"],
+              "description": "Payment processor (stripe, mercadopago, conekta, ...)."
+            },
+            "provider_transaction_id": {
+              "type": ["string", "null"]
+            },
+            "settled_at": {
+              "type": ["string", "null"],
+              "format": "date-time"
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

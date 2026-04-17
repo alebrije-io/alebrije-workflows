@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alebrije.io/schemas/crm.contact.created.v1.json",
+  "title": "crm.contact.created v1",
+  "description": "Emitted when a new CRM contact row is persisted. Source publishers: alebrije-mod-crm (Python) and alebrije-mod-crm-go (Go). Both twins publish the same wire shape.",
+  "allOf": [
+    { "$ref": "envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "crm.contact.created" },
+        "data": {
+          "type": "object",
+          "required": ["contact_id", "phone"],
+          "properties": {
+            "contact_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the created contact (PK)."
+            },
+            "phone": {
+              "type": "string",
+              "description": "E.164 phone number. Unique per (tenant, phone) in CRM."
+            },
+            "name": {
+              "type": ["string", "null"],
+              "description": "Display name. Nullable — contacts may arrive before we know the name."
+            },
+            "email": {
+              "type": ["string", "null"],
+              "format": "email"
+            },
+            "source": {
+              "type": ["string", "null"],
+              "description": "Channel/origin that produced the contact (whatsapp, manual, import, ...)."
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}
