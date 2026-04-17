@@ -1,0 +1,55 @@
+name: CHANGELOG Check
+
+# Reusable workflow that enforces ADR-45 release/versioning policy:
+# - When VERSION changes in a PR, CHANGELOG.md MUST have a matching section.
+# - The section must not be empty or a placeholder.
+#
+# Intended callers: Python services that consume alebrije-workflows.
+# Go/Elixir services inline these checks in their own ci.yml per ADR-41
+# (local-only CI while those stacks stabilize).
+
+on:
+  workflow_call:
+
+jobs:
+  changelog-check:
+    runs-on: arc-runner-set
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check VERSION bump requires CHANGELOG
+        run: |
+          # Get VERSION from main vs PR
+          if git rev-parse origin/main >/dev/null 2>&1; then
+            OLD_VERSION=$(git show origin/main:VERSION 2>/dev/null || echo "0.0.0")
+            NEW_VERSION=$(cat VERSION)
+
+            if [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
+              echo "VERSION bumped: $OLD_VERSION → $NEW_VERSION"
+
+              # Check CHANGELOG has entry for NEW_VERSION
+              if ! grep -qE "^## \[$NEW_VERSION\]" CHANGELOG.md; then
+                echo "::error::VERSION bumped to $NEW_VERSION but no entry in CHANGELOG.md"
+                echo "::error::Add section '## [$NEW_VERSION] - YYYY-MM-DD' to CHANGELOG.md"
+                exit 1
+              fi
+
+              # Check the entry is not empty
+              SECTION=$(awk -v v="$NEW_VERSION" '
+                /^## \[/ { in_section = 0 }
+                $0 ~ "^## \\[" v "\\]" { in_section = 1; next }
+                in_section { print }
+              ' CHANGELOG.md)
+
+              if [ -z "$(echo "$SECTION" | grep -v '^\s*$' | grep -v '(add release notes here)' | grep -v '(none)')" ]; then
+                echo "::error::CHANGELOG entry for $NEW_VERSION is empty"
+                exit 1
+              fi
+
+              echo "✓ CHANGELOG entry for $NEW_VERSION verified"
+            else
+              echo "ℹ VERSION unchanged, skipping CHANGELOG check"
+            fi
+          fi
