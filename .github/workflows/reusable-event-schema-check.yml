@@ -1,0 +1,159 @@
+name: Reusable Event Schema Check
+
+# ADR-31 Phase 2 — CI enforcement that every event type published by a
+# repo has a matching JSON Schema registered in
+# `alebrije-workflows/event-schemas/`.
+#
+# The check is conservative in two directions:
+#
+#   1. Missing schemas fail the PR — they signal that the publisher
+#      shipped a new event type without a contract.
+#   2. Extra schemas (registered but not published by this repo) do NOT
+#      fail, because another twin in a different language may emit them.
+#
+# What it scans:
+#
+#   * Python: any file matching `**/event*publisher*.py` — strings passed
+#     to `xadd(...)` positional arg 1, or values of constants named
+#     `*_STREAM` / `*_EVENT`.
+#   * Elixir: `**/event*publisher*.ex` + Broadway pipelines — atoms /
+#     strings passed to `Redix.command(..., ["XADD", <stream>, ...])`.
+#   * Go: `**/events_publisher.go`, `**/event_publisher.go`,
+#     `**/redis_publisher.go` — string literals assigned to `EventType`.
+#
+# The extractor is a small Python script inlined below. It is
+# deliberately dumb (regex-based) so new languages can slot in without
+# pulling tree-sitter into the workflow runner.
+
+on:
+  workflow_call:
+    inputs:
+      target-repo-path:
+        description: "Checkout path of the repo being checked (default: '.')"
+        required: false
+        type: string
+        default: "."
+      schemas-repo-ref:
+        description: "Git ref of alebrije-workflows to read schemas from"
+        required: false
+        type: string
+        default: "main"
+      fail-on-missing:
+        description: "Fail the PR when a published event_type has no schema"
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          path: target
+
+      - name: Checkout alebrije-workflows (schemas source)
+        uses: actions/checkout@v4
+        with:
+          repository: alebrije-io/alebrije-workflows
+          ref: ${{ inputs.schemas-repo-ref }}
+          path: workflows
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run schema/publisher cross-check
+        id: check
+        shell: bash
+        env:
+          TARGET_DIR: ${{ inputs.target-repo-path == '.' && 'target' || format('target/{0}', inputs.target-repo-path) }}
+          SCHEMAS_DIR: workflows/event-schemas
+          FAIL_ON_MISSING: ${{ inputs.fail-on-missing }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          target = Path(os.environ["TARGET_DIR"])
+          schemas_dir = Path(os.environ["SCHEMAS_DIR"])
+          fail_on_missing = os.environ["FAIL_ON_MISSING"].lower() == "true"
+
+          # ── Registered schemas ───────────────────────────────────────
+          registered = set()
+          for p in schemas_dir.glob("*.v1.json"):
+              name = p.stem  # strip .json
+              if name.endswith(".v1"):
+                  name = name[:-3]
+              if name == "envelope":
+                  continue
+              registered.add(name)
+
+          print(f"[schema-check] {len(registered)} schema(s) in registry")
+
+          # ── Publisher discovery ─────────────────────────────────────
+          # Heuristic regexes. A publisher is anything that calls xadd /
+          # XADD with a literal stream name, or sets an event_type
+          # constant that looks like `<domain>.<entity>.<action>`.
+          #
+          # The extractor is intentionally tolerant: false positives get
+          # filtered later against the registry.
+
+          EVENT_TYPE_RE = re.compile(
+              r"[\"']((?:[a-z][a-z_]*\.){2}[a-z][a-z_]*)[\"']"
+          )
+
+          PUBLISHER_GLOBS = [
+              "**/event_publisher.*",
+              "**/events_publisher.*",
+              "**/event*publisher*.py",
+              "**/event*publisher*.ex",
+              "**/redis_publisher.go",
+              "**/publisher.go",
+              "**/events.ex",
+              "**/events.py",
+              "**/events.go",
+          ]
+
+          published = set()
+          scanned = 0
+          for glob in PUBLISHER_GLOBS:
+              for path in target.rglob(glob.replace("**/", "")):
+                  if not path.is_file():
+                      continue
+                  if any(part in {"node_modules", ".venv", "_build", "deps", "vendor"} for part in path.parts):
+                      continue
+                  try:
+                      text = path.read_text(encoding="utf-8", errors="replace")
+                  except OSError:
+                      continue
+                  scanned += 1
+                  for match in EVENT_TYPE_RE.finditer(text):
+                      published.add(match.group(1))
+
+          print(f"[schema-check] scanned {scanned} publisher file(s)")
+          print(f"[schema-check] {len(published)} candidate event type(s) referenced")
+
+          # ── Diff ────────────────────────────────────────────────────
+          missing = sorted(published - registered)
+          extra = sorted(registered - published)
+
+          if missing:
+              print("\n::error::Event types emitted by this repo with NO schema in alebrije-workflows/event-schemas:")
+              for name in missing:
+                  print(f"  - {name}")
+          if extra:
+              print("\n[schema-check] Schemas registered but not emitted by this repo (ok — another twin may emit):")
+              for name in extra:
+                  print(f"  - {name}")
+
+          if missing and fail_on_missing:
+              sys.exit(1)
+
+          print("\n[schema-check] OK")
+          PY
