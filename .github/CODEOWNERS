@@ -1,0 +1,7 @@
+# Global owner
+*                         @ileonelperea
+
+# CI and infrastructure
+.github/                  @ileonelperea
+/k8s/                     @ileonelperea
+/Dockerfile               @ileonelperea
