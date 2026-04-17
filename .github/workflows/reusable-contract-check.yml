@@ -1,0 +1,146 @@
+name: Reusable FE↔BE Contract Check
+
+# Runs the frontend↔backend contract audit across the Alebrije monorepo
+# workspace on PRs that modify either the FE api client (``src/lib/api``)
+# or any backend router file. A mismatch introduced by the PR fails the
+# job, keeping drift from leaking into main.
+#
+# This workflow checks out both the target repo being audited and the
+# alebrije workspace sibling repos that contain the matching backend —
+# the audit script is language-agnostic and compares against whatever
+# services are present in the workspace layout.
+#
+# The usual calling pattern from a concrete repo is:
+#
+#   jobs:
+#     contracts:
+#       uses: alebrije-io/alebrije-workflows/.github/workflows/reusable-contract-check.yml@main
+#       with:
+#         frontend-repo-path: "alebrije-frontend"
+#         workspace-ref: "main"
+
+on:
+  workflow_call:
+    inputs:
+      workspace-ref:
+        description: "Git ref for the alebrije workspace repos checked out alongside"
+        required: false
+        type: string
+        default: "main"
+      strict:
+        description: "Fail the job on any FE-only mismatch (drift introduced by this PR)"
+        required: false
+        type: boolean
+        default: true
+      module:
+        description: "Optional single module to check (e.g. rewards). Blank audits every module."
+        required: false
+        type: string
+        default: ""
+      frontend-repo-name:
+        description: "Name of the frontend repo in the alebrije-io org"
+        required: false
+        type: string
+        default: "alebrije-frontend"
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout alebrije-workflows (scripts + audit helper)
+        uses: actions/checkout@v4
+        with:
+          repository: alebrije-io/alebrije-workflows
+          ref: ${{ inputs.workspace-ref }}
+          path: workflows
+
+      # The audit compares URLs across sibling repos. We pull every repo
+      # the helper understands — missing ones are reported as
+      # ``backend missing`` and don't fail the job on their own.
+      - name: Checkout alebrije-frontend
+        uses: actions/checkout@v4
+        with:
+          repository: alebrije-io/${{ inputs.frontend-repo-name }}
+          ref: ${{ inputs.workspace-ref }}
+          path: alebrije-frontend
+
+      - name: Checkout backend repos
+        uses: actions/checkout@v4
+        with:
+          repository: alebrije-io/alebrije-mod-rewards-go
+          ref: ${{ inputs.workspace-ref }}
+          path: alebrije-mod-rewards-go
+
+      # Shell-script helper: list of repos to pull. Each backend repo is
+      # cloned in parallel so the audit can cover them. Add new modules
+      # here when they ship.
+      - name: Checkout remaining backend siblings
+        shell: bash
+        env:
+          REF: ${{ inputs.workspace-ref }}
+        run: |
+          repos=(
+            alebrije-mod-agenda-ex
+            alebrije-mod-agentic
+            alebrije-mod-cadences-ex
+            alebrije-mod-campaigns-ex
+            alebrije-mod-catalog-go
+            alebrije-mod-control-medico
+            alebrije-mod-crm-go
+            alebrije-mod-field-ops-ex
+            alebrije-mod-payments-go
+            alebrije-mod-planificador-ex
+            alebrije-mod-proyectos-go
+            alebrije-svc-notifications-ex
+            alebrije-svc-omnichannel-ex
+          )
+          for repo in "${repos[@]}"; do
+            if [ ! -d "$repo" ]; then
+              git clone --depth=1 --branch "$REF" \
+                "https://github.com/alebrije-io/${repo}.git" "$repo" \
+                || echo "warn: could not clone $repo (skipping)"
+            fi
+          done
+
+      - name: Stage audit helper in workspace root
+        shell: bash
+        run: |
+          mkdir -p scripts
+          cp workflows/scripts/fe_be_audit.py scripts/fe_be_audit.py
+          cp workflows/scripts/audit-fe-be-contracts.sh scripts/audit-fe-be-contracts.sh
+          chmod +x scripts/*.py scripts/*.sh
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run contract audit
+        id: audit
+        shell: bash
+        env:
+          STRICT: ${{ inputs.strict }}
+          MODULE: ${{ inputs.module }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ -n "$MODULE" ]]; then
+            args+=("--module" "$MODULE")
+          fi
+          if [[ "$STRICT" == "true" ]]; then
+            args+=("--strict")
+          fi
+          python3 scripts/fe_be_audit.py "${args[@]}"
+          echo "---"
+          echo "Markdown summary available at CONTRACT_AUDIT.md (build artifact)."
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-audit-${{ github.run_id }}
+          path: |
+            CONTRACT_AUDIT.md
+            CONTRACT_AUDIT.audit-report.json
+          if-no-files-found: warn
+          retention-days: 14
