@@ -162,22 +162,28 @@ jobs:
       # ====================================================================
       - name: Validate manifest exists
         run: |
-          if [ ! -f "${{ inputs.manifest-path }}" ]; then
-            echo "::error::Manifest file not found: ${{ inputs.manifest-path }}"
+          echo "Current working directory: $(pwd)"
+          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          echo "Contents of $(pwd):"
+          ls -la k8s/ 2>/dev/null || echo "k8s/ directory not found"
+          MANIFEST_PATH="${GITHUB_WORKSPACE}/${{ inputs.manifest-path }}"
+          if [ ! -f "$MANIFEST_PATH" ]; then
+            echo "::error::Manifest file not found: $MANIFEST_PATH"
             exit 1
           fi
-          echo "✅ Manifest found: ${{ inputs.manifest-path }}"
+          echo "✅ Manifest found: $MANIFEST_PATH"
 
       # ====================================================================
       # 5. REPLACE VERSION PLACEHOLDER IN MANIFEST
       # ====================================================================
       - name: Replace __VERSION__ in manifest
         run: |
-          if ! grep -q "__VERSION__" "${{ inputs.manifest-path }}"; then
+          MANIFEST_PATH="${GITHUB_WORKSPACE}/${{ inputs.manifest-path }}"
+          if ! grep -q "__VERSION__" "$MANIFEST_PATH"; then
             echo "::warning::No __VERSION__ placeholder found in manifest"
             echo "Manifest will be applied as-is"
           else
-            sed -i "s/__VERSION__/${{ steps.version.outputs.tag }}/g" "${{ inputs.manifest-path }}"
+            sed -i "s/__VERSION__/${{ steps.version.outputs.tag }}/g" "$MANIFEST_PATH"
             echo "✅ Replaced __VERSION__ with ${{ steps.version.outputs.tag }}"
           fi
 
@@ -188,7 +194,8 @@ jobs:
       # --force-conflicts: resuelve conflictos a favor del manifest actual
       - name: Apply Kubernetes manifest
         run: |
-          kubectl apply -f "${{ inputs.manifest-path }}" \
+          MANIFEST_PATH="${GITHUB_WORKSPACE}/${{ inputs.manifest-path }}"
+          kubectl apply -f "$MANIFEST_PATH" \
             --server-side \
             --force-conflicts \
             -n ${{ inputs.namespace }}
