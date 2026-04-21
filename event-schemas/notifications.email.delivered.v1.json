@@ -1,10 +1,10 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://alebrije.io/schemas/notifications.email.delivered.v1.json",
   "title": "notifications.email.delivered v1",
   "description": "Provider callback — an outbound email was accepted by the recipient MTA. MUST echo external_ref so the original sender can correlate the delivery with its send request (ADR-31).",
   "allOf": [
-    { "$ref": "envelope.v1.json" },
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
     {
       "type": "object",
       "required": ["external_ref"],

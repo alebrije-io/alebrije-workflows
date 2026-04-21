@@ -1,10 +1,10 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://alebrije.io/schemas/crm.contact.stage_changed.v1.json",
   "title": "crm.contact.stage_changed v1",
   "description": "Emitted when a contact moves between pipeline stages. MUST carry both old_stage and new_stage so downstream analytics and cadences can react to the delta without a separate lookup.",
   "allOf": [
-    { "$ref": "envelope.v1.json" },
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
     {
       "type": "object",
       "properties": {

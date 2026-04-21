@@ -1,0 +1,133 @@
+name: Event Bus E2E
+
+# ADR-31 cross-language publisher/consumer integration suite.
+#
+# Runs every scenario under alebrije-monorepo/tests/event-bus-integration
+# against a real Redis (the Redis that test_runner.sh boots via docker
+# compose). Exercises the envelope contract in Python, Go and Elixir.
+#
+# Schedule: nightly at 06:15 UTC (roughly 00:15 CST) + manual trigger.
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario-filter:
+        description: "Only run scenarios whose filename starts with this prefix (e.g. 03)"
+        required: false
+        type: string
+        default: ""
+  schedule:
+    # 06:15 UTC daily — after most devs have pushed for the day and
+    # before the morning standup.
+    - cron: "15 6 * * *"
+
+concurrency:
+  group: event-bus-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      REDIS_URL: redis://127.0.0.1:16379/0
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: "16379"
+      SCENARIO_TIMEOUT: "45"
+
+    steps:
+      - name: Checkout workflows repo (self)
+        uses: actions/checkout@v4
+        with:
+          path: alebrije-workflows
+
+      - name: Checkout alebrije-common (Python)
+        uses: actions/checkout@v4
+        with:
+          repository: alebrije-io/alebrije-common
+          path: alebrije-common
+          token: ${{ secrets.ALEBRIJE_CI_TOKEN }}
+
+      - name: Checkout alebrije-common-go
+        uses: actions/checkout@v4
+        with:
+          repository: alebrije-io/alebrije-common-go
+          path: alebrije-common-go
+          token: ${{ secrets.ALEBRIJE_CI_TOKEN }}
+
+      - name: Checkout alebrije-common-ex
+        uses: actions/checkout@v4
+        with:
+          repository: alebrije-io/alebrije-common-ex
+          path: alebrije-common-ex
+          token: ${{ secrets.ALEBRIJE_CI_TOKEN }}
+
+      - name: Checkout tests workspace
+        uses: actions/checkout@v4
+        with:
+          repository: alebrije-io/alebrije-tests
+          path: tests
+          token: ${{ secrets.ALEBRIJE_CI_TOKEN }}
+        # The tests/ path below assumes this repo layout; adjust if the
+        # integration tests live inside alebrije-workflows or another
+        # repo. The scenarios resolve alebrije-common via ../.. so the
+        # sibling-checkout layout here matches the local dev tree.
+
+      # ── Toolchains ────────────────────────────────────────────────────
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install redis jsonschema prometheus_client
+
+      - name: Set up Go 1.25
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: |
+            alebrije-common-go/go.sum
+            tests/event-bus-integration/testdata/go.mod
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27"
+          elixir-version: "1.17"
+
+      - name: Install Elixir deps (Redix + Jason)
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          # The .exs scenarios use Mix.install so no manual dep step is
+          # needed — but we warm the Hex cache here to fail-fast on any
+          # network hiccup before the scenarios start timing themselves.
+          mix hex.info redix >/dev/null || true
+
+      # ── Harness ───────────────────────────────────────────────────────
+      - name: Run integration scenarios
+        working-directory: tests/event-bus-integration
+        run: |
+          ./test_runner.sh "${{ inputs.scenario-filter }}"
+
+      - name: Upload scenario logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: event-bus-e2e-reports
+          path: tests/event-bus-integration/reports/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Notify on failure
+        if: failure() && github.event_name == 'schedule'
+        run: |
+          echo "::warning::ADR-31 nightly event-bus E2E failed on $(date -u)."
+          # Slack notification is wired via the scheduled workflow
+          # envelope — see alebrije-workflows/.github/workflows/
+          # reusable-security-scan.yml for the same pattern.

@@ -1,10 +1,10 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://alebrije.io/schemas/payments.invoice.overdue.v1.json",
   "title": "payments.invoice.overdue v1",
   "description": "Emitted when an invoice crosses its due date without being fully paid. Triggers dunning cadences and WhatsApp reminders.",
   "allOf": [
-    { "$ref": "envelope.v1.json" },
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
     {
       "type": "object",
       "properties": {

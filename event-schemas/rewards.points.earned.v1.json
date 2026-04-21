@@ -1,10 +1,10 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://alebrije.io/schemas/rewards.points.earned.v1.json",
   "title": "rewards.points.earned v1",
   "description": "Emitted after a successful earn on the rewards ledger. Source publisher: alebrije-mod-rewards-go.",
   "allOf": [
-    { "$ref": "envelope.v1.json" },
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
     {
       "type": "object",
       "properties": {

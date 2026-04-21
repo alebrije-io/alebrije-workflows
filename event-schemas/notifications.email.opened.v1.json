@@ -1,10 +1,10 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://alebrije.io/schemas/notifications.email.opened.v1.json",
   "title": "notifications.email.opened v1",
   "description": "Provider callback — tracked pixel / open beacon fired. Used by analytics and cadence conversion signals.",
   "allOf": [
-    { "$ref": "envelope.v1.json" },
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
     {
       "type": "object",
       "properties": {

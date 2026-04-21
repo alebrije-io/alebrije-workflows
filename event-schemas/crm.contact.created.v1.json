@@ -1,10 +1,10 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://alebrije.io/schemas/crm.contact.created.v1.json",
   "title": "crm.contact.created v1",
   "description": "Emitted when a new CRM contact row is persisted. Source publishers: alebrije-mod-crm (Python) and alebrije-mod-crm-go (Go). Both twins publish the same wire shape.",
   "allOf": [
-    { "$ref": "envelope.v1.json" },
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
     {
       "type": "object",
       "properties": {

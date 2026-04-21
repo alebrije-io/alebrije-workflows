@@ -1,10 +1,10 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://alebrije.io/schemas/payments.payment.completed.v1.json",
   "title": "payments.payment.completed v1",
   "description": "Emitted after a successful payment settlement. Replaces the legacy 'payment.confirmed' event (ADR-31 §4.2).",
   "allOf": [
-    { "$ref": "envelope.v1.json" },
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
     {
       "type": "object",
       "properties": {

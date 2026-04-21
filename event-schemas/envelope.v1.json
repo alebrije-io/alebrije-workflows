@@ -1,5 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://alebrije.io/schemas/envelope.v1.json",
   "title": "Alebrije Event Envelope v1",
   "description": "Base envelope shared by every event that travels the Alebrije EventBus. Per-event schemas use allOf + $ref to inherit these fields and constrain event_type + data.",

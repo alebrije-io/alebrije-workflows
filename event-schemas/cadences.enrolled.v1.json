@@ -1,10 +1,10 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://alebrije.io/schemas/cadences.enrolled.v1.json",
   "title": "cadences.enrolled v1",
   "description": "Emitted when a contact enters a cadence (new cadence_instance with status='running'). Source publisher: alebrije-mod-cadences-ex.",
   "allOf": [
-    { "$ref": "envelope.v1.json" },
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
     {
       "type": "object",
       "properties": {

@@ -1,0 +1,62 @@
+name: api-collection-gen
+
+# Regenerates the Alebrije API collections daily (Postman, Bruno, httpYac)
+# by running scripts/gen-api-collection.sh against a fresh checkout of the
+# monorepo and committing any drift into the same branch (or a dedicated
+# alebrije-api-collections repo, depending on how your platform is wired).
+#
+# Manual trigger is also exposed so you can rebuild on demand after
+# pushing a new router.
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # 06:00 UTC every day
+  workflow_dispatch:
+  push:
+    paths:
+      - "alebrije-*/app/api/v1/**"
+      - "alebrije-*/internal/handler/**"
+      - "alebrije-*/lib/*_web/router.ex"
+      - "scripts/gen_api_collection.py"
+      - "scripts/gen-api-collection.sh"
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Regenerate collections
+        run: bash scripts/gen-api-collection.sh
+
+      - name: Check drift
+        id: drift
+        run: |
+          if [[ -n "$(git status --porcelain api-collections)" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit refreshed collections
+        if: steps.drift.outputs.changed == 'true'
+        env:
+          GIT_AUTHOR_NAME: Leonel Perea
+          GIT_AUTHOR_EMAIL: leonel.perea@kamet.mx
+          GIT_COMMITTER_NAME: Leonel Perea
+          GIT_COMMITTER_EMAIL: leonel.perea@kamet.mx
+        run: |
+          git add api-collections
+          git commit -m "docs(api-collections): refresh auto-generated collections"
+          git push
