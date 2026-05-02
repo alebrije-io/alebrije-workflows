@@ -1,0 +1,95 @@
+# .claudeignore — patrones excluidos de la exploración automática de Claude
+# Sintaxis: gitignore. Colócalo en la raíz del proyecto.
+#
+# El objetivo es que Claude NO lea por iniciativa propia artefactos pesados
+# que no aportan al entendimiento del código. Siempre puedes pedirle leer
+# uno específico manualmente.
+
+# ─── Artefactos de build ───────────────────────────────────
+dist/
+build/
+out/
+.next/
+.turbo/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+.venv/
+venv/
+env/
+
+# ─── Logs & dumps ──────────────────────────────────────────
+*.log
+logs/
+*.log.gz
+*.dump
+*.sql.gz
+coredump.*
+*.prof
+
+# ─── Lock files (lee solo si lo necesitas) ─────────────────
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+poetry.lock
+Pipfile.lock
+uv.lock
+
+# ─── Assets binarios ───────────────────────────────────────
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.webp
+*.mp4
+*.webm
+*.mov
+*.pdf
+# (excepción: si el PDF es documentación crítica, quítalo de aquí)
+
+# ─── Datos grandes ─────────────────────────────────────────
+*.csv
+*.parquet
+*.xlsx
+data/
+fixtures/large/
+
+# ─── Secrets (defensa en profundidad — ya deberían estar en .gitignore) ─
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.crt
+secrets/
+.secrets/
+
+# ─── IDE & OS ──────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# ─── Proyectos específicos ─────────────────────────────────
+# Claude Code / Cowork internals
+.claude-cache/
+.auto-memory/milestones/old-*
+
+# CI artifacts
+.github/cache/
+ci-artifacts/
+
+# Coverage
+coverage/
+.coverage
+htmlcov/
+*.cover
+
+# ─── Alebrije-específico (descomentar cuando aplique) ──────
+# k8s/generated/
+# deploy/manifests-computed/
+# alembic/versions/*_auto_*.py  # migrations auto-generadas muy largas

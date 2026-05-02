@@ -226,10 +226,10 @@ jobs:
         run: |
           pip install detect-secrets --quiet
           echo "::group::Scanning for secrets"
-          detect-secrets scan --baseline .secrets.baseline || true
+          detect-secrets scan --baseline .secrets.baseline
           echo "::endgroup::"
           echo "::group::Auditing against baseline"
-          detect-secrets audit --report .secrets.baseline || true
+          detect-secrets audit --report .secrets.baseline
           echo "::endgroup::"
 
   # ======================================================================
