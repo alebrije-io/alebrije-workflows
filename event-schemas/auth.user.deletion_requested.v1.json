@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/auth.user.deletion_requested.v1.json",
+  "title": "auth.user.deletion_requested v1",
+  "description": "Emitted by the auth service when a GDPR/ARCO erasure DSR (right to be forgotten) is completed. Consumed by the conversational module to anonymize all conversation and memory data associated with the user.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "required": ["event_type", "user_id"],
+      "properties": {
+        "event_type": { "const": "auth.user.deletion_requested" },
+        "user_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "UUID of the user whose data must be anonymized. Consumers read payload.get('user_id') to identify the scope of deletion."
+        }
+      }
+    }
+  ]
+}
