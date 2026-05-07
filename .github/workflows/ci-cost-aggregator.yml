@@ -1,0 +1,145 @@
+name: CI Cost Aggregator
+
+# Weekly report de consumo de GitHub Actions minutes por repo del fleet.
+#
+# Design decisions:
+# 1. ubuntu-latest: usa GitHub API pública con GH_TOKEN, no necesita Vault ni K8s
+# 2. Solo corre el lunes a las 9am MX para el reporte semanal
+# 3. Reporta top N repos por consumo
+# 4. Upload a GitHub Artifacts para historial (90 días)
+
+on:
+  schedule:
+    - cron: '0 15 * * 1'   # Lunes 9am México (UTC-6 = 15:00 UTC)
+  workflow_dispatch:
+    inputs:
+      org:
+        description: "GitHub org to audit"
+        default: "alebrije-io"
+        type: string
+      top-n:
+        description: "Show top N repos by consumption"
+        default: "10"
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  aggregate-costs:
+    name: Aggregate GitHub Actions minutes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch workflow runs and calculate minutes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ORG: ${{ inputs.org || 'alebrije-io' }}
+          TOP_N: ${{ inputs.top-n || '10' }}
+        run: |
+          python3 << 'PY'
+          import json
+          import os
+          import subprocess
+          from datetime import datetime, timedelta
+
+          org = os.environ['ORG']
+          top_n = int(os.environ.get('TOP_N', '10'))
+
+          # Get repos in org
+          result = subprocess.run(
+              ['gh', 'repo', 'list', org, '--json', 'name,isPrivate', '--limit', '100'],
+              capture_output=True, text=True, env=os.environ
+          )
+
+          if result.returncode != 0:
+              print(f"::warning::Could not list repos for {org}: {result.stderr}")
+              billing = subprocess.run(
+                  ['gh', 'api', f'/orgs/{org}/settings/billing/actions'],
+                  capture_output=True, text=True, env=os.environ
+              )
+              if billing.returncode == 0:
+                  data = json.loads(billing.stdout)
+                  print(f"\nOrg billing summary:")
+                  print(f"  Total minutes used: {data.get('total_minutes_used', 'N/A')}")
+                  print(f"  Paid minutes used:  {data.get('total_paid_minutes_used', 'N/A')}")
+                  print(f"  Included minutes:   {data.get('included_minutes', 'N/A')}")
+              exit(0)
+
+          repos = json.loads(result.stdout)
+          print(f"Found {len(repos)} repos in {org}")
+
+          # Get minutes per repo (last 7 days)
+          week_ago = (datetime.utcnow() - timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%SZ')
+          repo_minutes = {}
+
+          for repo in repos:
+              name = repo['name']
+              result = subprocess.run(
+                  ['gh', 'api',
+                   f'/repos/{org}/{name}/actions/runs',
+                   '-F', f'created=>{week_ago}',
+                   '--jq', '[.workflow_runs[].run_duration_ms] | add // 0'],
+                  capture_output=True, text=True, env=os.environ
+              )
+              if result.returncode == 0 and result.stdout.strip():
+                  try:
+                      total_ms = int(result.stdout.strip())
+                      repo_minutes[name] = total_ms / 60000
+                  except (ValueError, TypeError):
+                      pass
+
+          # Sort by minutes descending
+          sorted_repos = sorted(repo_minutes.items(), key=lambda x: x[1], reverse=True)
+
+          print(f"\n=== GitHub Actions Usage — Past 7 Days ===")
+          print(f"{'Repo':<40} {'Minutes':>10} {'Est. Cost':>20}")
+          print("-" * 72)
+          total = 0
+          for name, minutes in sorted_repos[:top_n]:
+              cost = minutes * 0.008
+              print(f"{name:<40} {minutes:>10.1f} {'$'+str(round(cost,2)):>20}")
+              total += minutes
+
+          print("-" * 72)
+          print(f"{'TOTAL (top ' + str(top_n) + ')' :<40} {total:>10.1f} {'$'+str(round(total*0.008,2)):>20}")
+
+          # Write JSON report
+          report = {
+              'generated_at': datetime.utcnow().isoformat(),
+              'org': org,
+              'period': 'last_7_days',
+              'repos': sorted_repos,
+              'total_minutes': total
+          }
+          with open('ci-cost-report.json', 'w') as f:
+              json.dump(report, f, indent=2)
+          PY
+
+      - name: Upload cost report artifact
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        with:
+          name: ci-cost-report-${{ github.run_number }}
+          path: ci-cost-report.json
+          retention-days: 90
+
+      - name: Write job summary
+        if: always()
+        run: |
+          if [ -f ci-cost-report.json ]; then
+            echo "## CI Cost Report 💰" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            python3 << 'EOF' >> $GITHUB_STEP_SUMMARY
+          import json
+          r = json.load(open('ci-cost-report.json'))
+          print(f'**Period:** {r["period"]}')
+          print(f'**Org:** {r["org"]}')
+          print(f'**Total minutes:** {r["total_minutes"]:.1f}')
+          print()
+          print('| Repo | Minutes |')
+          print('|------|---------|')
+          for name, mins in r['repos'][:10]:
+              print(f'| {name} | {mins:.1f} |')
+          EOF
+          fi

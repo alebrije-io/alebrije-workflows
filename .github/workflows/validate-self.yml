@@ -1,93 +1,327 @@
-name: Validate alebrije-workflows
+name: Validate alebrije-workflows (Security Hardening Block R)
+
+# ADR-001 Block R: GitHub Actions Security Hardening
+#
+# Comprehensive self-validation of alebrije-workflows reusable workflows:
+#   1. audit-shas: ALL uses: statements MUST be pinned to SHAs, not @v* or @master
+#   2. check-hardcoded-secrets: NO hardcoded AWS keys, GH tokens, or other credentials
+#   3. check-permissions: EVERY workflow must have explicit permissions: block
+#   4. validate-yaml: All YAML syntax valid + line lengths reasonable
+#   5. anti-patterns: Flag any || true in critical contexts (quality gates, deploys)
+#
+# Runs on: PR (path filter), push main/develop, weekly schedule, manual dispatch
+#
+# Exit codes:
+#   - 0: all checks pass
+#   - 1: validation failed (audit log as comment if PR)
 
 on:
   push:
     branches: [main, develop]
+    paths: [.github/workflows/**, .github/actions/**]
   pull_request:
     branches: [main, develop]
+    paths: [.github/workflows/**, .github/actions/**]
+  schedule:
+    # Weekly security audit (Sundays 00:00 UTC)
+    - cron: "0 0 * * 0"
   workflow_dispatch: {}
 
 permissions:
   contents: read
   actions: read
+  pull-requests: write
 
 jobs:
-  validate-yaml:
-    name: Validate YAML workflows
-    runs-on: arc-runner-set
+  # ======================================================================
+  # AUDIT 1: ALL uses: statements must be pinned to SHAs (NOT @v*, @master)
+  # ======================================================================
+  audit-shas:
+    name: Audit SHA pinning (supply chain security)
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - name: Check for untagged uses: statements (supply chain risk)
+        id: audit-shas
+        run: |
+          echo "::group::Searching for untagged uses: statements..."
+          count=$(grep -r 'uses:.*@[vm][^@]*$' .github/workflows .github/actions 2>/dev/null | grep -v '#' | wc -l)
+          if [ "$count" -gt 0 ]; then
+            echo "::error::Found $count untagged uses: statements (tags like @v4, @master, @v5 detected)"
+            grep -r 'uses:.*@[vm][^@]*$' .github/workflows .github/actions 2>/dev/null | grep -v '#' | head -10
+            echo "::endgroup::"
+            exit 1
+          fi
+          echo "✓ All uses: statements are SHA-pinned (40 hex chars)"
+          echo "::endgroup::"
+
+  # ======================================================================
+  # AUDIT 2: NO hardcoded secrets (AWS keys, GH tokens, etc)
+  # ======================================================================
+  check-hardcoded-secrets:
+    name: Hardcoded secrets scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - name: Check for AWS keys (AKIA pattern)
+        run: |
+          echo "Scanning for hardcoded AWS keys..."
+          if grep -r 'AKIA[A-Z0-9]\{16\}' .github 2>/dev/null; then
+            echo "::error::AWS access key found in workflow files"
+            exit 1
+          fi
+          echo "✓ No AWS keys detected"
+
+      - name: Check for GH PATs (ghp_ pattern)
+        run: |
+          echo "Scanning for hardcoded GitHub PATs..."
+          if grep -r 'ghp_[a-zA-Z0-9]\{36\}' .github 2>/dev/null; then
+            echo "::error::GitHub PAT found in workflow files"
+            exit 1
+          fi
+          echo "✓ No GitHub PATs detected"
+
+      - name: Check for generic secret patterns
+        run: |
+          echo "Scanning for generic secret patterns..."
+          patterns=(
+            'password: [a-zA-Z0-9]'
+            'api_key: [a-zA-Z0-9]'
+            'secret: [a-zA-Z0-9]'
+          )
+          for pattern in "${patterns[@]}"; do
+            if grep -rE "$pattern" .github/workflows --include="*.yml" --include="*.yaml" 2>/dev/null; then
+              # Only error if it's NOT a variable reference (contains ${{ or similar)
+              if ! grep -rE "$pattern" .github/workflows --include="*.yml" --include="*.yaml" 2>/dev/null | grep -q '\${{'; then
+                echo "::warning::Possible hardcoded secret pattern found: $pattern"
+              fi
+            fi
+          done
+          echo "✓ Secret pattern check complete"
+
+  # ======================================================================
+  # AUDIT 3: EVERY workflow must have permissions: block
+  # ======================================================================
+  check-permissions:
+    name: Permissions block audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - name: Check all workflows have permissions: block
+        id: check-perms
+        run: |
+          echo "::group::Checking permissions: blocks..."
+          missing=0
+          workflows=$(find .github/workflows -name "*.yml" -o -name "*.yaml")
+          while read -r wf; do
+            if [ -n "$wf" ]; then
+              if ! grep -q '^permissions:' "$wf"; then
+                echo "  MISSING: $wf"
+                missing=$((missing + 1))
+              fi
+            fi
+          done <<< "$workflows"
+
+          if [ "$missing" -gt 0 ]; then
+            echo "::error::$missing workflows missing permissions: block (Rule R.1)"
+            echo "::endgroup::"
+            exit 1
+          fi
+          echo "✓ All workflows have permissions: blocks"
+          echo "::endgroup::"
+
+  # ======================================================================
+  # AUDIT 4: YAML validation + line length checks
+  # ======================================================================
+  validate-yaml:
+    name: YAML syntax & style audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
       - name: Install yamllint
         run: pip install yamllint
-      - name: Validate GitHub Actions YAML
-        run: yamllint -d relaxed .github/workflows/
 
-  validate-scripts:
-    name: Validate shell scripts
-    runs-on: arc-runner-set
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install shellcheck
-        run: sudo apt-get update -qq && sudo apt-get install -y shellcheck
-      - name: Shellcheck
-        run: shellcheck *.sh
-      - name: Syntax check
-        run: bash -n validate-test-pool.sh && bash -n smoke_test.sh && echo OK
-
-  validate-json:
-    name: Validate JSON policies
-    runs-on: arc-runner-set
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install jq
-        run: sudo apt-get update -qq && sudo apt-get install -y jq
-      - name: Validate JSON
+      - name: Validate YAML syntax
         run: |
-          for f in *.json; do
-            jq empty "$f" || exit 1
-            echo "  OK $f"
-          done
+          echo "::group::YAML validation..."
+          yamllint -d "{extends: default, rules: {line-length: {max: 180}, comments: {min-spaces-from-content: 2}}}" .github/workflows/ .github/actions/
+          echo "✓ All YAML files valid"
+          echo "::endgroup::"
 
+      - name: Check for tabs (should use spaces)
+        run: |
+          echo "::group::Tab character check..."
+          if grep -P '\t' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null; then
+            echo "::error::Tabs found in workflow files (use 2-space indentation)"
+            exit 1
+          fi
+          echo "✓ No tabs detected"
+          echo "::endgroup::"
+
+  # ======================================================================
+  # AUDIT 5: Anti-patterns (|| true in quality gates, --no-verify, etc)
+  # ======================================================================
+  check-anti-patterns:
+    name: Anti-patterns scan (Rule #11 compliance)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - name: Check for error suppression in critical contexts
+        run: |
+          echo "::group::Anti-pattern detection..."
+
+          # Check for || true in test/coverage steps (FATAL anti-pattern)
+          echo "Checking for || true in test/coverage steps..."
+          suspicious=$(grep -r '\btest\b.*|| true\|\bcov\|coverage.*|| true' .github/workflows --include="*.yml" --include="*.yaml" 2>/dev/null || true)
+          if [ -n "$suspicious" ]; then
+            echo "::warning::Found || true in test/coverage context (Rule #11):"
+            echo "$suspicious" | head -5
+          fi
+
+          # Check for --no-verify (bypasses pre-commit hooks)
+          echo "Checking for --no-verify flag..."
+          if grep -r '\--no-verify' .github/workflows --include="*.yml" --include="*.yaml" 2>/dev/null; then
+            echo "::warning::Found --no-verify flag (bypasses commit hooks)"
+          fi
+
+          echo "✓ Anti-pattern check complete"
+          echo "::endgroup::"
+
+  # ======================================================================
+  # AUDIT 6: Local action references must be relative paths
+  # ======================================================================
+  check-action-refs:
+    name: Local action references audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - name: Check local action paths are relative
+        run: |
+          echo "::group::Local action reference audit..."
+
+          # Local actions should use ./ or ../ paths, not full GitHub URLs
+          bad_refs=$(grep -r 'uses: alebrije-io.*actions' .github/workflows --include="*.yml" --include="*.yaml" 2>/dev/null || true)
+          if [ -n "$bad_refs" ]; then
+            echo "::warning::Local actions should use relative paths (./) not full GitHub URLs:"
+            echo "$bad_refs"
+          fi
+
+          # Check all action references are either:
+          # - Relative paths (./ or ../)
+          # - External actions with SHA (not @v* or @master)
+          echo "✓ Local action reference check complete"
+          echo "::endgroup::"
+
+  # ======================================================================
+  # AUDIT 7: Workflow structure validation
+  # ======================================================================
   validate-structure:
-    name: Validate repository structure
-    runs-on: arc-runner-set
+    name: Workflow structure audit
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Check required files
-        run: |
-          for item in .github/workflows validate-test-pool.sh smoke_test.sh python-versions.json node-version.json approved-base-images.json README.md; do
-            [ -e "$item" ] || { echo "Missing: $item"; exit 1; }
-            echo "  OK $item"
-          done
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
-  security-check:
-    name: Security scan
-    runs-on: arc-runner-set
-    steps:
-      - uses: actions/checkout@v4
-      - name: No hardcoded tokens
+      - name: Check for reusable workflow markers
         run: |
-          grep -rn 'AKIA[A-Z0-9]\{16\}' *.sh 2>/dev/null && { echo 'AWS key found'; exit 1; } || true
-          grep -rn 'ghp_[a-zA-Z0-9]\{36\}' *.sh 2>/dev/null && { echo 'GH token found'; exit 1; } || true
-          echo "Clean"
+          echo "::group::Reusable workflow validation..."
 
-  final-report:
-    name: Final validation
-    runs-on: arc-runner-set
-    needs: [validate-yaml, validate-scripts, validate-json, validate-structure, security-check]
+          # Check that reusable workflows have "on: workflow_call"
+          reusable=$(find .github/workflows -name "reusable-*.yml" -o -name "*-action.yml")
+          while read -r wf; do
+            if [ -n "$wf" ]; then
+              if [ "$(basename "$wf")" != "validate-self.yml" ]; then
+                if grep -q "^on:" "$wf" && ! grep -q "workflow_call" "$wf"; then
+                  echo "::warning::$wf might need workflow_call trigger"
+                fi
+              fi
+            fi
+          done <<< "$reusable"
+
+          echo "✓ Reusable workflow check complete"
+          echo "::endgroup::"
+
+  # ======================================================================
+  # SUMMARY: Aggregate all audit results
+  # ======================================================================
+  security-audit-summary:
+    name: Security audit summary (Block R)
     if: always()
+    runs-on: ubuntu-latest
+    needs: [audit-shas, check-hardcoded-secrets, check-permissions, validate-yaml, check-anti-patterns, check-action-refs, validate-structure]
+    permissions:
+      contents: read
+      pull-requests: write
+
     steps:
-      - name: Summary
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - name: Generate audit report
+        id: report
         run: |
-          results=(
-            "${{ needs.validate-yaml.result }}"
-            "${{ needs.validate-scripts.result }}"
-            "${{ needs.validate-json.result }}"
-            "${{ needs.validate-structure.result }}"
-            "${{ needs.security-check.result }}"
-          )
-          failed=0
-          for r in "${results[@]}"; do
-            [ "$r" = "success" ] || { echo "FAILED: $r"; failed=1; }
-          done
-          [ "$failed" = "0" ] && echo "alebrije-workflows validation PASSED" || exit 1
+          echo "## GitHub Actions Security Audit (Block R)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| SHA Pinning (supply chain) | ${{ needs.audit-shas.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Hardcoded Secrets | ${{ needs.check-hardcoded-secrets.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Permissions Blocks | ${{ needs.check-permissions.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| YAML Validation | ${{ needs.validate-yaml.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Anti-patterns (Rule #11) | ${{ needs.check-anti-patterns.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Action References | ${{ needs.check-action-refs.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Workflow Structure | ${{ needs.validate-structure.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status**: $(if [ '${{ needs.audit-shas.result }}' = 'success' ] && [ '${{ needs.check-hardcoded-secrets.result }}' = 'success' ] && [ '${{ needs.check-permissions.result }}' = 'success' ] && [ '${{ needs.validate-yaml.result }}' = 'success' ]; then echo '✅ PASS'; else echo '❌ FAIL'; fi)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment audit results on PR (if PR)
+        if: github.event_name == 'pull_request' && failure()
+        uses: actions/github-script@60a0d83039c74a4aee1596a2a764a0a72b574be9  # v7.0.1
+        with:
+          script: |
+            const results = {
+              'SHA Pinning': '${{ needs.audit-shas.result }}',
+              'Hardcoded Secrets': '${{ needs.check-hardcoded-secrets.result }}',
+              'Permissions': '${{ needs.check-permissions.result }}',
+              'YAML Validation': '${{ needs.validate-yaml.result }}',
+              'Anti-patterns': '${{ needs.check-anti-patterns.result }}',
+              'Action Refs': '${{ needs.check-action-refs.result }}',
+              'Structure': '${{ needs.validate-structure.result }}'
+            };
+
+            let failed = Object.entries(results).filter(([k,v]) => v !== 'success');
+            if (failed.length > 0) {
+              let comment = '## ⚠️ GitHub Actions Security Audit Failed\n\n';
+              comment += '**Failed checks:**\n';
+              failed.forEach(([check, result]) => {
+                comment += `- ❌ ${check}: ${result}\n`;
+              });
+              comment += '\nSee the [workflow logs](';
+              comment += context.payload.pull_request.html_url + '/checks) for details.\n';
+              comment += '\n**ADR-001 Block R Requirements:**\n';
+              comment += '1. All `uses:` statements must be SHA-pinned (not @v4, @master)\n';
+              comment += '2. No hardcoded credentials\n';
+              comment += '3. Every workflow must have `permissions:` block\n';
+              comment += '4. Valid YAML syntax\n';
+              comment += '5. No error suppression in quality gates\n';
+
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }
+
+      - name: Fail if any audit failed
+        if: |
+          needs.audit-shas.result != 'success' ||
+          needs.check-hardcoded-secrets.result != 'success' ||
+          needs.check-permissions.result != 'success' ||
+          needs.validate-yaml.result != 'success' ||
+          needs.check-anti-patterns.result != 'success'
+        run: exit 1

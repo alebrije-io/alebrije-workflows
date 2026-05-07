@@ -43,25 +43,43 @@ on:
         required: false
         type: boolean
         default: true
+      check-breaking-changes:
+        description: "Check if schemas in PR break compatibility with main branch"
+        required: false
+        type: boolean
+        default: true
+      baseline-branch:
+        description: "Branch to compare schemas against for breaking change detection"
+        required: false
+        type: string
+        default: "main"
+      notify-schema-registry:
+        description: "Generate schema registry summary (advisory, non-blocking)"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
 
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout target repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:
           path: target
 
       - name: Checkout alebrije-workflows (schemas source)
-        uses: actions/checkout@v4
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:
           repository: alebrije-io/alebrije-workflows
           ref: ${{ inputs.schemas-repo-ref }}
           path: workflows
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
         with:
           python-version: "3.12"
 
@@ -157,3 +175,150 @@ jobs:
 
           print("\n[schema-check] OK")
           PY
+
+  # ======================================================================
+  # SCHEMA BREAKING CHANGE DETECTION
+  # ======================================================================
+  # Detects backward-incompatible schema changes (JSON Schema validation).
+  # Incompatible: new required fields, field deletions, type changes,
+  # additionalProperties changed to false.
+  schema-breaking-change:
+    name: Event schema breaking change detection
+    if: ${{ inputs.check-breaking-changes }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR (current)
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          path: pr
+
+      - name: Checkout baseline branch
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          ref: ${{ inputs.baseline-branch }}
+          path: baseline
+
+      - name: Set up Python
+        uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Check for schema breaking changes
+        id: breaking-check
+        shell: bash
+        run: |
+          python3 - << 'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          baseline_dir = Path("baseline/event-schemas")
+          pr_dir = Path("pr/event-schemas")
+
+          if not pr_dir.exists():
+              print("[schema-breaking] No event-schemas/ directory in PR — skipping")
+              sys.exit(0)
+
+          breaking = []
+
+          for pr_schema_file in sorted(pr_dir.glob("*.v*.json")):
+              name = pr_schema_file.name
+              baseline_schema_file = baseline_dir / name
+
+              if not baseline_schema_file.exists():
+                  # New schema — not breaking
+                  print(f"[schema-breaking] NEW: {name}")
+                  continue
+
+              try:
+                  baseline_schema = json.loads(baseline_schema_file.read_text())
+                  pr_schema = json.loads(pr_schema_file.read_text())
+              except json.JSONDecodeError as e:
+                  breaking.append(f"{name}: invalid JSON: {e}")
+                  continue
+
+              # Check 1: Required fields added (consumers won't provide them)
+              baseline_required = set(baseline_schema.get("required", []))
+              pr_required = set(pr_schema.get("required", []))
+              new_required = pr_required - baseline_required
+              if new_required:
+                  breaking.append(f"{name}: new required fields added: {sorted(new_required)}")
+
+              # Check 2: Fields removed (breaks existing consumers)
+              baseline_props = set(baseline_schema.get("properties", {}).keys())
+              pr_props = set(pr_schema.get("properties", {}).keys())
+              removed = baseline_props - pr_props
+              if removed:
+                  breaking.append(f"{name}: fields removed: {sorted(removed)}")
+
+              # Check 3: Type changes (breaks validation)
+              baseline_types = {k: v.get("type") for k, v in baseline_schema.get("properties", {}).items()}
+              pr_types = {k: v.get("type") for k, v in pr_schema.get("properties", {}).items()}
+              for field, baseline_type in baseline_types.items():
+                  if field in pr_types and pr_types[field] != baseline_type:
+                      breaking.append(f"{name}.{field}: type changed {baseline_type} → {pr_types[field]}")
+
+              # Check 4: additionalProperties false restricts valid consumers
+              if baseline_schema.get("additionalProperties", True) != pr_schema.get("additionalProperties", True):
+                  if pr_schema.get("additionalProperties") is False:
+                      breaking.append(f"{name}: additionalProperties changed to false")
+
+              if not breaking:
+                  print(f"[schema-breaking] OK: {name}")
+
+          if breaking:
+              print("\n::error::Event schema breaking changes detected:")
+              for b in breaking:
+                  print(f"  ❌ {b}")
+              print("\nBreaking changes prevent message consumers from processing events correctly.")
+              print("Solution: create a new schema version (v2) instead of modifying v1.")
+              sys.exit(1)
+
+          print("\n[schema-breaking] No breaking changes detected ✓")
+          PY
+
+  # ======================================================================
+  # SCHEMA REGISTRY SUMMARY
+  # ======================================================================
+  # Advisory job: summarizes schema changes in the PR (new, modified, deleted).
+  # Does not block the PR.
+  schema-registry-summary:
+    name: Event schema registry summary
+    if: ${{ inputs.notify-schema-registry && always() }}
+    needs: [check, schema-breaking-change]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          fetch-depth: 2
+
+      - name: Generate schema diff summary
+        shell: bash
+        run: |
+          echo "## Event Schema Registry Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Schema | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          # Check for new/modified schemas
+          if git diff HEAD~1 HEAD --name-only -- event-schemas/ 2>/dev/null | grep -q .; then
+            git diff HEAD~1 HEAD --name-only -- event-schemas/ 2>/dev/null | while read f; do
+              if git show HEAD~1:"$f" &>/dev/null 2>&1; then
+                echo "| $f | 📝 Modified |" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "| $f | ✅ New |" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+          fi
+
+          # Check for deleted schemas
+          if git diff HEAD~1 HEAD --diff-filter=D --name-only -- event-schemas/ 2>/dev/null | grep -q .; then
+            git diff HEAD~1 HEAD --diff-filter=D --name-only -- event-schemas/ 2>/dev/null | while read f; do
+              echo "| $f | ❌ Deleted |" >> $GITHUB_STEP_SUMMARY
+            done
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Validation Results:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Publisher check: ${{ needs.check.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Breaking change detection: ${{ needs.schema-breaking-change.result }}" >> $GITHUB_STEP_SUMMARY

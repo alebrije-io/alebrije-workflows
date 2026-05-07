@@ -1,0 +1,339 @@
+name: Reusable Release Extended
+
+# Release automation con Conventional Commits → semver → GitHub Release + multi-lang publish.
+#
+# Design decisions:
+# 1. Conventional Commits parser es un script Python inline — sin dependencias externas.
+#    Una herramienta como standard-version tiene maintenance gaps y complejidad de config.
+# 2. El workflow SIEMPRE crea un GitHub Release + tag. La publicación a registros
+#    (PyPI/Hex/npm) es opt-in via inputs publish-pypi/publish-hex/publish-npm.
+# 3. arc-runner-set: los jobs de publish necesitan acceso a Vault para las API keys.
+# 4. Dry-run mode: cuando dry-run=true, calcula el bump y logea pero no tagea ni publica.
+#    Útil para PRs que quieren ver qué versión generaría el merge.
+# 5. Solo corre en push a main (el workflow_call caller lo controla con el event trigger).
+
+on:
+  workflow_call:
+    inputs:
+      language:
+        description: "Language: 'go' | 'python' | 'elixir' | 'ts' | 'docker'"
+        required: true
+        type: string
+      version-file:
+        description: "Path to VERSION file (default: VERSION)"
+        default: "VERSION"
+        type: string
+      publish-pypi:
+        description: "Publish Python package to PyPI"
+        default: false
+        type: boolean
+      publish-hex:
+        description: "Publish Elixir package to Hex.pm"
+        default: false
+        type: boolean
+      publish-npm:
+        description: "Publish TS package to npm"
+        default: false
+        type: boolean
+      dry-run:
+        description: "Calculate bump without tagging or publishing"
+        default: false
+        type: boolean
+    secrets:
+      GH_TOKEN:
+        required: true
+    outputs:
+      new-version:
+        description: "New version after bump (e.g., 1.2.3)"
+        value: ${{ jobs.determine-version.outputs.new-version }}
+      bump-type:
+        description: "Type of bump: major | minor | patch | none"
+        value: ${{ jobs.determine-version.outputs.bump-type }}
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  determine-version:
+    name: Determine version bump
+    runs-on: arc-runner-set
+    outputs:
+      new-version: ${{ steps.bump.outputs.new-version }}
+      bump-type: ${{ steps.bump.outputs.bump-type }}
+      current-version: ${{ steps.bump.outputs.current-version }}
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Determine version bump from Conventional Commits
+        id: bump
+        run: |
+          python3 << 'PY'
+          import subprocess
+          import re
+          import os
+
+          # Read current version
+          version_file = '${{ inputs.version-file }}'
+          try:
+              with open(version_file) as f:
+                  current = f.read().strip()
+          except FileNotFoundError:
+              current = '0.0.0'
+
+          # Parse current version
+          match = re.match(r'^(\d+)\.(\d+)\.(\d+)', current)
+          if not match:
+              current = '0.0.0'
+              major, minor, patch = 0, 0, 0
+          else:
+              major, minor, patch = int(match.group(1)), int(match.group(2)), int(match.group(3))
+
+          # Get commits since last tag
+          result = subprocess.run(
+              ['git', 'log', '--pretty=format:%s', f'v{current}..HEAD'],
+              capture_output=True, text=True
+          )
+          if result.returncode != 0:
+              # No previous tag — get all commits
+              result = subprocess.run(
+                  ['git', 'log', '--pretty=format:%s'],
+                  capture_output=True, text=True
+              )
+
+          commits = result.stdout.strip().split('\n') if result.stdout.strip() else []
+
+          # Determine bump type
+          bump_type = 'none'
+          for msg in commits:
+              if 'BREAKING CHANGE' in msg or re.match(r'^[a-z]+!:', msg):
+                  bump_type = 'major'
+                  break
+              elif re.match(r'^feat(\([^)]+\))?:', msg):
+                  if bump_type != 'major':
+                      bump_type = 'minor'
+              elif re.match(r'^fix(\([^)]+\))?:', msg):
+                  if bump_type not in ('major', 'minor'):
+                      bump_type = 'patch'
+              elif re.match(r'^(perf|refactor|revert)(\([^)]+\))?:', msg):
+                  if bump_type not in ('major', 'minor'):
+                      bump_type = 'patch'
+
+          # Calculate new version
+          if bump_type == 'major':
+              new_version = f'{major + 1}.0.0'
+          elif bump_type == 'minor':
+              new_version = f'{major}.{minor + 1}.0'
+          elif bump_type == 'patch':
+              new_version = f'{major}.{minor}.{patch + 1}'
+          else:
+              new_version = current
+
+          print(f'Current: {current}, Bump: {bump_type}, New: {new_version}')
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'current-version={current}\n')
+              f.write(f'bump-type={bump_type}\n')
+              f.write(f'new-version={new_version}\n')
+          PY
+
+      - name: Log version determination
+        run: |
+          echo "Current version: ${{ steps.bump.outputs.current-version }}"
+          echo "Bump type:       ${{ steps.bump.outputs.bump-type }}"
+          echo "New version:     ${{ steps.bump.outputs.new-version }}"
+          if [ "${{ inputs.dry-run }}" = "true" ]; then
+            echo "::notice::DRY RUN — no tags or releases will be created"
+          fi
+
+  create-release:
+    name: Create GitHub Release
+    needs: determine-version
+    if: |
+      needs.determine-version.outputs.bump-type != 'none' &&
+      inputs.dry-run == false
+    runs-on: arc-runner-set
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Update VERSION file
+        run: |
+          echo "${{ needs.determine-version.outputs.new-version }}" > ${{ inputs.version-file }}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ${{ inputs.version-file }}
+          git commit -m "chore(release): bump version to ${{ needs.determine-version.outputs.new-version }}" || true
+
+      - name: Generate changelog excerpt
+        id: changelog
+        run: |
+          python3 << 'PY'
+          import subprocess
+          import re
+          import os
+
+          current = '${{ needs.determine-version.outputs.current-version }}'
+          new_ver = '${{ needs.determine-version.outputs.new-version }}'
+
+          result = subprocess.run(
+              ['git', 'log', '--pretty=format:%s|%h|%an', f'v{current}..HEAD'],
+              capture_output=True, text=True
+          )
+          commits = [l.split('|') for l in result.stdout.strip().split('\n') if l]
+
+          sections = {'breaking': [], 'feat': [], 'fix': [], 'other': []}
+          for parts in commits:
+              if len(parts) < 3:
+                  continue
+              msg, sha, author = parts[0], parts[1], parts[2]
+              if 'BREAKING CHANGE' in msg or re.match(r'^[a-z]+!:', msg):
+                  sections['breaking'].append(f'- {msg} ({sha})')
+              elif re.match(r'^feat', msg):
+                  sections['feat'].append(f'- {msg} ({sha})')
+              elif re.match(r'^fix', msg):
+                  sections['fix'].append(f'- {msg} ({sha})')
+              else:
+                  sections['other'].append(f'- {msg} ({sha})')
+
+          body = [f'## v{new_ver}\n']
+          if sections['breaking']:
+              body.append('### ⚠️ Breaking Changes\n' + '\n'.join(sections['breaking']) + '\n')
+          if sections['feat']:
+              body.append('### ✨ Features\n' + '\n'.join(sections['feat']) + '\n')
+          if sections['fix']:
+              body.append('### 🐛 Bug Fixes\n' + '\n'.join(sections['fix']) + '\n')
+          if sections['other']:
+              body.append('### 🔧 Other\n' + '\n'.join(sections['other']) + '\n')
+
+          release_body = '\n'.join(body)
+          with open('/tmp/release-notes.md', 'w') as f:
+              f.write(release_body)
+          PY
+
+      - name: Create tag and push
+        run: |
+          git tag "v${{ needs.determine-version.outputs.new-version }}"
+          git push origin HEAD:main --follow-tags
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "v${{ needs.determine-version.outputs.new-version }}" \
+            --title "v${{ needs.determine-version.outputs.new-version }}" \
+            --notes-file /tmp/release-notes.md \
+            --verify-tag
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+  publish-python:
+    name: Publish to PyPI
+    needs: [determine-version, create-release]
+    if: |
+      inputs.publish-pypi &&
+      inputs.language == 'python' &&
+      needs.determine-version.outputs.bump-type != 'none' &&
+      inputs.dry-run == false
+    runs-on: arc-runner-set
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          ref: "v${{ needs.determine-version.outputs.new-version }}"
+
+      - name: Get PyPI token from Vault
+        uses: hashicorp/vault-action@d1720f055e0e7a166814d3702ccad504a236238f  # v2.8.1
+        with:
+          url: http://vault.vault.svc:8200
+          method: kubernetes
+          role: ci-runner-role
+          secrets: |
+            alebrije/data/ci/pypi token | PYPI_TOKEN
+
+      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Build and publish
+        run: |
+          pip install build twine
+          python -m build
+          twine check dist/*
+          twine upload dist/* --non-interactive
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ env.PYPI_TOKEN }}
+
+  publish-elixir:
+    name: Publish to Hex.pm
+    needs: [determine-version, create-release]
+    if: |
+      inputs.publish-hex &&
+      inputs.language == 'elixir' &&
+      needs.determine-version.outputs.bump-type != 'none' &&
+      inputs.dry-run == false
+    runs-on: arc-runner-set
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          ref: "v${{ needs.determine-version.outputs.new-version }}"
+
+      - name: Get Hex API key from Vault
+        uses: hashicorp/vault-action@d1720f055e0e7a166814d3702ccad504a236238f  # v2.8.1
+        with:
+          url: http://vault.vault.svc:8200
+          method: kubernetes
+          role: ci-runner-role
+          secrets: |
+            alebrije/data/ci/hex api_key | HEX_API_KEY
+
+      - uses: erlef/setup-beam@7bac9ca1bd48b5e4021d43cbe9ce61172821b092  # v1.18.1
+        with:
+          elixir-version: '1.18'
+          otp-version: '27'
+
+      - name: Publish to Hex.pm
+        run: |
+          mix deps.get
+          mix hex.publish --yes
+        env:
+          HEX_API_KEY: ${{ env.HEX_API_KEY }}
+
+  publish-npm:
+    name: Publish to npm
+    needs: [determine-version, create-release]
+    if: |
+      inputs.publish-npm &&
+      inputs.language == 'ts' &&
+      needs.determine-version.outputs.bump-type != 'none' &&
+      inputs.dry-run == false
+    runs-on: arc-runner-set
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          ref: "v${{ needs.determine-version.outputs.new-version }}"
+
+      - name: Get npm token from Vault
+        uses: hashicorp/vault-action@d1720f055e0e7a166814d3702ccad504a236238f  # v2.8.1
+        with:
+          url: http://vault.vault.svc:8200
+          method: kubernetes
+          role: ci-runner-role
+          secrets: |
+            alebrije/data/ci/npm token | NPM_TOKEN
+
+      - uses: actions/setup-node@1a4442caab129478d0a1be482dbe86fb8fbf7f4f  # v4.1.0
+        with:
+          node-version: '22'
+
+      - name: Publish to npm
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${{ env.NPM_TOKEN }}" > ~/.npmrc
+          npm publish
+        env:
+          NPM_TOKEN: ${{ env.NPM_TOKEN }}

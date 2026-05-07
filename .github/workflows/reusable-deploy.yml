@@ -70,10 +70,10 @@ jobs:
       # 1. CHECKOUT & SETUP KUBECTL
       # ====================================================================
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
+        uses: azure/setup-kubectl@901a10e89ea618494cb7338c1344a6a977cc8b23  # v4.0.0
         with:
           version: latest
 
@@ -83,7 +83,7 @@ jobs:
       # Autenticación a Vault via K8s auth (SA del runner pod)
       # Exporta KUBECONFIG_B64 como env var — cero secrets en GitHub
       - name: Get CI secrets from Vault
-        uses: hashicorp/vault-action@v3
+        uses: hashicorp/vault-action@d1720f055e0e7a166814d3702ccad504a236238f  # v2.8.1
         with:
           url: http://vault.vault.svc:8200
           method: kubernetes

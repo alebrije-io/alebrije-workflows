@@ -1,0 +1,26 @@
+name: Security Issue
+description: Report a security vulnerability (public disclosure)
+labels: ["security"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ **For sensitive vulnerabilities, please use [GitHub Security Advisories](https://github.com/alebrije-io/alebrije-workflows/security/advisories/new) instead of this form.**
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Security issue description
+      description: Describe the security concern
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Estimated severity
+      options:
+        - Low
+        - Medium
+        - High
+        - Critical

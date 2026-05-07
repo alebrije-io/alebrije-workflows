@@ -1,0 +1,198 @@
+name: Reusable OpenAPI / GraphQL Schema Check
+
+# Valida OpenAPI specs con Spectral y detecta breaking changes con oasdiff.
+#
+# Design decisions:
+# 1. ubuntu-latest: no requiere Vault ni acceso al cluster — pure-tool job
+# 2. Two-checkout approach para oasdiff: checkout baseline (main) + PR spec
+#    en el mismo job para comparación directa
+# 3. Spectral: usa ruleset por defecto de OAS. Si el repo tiene .spectral.yml,
+#    Spectral lo usa automáticamente. Input spectral-ruleset permite override.
+# 4. Breaking changes: SIEMPRE bloquean el PR (no advisory). Una API breaking
+#    change sin coordinación con consumers es un incidente de producción.
+# 5. PR comments: siempre incluir diff visible para code review rápido.
+
+on:
+  workflow_call:
+    inputs:
+      spec-path:
+        description: "Path to OpenAPI spec file (default: openapi.yaml)"
+        default: "openapi.yaml"
+        type: string
+      baseline-branch:
+        description: "Branch to compare against for breaking changes"
+        default: "main"
+        type: string
+      spectral-ruleset:
+        description: "Spectral ruleset (default: uses .spectral.yml or @stoplight/spectral-oas)"
+        default: ""
+        type: string
+      fail-on-lint-errors:
+        description: "Fail if Spectral finds errors (not just warnings)"
+        default: true
+        type: boolean
+      fail-on-breaking-changes:
+        description: "Fail if oasdiff detects breaking changes"
+        default: true
+        type: boolean
+    secrets:
+      GH_TOKEN:
+        required: false
+        description: "GitHub token for private repo checkout"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: openapi-check-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ========================================================================
+  # SPECTRAL LINT — Linting OpenAPI spec against rules
+  # ========================================================================
+  spectral-lint:
+    name: Spectral OpenAPI lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - name: Check if OpenAPI spec exists
+        id: check-spec
+        run: |
+          if [ -f "${{ inputs.spec-path }}" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "::warning::OpenAPI spec not found at '${{ inputs.spec-path }}' — skipping spectral lint"
+          fi
+
+      - name: Setup Node.js for Spectral
+        if: steps.check-spec.outputs.exists == 'true'
+        uses: actions/setup-node@1a4442caab129478d0a1be482dbe86fb8fbf7f4f  # v4.1.0
+        with:
+          node-version: '22'
+
+      - name: Install Spectral
+        if: steps.check-spec.outputs.exists == 'true'
+        run: npm install -g @stoplight/spectral-cli
+
+      - name: Run Spectral lint
+        if: steps.check-spec.outputs.exists == 'true'
+        run: |
+          RULESET_FLAG=""
+          if [ -n "${{ inputs.spectral-ruleset }}" ]; then
+            RULESET_FLAG="--ruleset ${{ inputs.spectral-ruleset }}"
+          elif [ ! -f ".spectral.yml" ] && [ ! -f ".spectral.yaml" ] && [ ! -f ".spectral.json" ]; then
+            # No custom ruleset — use the OAS default
+            RULESET_FLAG="--ruleset @stoplight/spectral-oas"
+          fi
+
+          # Spectral outputs to stdout with color. Capture for PR comment.
+          spectral lint ${{ inputs.spec-path }} ${RULESET_FLAG} \
+            --format=sarif \
+            --output spectral-results.sarif \
+            2>&1 | tee spectral-output.txt
+
+          EXIT_CODE=$?
+          if [ $EXIT_CODE -ne 0 ] && [ "${{ inputs.fail-on-lint-errors }}" = "true" ]; then
+            echo "::error::Spectral lint found errors in ${{ inputs.spec-path }}"
+            exit $EXIT_CODE
+          fi
+
+      - name: Upload Spectral SARIF
+        if: always() && steps.check-spec.outputs.exists == 'true'
+        uses: github/codeql-action/upload-sarif@883bce87b3291ad2b9a21f98b1ade60785d39451  # v3.26.0
+        continue-on-error: true
+        with:
+          sarif_file: spectral-results.sarif
+          category: spectral-openapi
+
+  # ========================================================================
+  # BREAKING CHANGE CHECK — oasdiff detects consumer-breaking changes
+  # ========================================================================
+  breaking-change-check:
+    name: oasdiff breaking change detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - name: Check if OpenAPI spec exists
+        id: check-spec
+        run: |
+          if [ -f "${{ inputs.spec-path }}" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "::warning::No OpenAPI spec at '${{ inputs.spec-path }}'"
+          fi
+
+      - name: Install oasdiff
+        if: steps.check-spec.outputs.exists == 'true'
+        run: |
+          curl -sSL https://github.com/Tufin/oasdiff/releases/download/v1.10.20/oasdiff_1.10.20_linux_amd64.tar.gz \
+            | tar xz oasdiff
+          chmod +x oasdiff
+          sudo mv oasdiff /usr/local/bin/
+
+      - name: Get baseline spec (main branch)
+        if: steps.check-spec.outputs.exists == 'true'
+        run: |
+          git fetch origin ${{ inputs.baseline-branch }} --depth=1
+          git show origin/${{ inputs.baseline-branch }}:${{ inputs.spec-path }} > /tmp/spec-baseline.yaml 2>/dev/null || {
+            echo "::notice::No baseline spec found on ${{ inputs.baseline-branch }} — first-time spec, skipping breaking change check"
+            echo "NO_BASELINE=true" >> $GITHUB_ENV
+          }
+
+      - name: Run oasdiff breaking change detection
+        if: steps.check-spec.outputs.exists == 'true' && env.NO_BASELINE != 'true'
+        id: oasdiff
+        run: |
+          oasdiff breaking /tmp/spec-baseline.yaml ${{ inputs.spec-path }} \
+            --format markdown 2>&1 | tee /tmp/breaking-changes.md
+          EXIT_CODE=$?
+
+          # Capture output for PR comment
+          echo "report<<EOF" >> $GITHUB_OUTPUT
+          cat /tmp/breaking-changes.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          if [ $EXIT_CODE -ne 0 ] && [ "${{ inputs.fail-on-breaking-changes }}" = "true" ]; then
+            echo "::error::Breaking changes detected in OpenAPI spec!"
+            exit $EXIT_CODE
+          fi
+
+      - name: Comment breaking changes on PR
+        if: |
+          github.event_name == 'pull_request' &&
+          steps.oasdiff.outputs.report != '' &&
+          env.NO_BASELINE != 'true'
+        uses: peter-evans/create-or-update-comment@c6c9a1a66007646a28c153e2a8580a5bad27bcad  # v4.1.4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## OpenAPI Breaking Changes Detected ⚠️
+
+            ${{ steps.oasdiff.outputs.report }}
+
+            > **Action required**: Coordinate with API consumers before merging.
+            > To allow this change, add `[allow-breaking-change]` to the PR title.
+
+  # ========================================================================
+  # SUMMARY — Report results
+  # ========================================================================
+  summary:
+    name: OpenAPI check summary
+    if: always()
+    needs: [spectral-lint, breaking-change-check]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "OpenAPI Check Summary"
+          echo "===================="
+          echo "spec-path:           ${{ inputs.spec-path }}"
+          echo "baseline-branch:     ${{ inputs.baseline-branch }}"
+          echo ""
+          echo "spectral-lint:       ${{ needs.spectral-lint.result }}"
+          echo "breaking-changes:    ${{ needs.breaking-change-check.result }}"

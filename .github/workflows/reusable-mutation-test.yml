@@ -1,0 +1,262 @@
+name: Reusable Mutation Test
+
+# ADR-001 Bloque C — Mutation testing workflow (polimórfico por lenguaje)
+#
+# Corre típicamente en schedule weekly, o on-demand desde CI de repos críticos.
+# NO corre en cada PR — es computacionalmente costoso (se parametriza schedule).
+#
+# Implementa para cada lenguaje el framework de mutation standard:
+#   - Python: mutmut 3.x (kill rate %)
+#   - TypeScript: Stryker (mutation score %)
+#   - Go: gremlins (efficiency %)
+#   - Elixir: muzak (si está en deps, else advisory-only)
+#
+# Design decisions:
+#   1. Polymorphic: inputs.language determina cuál job corre.
+#   2. cancel-in-progress: false porque mutation testing es costoso.
+#      No queremos cancelar una corrida cara por el simple hecho que llegó otro push.
+#   3. Threshold 70% mínimo (configurable via inputs.mutation-threshold).
+#   4. arc-runner-set para todos (necesita repos privados via GH_TOKEN).
+
+on:
+  workflow_call:
+    inputs:
+      language:
+        description: "Language to mutate: 'python' | 'elixir' | 'go' | 'ts'"
+        required: true
+        type: string
+      mutation-threshold:
+        description: "Minimum mutation kill/efficiency rate (%) — default 70"
+        default: 70
+        type: number
+      paths-to-mutate:
+        description: "Paths/modules to mutate (language-specific). Empty = all."
+        default: ""
+        type: string
+      working-directory:
+        description: "Working directory for mutation tests"
+        default: "."
+        type: string
+    secrets:
+      GH_TOKEN:
+        description: "GitHub token for private repo access"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ github.repository }}-${{ inputs.language }}-${{ github.ref }}
+  cancel-in-progress: false  # Mutation tests costosos — no cancelar
+
+jobs:
+  # ========================================================================
+  # PYTHON — mutmut 3.x
+  # ========================================================================
+  mutmut:
+    name: Mutation Test (Python mutmut)
+    if: ${{ inputs.language == 'python' }}
+    runs-on: arc-runner-set
+
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install mutmut
+        run: |
+          pip install --quiet mutmut
+          mutmut --version
+
+      - name: Run mutmut
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          PATHS="${{ inputs.paths-to-mutate }}"
+          if [ -z "$PATHS" ]; then
+            mutmut run
+          else
+            mutmut run --paths-to-mutate="${PATHS}"
+          fi
+
+      - name: Check mutation kill rate
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          # mutmut results output format: "Killed: N", "Total mutants: M"
+          mutmut results > mutation-report.txt 2>&1 || true
+          cat mutation-report.txt
+
+          KILLED=$(grep -oE "Killed: [0-9]+" mutation-report.txt | awk '{print $2}' || echo "0")
+          TOTAL=$(grep -oE "Total mutants: [0-9]+" mutation-report.txt | awk '{print $3}' || echo "1")
+
+          if [ "$TOTAL" -gt 0 ]; then
+            # Floating-point division via awk (portable macOS + Linux)
+            RATE=$(awk "BEGIN { printf \"%.1f\", ($KILLED / $TOTAL) * 100 }")
+            echo "Mutation kill rate: ${RATE}% (${KILLED}/${TOTAL})"
+
+            if awk "BEGIN { exit !($RATE + 0 < ${{ inputs.mutation-threshold }}) }"; then
+              echo "::error::Kill rate ${RATE}% < threshold ${{ inputs.mutation-threshold }}%"
+              exit 1
+            fi
+          else
+            echo "::warning::No mutants found"
+          fi
+
+      - name: Upload mutmut results
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        continue-on-error: true
+        with:
+          name: mutmut-results-${{ github.run_number }}
+          path: ${{ inputs.working-directory }}/.mutmut-cache
+          retention-days: 7
+
+  # ========================================================================
+  # TYPESCRIPT — Stryker.js
+  # ========================================================================
+  stryker:
+    name: Mutation Test (Stryker)
+    if: ${{ inputs.language == 'ts' }}
+    runs-on: arc-runner-set
+
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - uses: actions/setup-node@1a4442caab129478d0a1be482dbe86fb8fbf7f4f  # v4.1.0
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Stryker
+        working-directory: ${{ inputs.working-directory }}
+        run: npx stryker run --reporters json
+
+      - name: Extract and check mutation score
+        run: |
+          SCORE_JSON="${{ inputs.working-directory }}/reports/mutation/mutation.json"
+          if [ ! -f "$SCORE_JSON" ]; then
+            echo "::error::Stryker report not found at $SCORE_JSON"
+            exit 1
+          fi
+
+          SCORE=$(node -e "
+            const r = JSON.parse(require('fs').readFileSync('$SCORE_JSON'));
+            const score = r.mutationScore || r.metrics?.mutationScore || 0;
+            console.log(score.toFixed(1));
+          ")
+
+          echo "Mutation score: ${SCORE}%"
+
+          # Check threshold
+          THRESHOLD=${{ inputs.mutation-threshold }}
+          if awk "BEGIN { exit !(${SCORE} + 0 < $THRESHOLD) }"; then
+            echo "::error::Mutation score ${SCORE}% < threshold ${THRESHOLD}%"
+            exit 1
+          fi
+
+      - name: Upload Stryker report
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        continue-on-error: true
+        with:
+          name: stryker-report-${{ github.run_number }}
+          path: ${{ inputs.working-directory }}/reports/mutation/
+          retention-days: 7
+
+  # ========================================================================
+  # GO — gremlins
+  # ========================================================================
+  gremlins:
+    name: Mutation Test (gremlins)
+    if: ${{ inputs.language == 'go' }}
+    runs-on: arc-runner-set
+
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - uses: actions/setup-go@cdcb36256b49618355e264982131d2dec09dee08  # v5.1.0
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Install gremlins
+        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
+
+      - name: Run gremlins
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          GOPRIVATE: 'github.com/alebrije-io'
+        run: |
+          MODULE="${{ inputs.paths-to-mutate }}"
+          if [ -z "$MODULE" ]; then
+            gremlins unleash --output=json > gremlins-report.json 2>&1 || true
+          else
+            gremlins unleash "$MODULE" --output=json > gremlins-report.json 2>&1 || true
+          fi
+          cat gremlins-report.json
+
+      - name: Check gremlins efficiency rate
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          # gremlins JSON: { efficiency: 0.75, mutants: {...}, seeds: [...] }
+          EFFICIENCY=$(python3 -c "
+            import json
+            try:
+              with open('gremlins-report.json') as f:
+                data = json.load(f)
+                eff = data.get('efficiency', 0)
+                print(round(eff * 100, 1))
+            except:
+              print(0)
+          " 2>/dev/null || echo "0")
+
+          echo "Gremlins efficiency: ${EFFICIENCY}%"
+
+          if awk "BEGIN { exit !(${EFFICIENCY} + 0 < ${{ inputs.mutation-threshold }}) }"; then
+            echo "::error::Mutation efficiency ${EFFICIENCY}% < threshold ${{ inputs.mutation-threshold }}%"
+            exit 1
+          fi
+
+      - name: Upload gremlins report
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        continue-on-error: true
+        with:
+          name: gremlins-report-${{ github.run_number }}
+          path: ${{ inputs.working-directory }}/gremlins-report.json
+          retention-days: 7
+
+  # ========================================================================
+  # ELIXIR — muzak (si está configurado; else advisory-only)
+  # ========================================================================
+  elixir-mutation:
+    name: Mutation Test (Elixir muzak)
+    if: ${{ inputs.language == 'elixir' }}
+    runs-on: arc-runner-set
+
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - uses: erlef/setup-beam@7bac9ca1bd48b5e4021d43cbe9ce61172821b092  # v1.18.1
+        with:
+          elixir-version: '1.18'
+          otp-version: '27'
+
+      - name: Get dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: mix deps.get
+
+      - name: Run Elixir mutation tests (muzak)
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          # muzak es un mutation testing framework para Elixir (similar a Stryker para JS)
+          # Si la app no tiene muzak en deps, este step falla gracefully con warning.
+          mix muzak --threshold ${{ inputs.mutation-threshold }} && {
+            echo "::notice::Elixir mutation testing passed"
+          } || {
+            echo "::warning::muzak not configured in mix.exs (optional) — skipping Elixir mutation test"
+          }

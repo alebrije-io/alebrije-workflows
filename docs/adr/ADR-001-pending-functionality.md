@@ -1,7 +1,8 @@
 # ADR-001 — alebrije-workflows: Functionality Pending to Reach 100%
 
-- **Status:** Proposed
+- **Status:** Implemented
 - **Date:** 2026-05-02
+- **Implemented:** 2026-05-07
 - **Module:** `alebrije-workflows` (no VERSION file — repo de workflows reusables)
 - **Decisor:** Plataforma Alebrije
 - **Audit method:** Deep audit Opus 4.7 — código actual vs central CI/CD reusable workflows productivo (octocat patterns + nx-cloud + Buildkite-tier)
@@ -35,28 +36,30 @@
 - `scripts/` — `audit-fe-be-contracts.sh`, `fe_be_audit.py`
 - `smoke_test.sh`, `validate-test-pool.sh`
 
-**Estado real de cobertura productiva: ~50-55%** — sólida base de reusable CI/CD para fleet polyglot Go/Elixir/Python/JS. Falta para ser un central CI/CD-tier comparable a nx-cloud.
+**Estado de implementación: 100% COMPLETE (2026-05-07)**
 
-Lo que falta para 100%:
+Todos los bloques A-R implementados. 28 workflows + 9 custom actions. Ver sección 3 para detalle por bloque.
 
-1. **Workflow per-language standardized** (Go / Elixir / Python / TS) con coverage gates uniformes.
-2. **Matrix testing** (multi-version Go/Elixir/Python para libs públicas).
-3. **Mutation testing** workflow (mutmut/Stryker).
-4. **Property tests** workflow (StreamData/Hypothesis).
-5. **Vulnerability scanning** automático (Trivy + Grype + dependabot + secret scanning).
-6. **Performance regression detection** (benchmark comparing main vs PR).
-7. **Approved base images enforcement** (Bloque parcial existe — extend).
-8. **OpenAPI / GraphQL schema validation + diff alert**.
-9. **Event schemas registry** (versioning + breaking change detection).
-10. **Release automation** (semver + changelog + tag + release notes generation).
-11. **Canary deploy + rollout monitoring** integration.
-12. **Cross-repo orchestration** (cuando A cambia, trigger B + C tests).
-13. **Notification routing** (CI fails → Slack/email).
-14. **Cost tracking** del CI (minutos GH Actions per repo + alertas).
-15. **PR templates** + issue templates centralizados.
-16. **Custom GH Actions** (alebrije-specific reusable steps).
-17. **Self-hosted runners** management (si volume justifica).
-18. **Hardening** (least-privilege tokens, OIDC, signed commits enforcement).
+~~Lo que faltaba para 100%:~~ (COMPLETADO)
+
+1. ✅ **Workflow per-language standardized** → `reusable-test-go.yml`, `reusable-test-elixir.yml`, `reusable-test-ts.yml`
+2. ✅ **Matrix testing** → `reusable-test-go-matrix.yml`, `reusable-test-elixir-matrix.yml`
+3. ✅ **Mutation testing** → `reusable-mutation-test.yml` (mutmut/gremlins/Stryker/muzak)
+4. ✅ **Property tests** → `reusable-property-tests.yml` (Hypothesis/StreamData/gopter/fast-check)
+5. ✅ **Vulnerability scanning** → `reusable-security-scan.yml` extendido (Grype + OSV-scanner + CodeQL + Trivy)
+6. ✅ **Performance regression** → `reusable-benchmark.yml` + `post-benchmark-comment` action
+7. ✅ **Approved base images** → `reusable-approved-images-check.yml`
+8. ✅ **OpenAPI validation** → `reusable-openapi-check.yml` (Spectral + oasdiff)
+9. ✅ **Event schemas registry** → `reusable-event-schema-check.yml` extendido (breaking change detection)
+10. ✅ **Release automation** → `reusable-release-extended.yml` + `bump-version` action (polyglot semver)
+11. ✅ **Canary deploy** → `reusable-canary-deploy.yml` + `wait-for-metrics` + `trigger-canary` actions
+12. ✅ **Cross-repo orchestration** → `cross-repo-trigger.yml`
+13. ✅ **Notification routing** → `reusable-notify.yml` (Slack/email/GitHub, Vault-first)
+14. ✅ **Cost tracking** → `ci-cost-aggregator.yml` (weekly GH Actions minutes report)
+15. ✅ **PR/issue templates** → `.github/PULL_REQUEST_TEMPLATE.md`, `.github/ISSUE_TEMPLATE/`, `.github/CONTRIBUTING.md`
+16. ✅ **Custom GH Actions** → `setup-vault-token`, `check-tenant-id-leak`, `post-coverage-comment`, `sign-with-cosign`, `generate-postmortem`
+17. ⏭ **Self-hosted runners management** → Out of scope (ARC-runner-set ya en uso, no requiere gestión adicional en este repo)
+18. ✅ **Hardening** → `validate-self.yml` refactored (SHA pins, permissions audit, anti-patterns, 7-job security audit)
 
 ---
 

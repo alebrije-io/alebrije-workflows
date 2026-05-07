@@ -43,12 +43,15 @@ on:
         type: string
         default: "alebrije-frontend"
 
+permissions:
+  contents: read
+
 jobs:
   contracts:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout alebrije-workflows (scripts + audit helper)
-        uses: actions/checkout@v4
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:
           repository: alebrije-io/alebrije-workflows
           ref: ${{ inputs.workspace-ref }}
@@ -58,14 +61,14 @@ jobs:
       # the helper understands — missing ones are reported as
       # ``backend missing`` and don't fail the job on their own.
       - name: Checkout alebrije-frontend
-        uses: actions/checkout@v4
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:
           repository: alebrije-io/${{ inputs.frontend-repo-name }}
           ref: ${{ inputs.workspace-ref }}
           path: alebrije-frontend
 
       - name: Checkout backend repos
-        uses: actions/checkout@v4
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:
           repository: alebrije-io/alebrije-mod-rewards-go
           ref: ${{ inputs.workspace-ref }}
@@ -111,7 +114,7 @@ jobs:
           chmod +x scripts/*.py scripts/*.sh
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
         with:
           python-version: "3.12"
 
@@ -136,7 +139,7 @@ jobs:
 
       - name: Upload audit report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
         with:
           name: contract-audit-${{ github.run_id }}
           path: |

@@ -1,0 +1,173 @@
+name: Reusable Elixir Matrix Test
+
+# Multi-version testing for public Elixir libraries (common-ex, campaigns-ex, etc.).
+# Tests same codebase against multiple Elixir + OTP version pairs to ensure
+# forward/backward compatibility guarantees.
+#
+# Design decisions:
+# 1. Matrix tests are expensive (N × base test time). Run only for libs exported
+#    as public dependencies. Services tests use single-version base workflow.
+# 2. fail-fast: false to see all version combinations' results (one failure doesn't
+#    cancel others).
+# 3. No dialyzer in matrix (too slow). Dialyzer runs once in base workflow with
+#    latest versions.
+# 4. Coverage threshold still applies (90% Rule G) — early-breaking on older
+#    versions if coverage drops.
+#
+# Ejemplo en repo individual (common-ex):
+#   - name: Matrix Test
+#     uses: alebrije-io/alebrije-workflows/.github/workflows/reusable-test-elixir-matrix.yml@main
+#     with:
+#       elixir-versions: '["1.17", "1.18"]'
+#       otp-versions: '["26", "27"]'
+#       coverage-threshold: 90
+#     secrets: inherit
+
+on:
+  workflow_call:
+    inputs:
+      elixir-versions:
+        description: 'JSON array of Elixir versions (e.g., ["1.17", "1.18"])'
+        type: string
+        default: '["1.18"]'
+        required: false
+      otp-versions:
+        description: 'JSON array of OTP versions (e.g., ["26", "27"])'
+        type: string
+        default: '["27"]'
+        required: false
+      coverage-threshold:
+        description: 'Coverage threshold (90 immovable — Rule G)'
+        type: number
+        default: 90
+        required: false
+    secrets:
+      GH_TOKEN:
+        description: 'GitHub token for private repo access'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (Elixir ${{ matrix.elixir-version }}, OTP ${{ matrix.otp-version }})
+    runs-on: arc-runner-set
+
+    strategy:
+      matrix:
+        elixir-version: ${{ fromJson(inputs.elixir-versions) }}
+        otp-version: ${{ fromJson(inputs.otp-versions) }}
+      fail-fast: false
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_INITDB_ARGS: --encoding=UTF8
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      MIX_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/test_db
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - name: Setup git credentials for private repos
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          git config --global url.https://${{ secrets.GH_TOKEN }}@github.com/.insteadOf https://github.com/
+
+      - name: Setup Beam (Elixir + OTP)
+        uses: erlef/setup-beam@7bac9ca1bd48b5e4021d43cbe9ce61172821b092  # v1.18.1
+        with:
+          elixir-version: ${{ matrix.elixir-version }}
+          otp-version: ${{ matrix.otp-version }}
+
+      - name: Cache deps
+        uses: actions/cache@704facf57c6b718b3694c8315cb0e8d32aa72d39  # v4.1.5
+        with:
+          path: deps
+          key: deps-${{ runner.os }}-${{ matrix.otp-version }}-${{ matrix.elixir-version }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            deps-${{ runner.os }}-${{ matrix.otp-version }}-${{ matrix.elixir-version }}-
+
+      - name: Cache build artifacts
+        uses: actions/cache@704facf57c6b718b3694c8315cb0e8d32aa72d39  # v4.1.5
+        with:
+          path: _build/test
+          key: build-${{ runner.os }}-${{ matrix.otp-version }}-${{ matrix.elixir-version }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            build-${{ runner.os }}-${{ matrix.otp-version }}-${{ matrix.elixir-version }}-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Compile with warnings-as-errors
+        run: mix compile --warnings-as-errors
+
+      - name: Credo (linter)
+        run: mix credo --strict
+
+      - name: Run tests with coverage
+        run: mix coveralls.json
+
+      - name: Check coverage threshold (90% immovable — Rule G)
+        run: |
+          COVERAGE=$(python3 -c "
+          import json
+          try:
+            with open('cover/excoveralls.json') as f:
+              d = json.load(f)
+              cov = d.get('coverage', 0.0)
+              print(f'{cov:.1f}')
+          except Exception as e:
+            print('0', file=__import__('sys').stderr)
+            exit(1)
+          " 2>/dev/null || echo "0")
+
+          THRESHOLD=${{ inputs.coverage-threshold }}
+
+          echo "Coverage: ${COVERAGE}%"
+          echo "Threshold: ${THRESHOLD}%"
+
+          # Portable float comparison using python
+          python3 << EOF
+          import sys
+          coverage = float('${COVERAGE}')
+          threshold = ${THRESHOLD}
+          if coverage < threshold:
+            print(f'::error::Coverage {coverage}% < threshold {threshold}%')
+            sys.exit(1)
+          print(f'::notice::Coverage {coverage}% meets threshold {threshold}%')
+          EOF
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@125fc84a2bfd3c102d6a49fa07367b1ac6dbf2ac  # v4.4.1
+        if: always()
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: elixir
+          fail_ci_if_error: false

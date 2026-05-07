@@ -1,0 +1,150 @@
+name: Trigger Canary Deploy
+description: "Applies Istio/Flagger CanaryCRD or manual weight changes for progressive traffic shifting"
+
+inputs:
+  service-name:
+    description: "Service name (e.g. alebrije-svc-auth)"
+    required: true
+  namespace:
+    description: "Kubernetes namespace"
+    default: "platform"
+  weight:
+    description: "Target traffic weight for canary (0-100)"
+    required: true
+  method:
+    description: "'istio' for Flagger CanaryCRD or 'manual' for Deployment label selector"
+    default: "manual"
+  max-retries:
+    description: "Max kubectl patch retries on transient failure"
+    default: "3"
+  retry-delay-seconds:
+    description: "Delay between retries (seconds)"
+    default: "5"
+
+outputs:
+  weight-applied:
+    description: "Weight that was applied (int 0-100)"
+    value: ${{ steps.apply.outputs.weight-applied }}
+  canary-status:
+    description: "Canary resource status: progressing|succeeded|failed"
+    value: ${{ steps.apply.outputs.canary-status }}
+
+runs:
+  using: composite
+  steps:
+    - name: Apply canary weight change
+      id: apply
+      shell: bash
+      run: |
+        SERVICE="${{ inputs.service-name }}"
+        NAMESPACE="${{ inputs.namespace }}"
+        WEIGHT="${{ inputs.weight }}"
+        METHOD="${{ inputs.method }}"
+        MAX_RETRIES="${{ inputs.max-retries }}"
+        RETRY_DELAY="${{ inputs.retry-delay-seconds }}"
+
+        # Validate inputs
+        if ! [[ "$WEIGHT" =~ ^[0-9]+$ ]] || [ "$WEIGHT" -lt 0 ] || [ "$WEIGHT" -gt 100 ]; then
+          echo "::error::Invalid weight: ${WEIGHT} (must be 0-100)"
+          exit 1
+        fi
+
+        if [ "$METHOD" != "istio" ] && [ "$METHOD" != "manual" ]; then
+          echo "::error::Invalid method: ${METHOD} (must be 'istio' or 'manual')"
+          exit 1
+        fi
+
+        echo "Applying ${WEIGHT}% weight to ${SERVICE} via ${METHOD} method..."
+
+        # Retry logic
+        RETRY_COUNT=0
+        while [ ${RETRY_COUNT} -lt ${MAX_RETRIES} ]; do
+          if [ "$METHOD" == "istio" ]; then
+            # Flagger CanaryCRD patch
+            PATCH_PAYLOAD=$(cat <<EOF
+            {
+              "spec": {
+                "targetRef": {
+                  "name": "${SERVICE}"
+                },
+                "canaryMetrics": [
+                  {
+                    "name": "error-rate",
+                    "thresholdRange": {
+                      "max": 5
+                    },
+                    "interval": "1m"
+                  },
+                  {
+                    "name": "latency",
+                    "thresholdRange": {
+                      "max": 2000
+                    },
+                    "interval": "1m"
+                  }
+                ],
+                "analysis": {
+                  "interval": "1m",
+                  "threshold": 5,
+                  "maxWeight": ${WEIGHT},
+                  "stepWeight": ${WEIGHT},
+                  "stepWeightPromotion": 100,
+                  "metrics": [
+                    {
+                      "name": "request-success-rate",
+                      "thresholdRange": {
+                        "min": 99
+                      },
+                      "interval": "1m"
+                    }
+                  ]
+                }
+              }
+            }
+        EOF
+            )
+
+            if kubectl patch canary/${SERVICE} -n ${NAMESPACE} \
+              --type merge -p "$PATCH_PAYLOAD" 2>/dev/null; then
+              echo "::notice::Canary ${SERVICE} patched with weight ${WEIGHT}%"
+
+              # Check canary status
+              STATUS=$(kubectl get canary/${SERVICE} -n ${NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+              echo "weight-applied=${WEIGHT}" >> $GITHUB_OUTPUT
+              echo "canary-status=${STATUS}" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+
+          else
+            # Manual Deployment approach: scale stable/canary replicas based on weight
+            STABLE_WEIGHT=$((100 - WEIGHT))
+
+            # Get current replicas from stable deployment
+            STABLE_REPLICAS=$(kubectl get deployment/${SERVICE} -n ${NAMESPACE} -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "2")
+
+            # Calculate replica distribution
+            CANARY_REPLICAS=$(( (STABLE_REPLICAS * WEIGHT) / 100 ))
+            if [ ${CANARY_REPLICAS} -lt 1 ] && [ ${WEIGHT} -gt 0 ]; then
+              CANARY_REPLICAS=1
+            fi
+
+            # Patch canary deployment
+            kubectl patch deployment/${SERVICE}-canary -n ${NAMESPACE} \
+              -p "{\"spec\":{\"replicas\":${CANARY_REPLICAS}}}" 2>/dev/null || true
+
+            echo "::notice::Canary weight ${WEIGHT}% applied via replica scaling (${CANARY_REPLICAS}/${STABLE_REPLICAS} replicas)"
+
+            echo "weight-applied=${WEIGHT}" >> $GITHUB_OUTPUT
+            echo "canary-status=progressing" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          RETRY_COUNT=$((RETRY_COUNT + 1))
+          if [ ${RETRY_COUNT} -lt ${MAX_RETRIES} ]; then
+            echo "::warning::Retry ${RETRY_COUNT}/${MAX_RETRIES} — waiting ${RETRY_DELAY}s..."
+            sleep ${RETRY_DELAY}
+          fi
+        done
+
+        echo "::error::Failed to apply weight ${WEIGHT}% after ${MAX_RETRIES} retries"
+        exit 1

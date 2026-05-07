@@ -11,11 +11,14 @@ name: CHANGELOG Check
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   changelog-check:
     runs-on: arc-runner-set
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:
           fetch-depth: 0
 

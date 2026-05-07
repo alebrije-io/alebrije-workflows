@@ -1,0 +1,77 @@
+# Dependabot configuration template for Alebrije fleet repos.
+# Copy this to your repo as .github/dependabot.yml and adjust ecosystems.
+#
+# Fleet standard:
+# - Weekly updates (not daily — reduce noise)
+# - Group minor/patch together, separate major updates
+# - Automerge patch updates for low-risk deps (devDependencies)
+# - Security alerts: always immediate (ignore schedule)
+
+version: 2
+updates:
+  # GitHub Actions dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Mexico_City"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Docker base images (incluir si el repo tiene Dockerfile)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:00"
+      timezone: "America/Mexico_City"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Go modules (incluir si es repo Go)
+  # - package-ecosystem: "gomod"
+  #   directory: "/"
+  #   schedule:
+  #     interval: "weekly"
+  #   groups:
+  #     go-minor-patch:
+  #       applies-to: version-updates
+  #       patterns: ["*"]
+  #       update-types: ["minor", "patch"]
+
+  # Python pip (incluir si es repo Python)
+  # - package-ecosystem: "pip"
+  #   directory: "/"
+  #   schedule:
+  #     interval: "weekly"
+
+  # Elixir hex.pm (incluir si es repo Elixir)
+  # - package-ecosystem: "hex"
+  #   directory: "/"
+  #   schedule:
+  #     interval: "weekly"
+
+  # npm / pnpm (incluir si es repo TypeScript/Node)
+  # - package-ecosystem: "npm"
+  #   directory: "/"
+  #   schedule:
+  #     interval: "weekly"
+  #   groups:
+  #     npm-minor-patch:
+  #       applies-to: version-updates
+  #       patterns: ["*"]
+  #       update-types: ["minor", "patch"]

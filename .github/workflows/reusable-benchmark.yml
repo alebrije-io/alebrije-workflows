@@ -1,0 +1,288 @@
+name: Reusable Benchmark (Performance Regression Detection)
+
+# Compara benchmarks del PR contra main.
+# Falla el job si algún benchmark regresó más del threshold%.
+# Se puede llamar en PRs para detección temprana de regresiones.
+#
+# Design decisions:
+# - Two-checkout approach: corre main benchmarks primero, luego PR benchmarks
+#   en el mismo runner para máxima consistencia de hardware
+# - arc-runner-set: runners auto-hosted con hardware consistente — NO ubuntu-latest
+#   (los runners efímeros de GH tienen varianza de ~15-20% entre runs)
+# - Artifacts: los resultados se guardan como artifacts para debugging
+
+on:
+  workflow_call:
+    inputs:
+      language:
+        description: "Language: 'go' | 'python' | 'elixir'"
+        required: true
+        type: string
+      benchmark-cmd:
+        description: "Command to run benchmarks (must output to bench-results.json o bench-results.txt)"
+        required: true
+        type: string
+      baseline-branch:
+        description: "Branch to compare against"
+        default: "main"
+        type: string
+      regression-threshold-pct:
+        description: "% slowdown that fails the check (default: 10)"
+        default: 10
+        type: number
+      working-directory:
+        default: "."
+        type: string
+    secrets:
+      GH_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: benchmark-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ======================================================================
+  # BENCHMARK GO — using benchstat for comparison
+  # ======================================================================
+  benchmark-go:
+    name: Benchmark Go
+    if: ${{ inputs.language == 'go' }}
+    runs-on: arc-runner-set
+    steps:
+      - name: Install benchstat
+        run: go install golang.org/x/perf/cmd/benchstat@latest
+
+      # Paso 1: Benchmark del baseline (main)
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          ref: ${{ inputs.baseline-branch }}
+          token: ${{ secrets.GH_TOKEN }}
+
+      - uses: actions/setup-go@cdcb36256b49618355e264982131d2dec09dee08  # v5.1.0
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Run baseline benchmarks
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          go test -run='^$' -bench=. -benchmem -count=6 ./... 2>&1 | tee /tmp/bench-baseline.txt
+
+      # Paso 2: Benchmark del PR
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Run PR benchmarks
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          go test -run='^$' -bench=. -benchmem -count=6 ./... 2>&1 | tee /tmp/bench-pr.txt
+
+      # Paso 3: Comparar con benchstat
+      - name: Compare with benchstat
+        id: compare
+        run: |
+          benchstat /tmp/bench-baseline.txt /tmp/bench-pr.txt | tee /tmp/bench-comparison.txt
+          echo "comparison<<EOF" >> $GITHUB_OUTPUT
+          cat /tmp/bench-comparison.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # Paso 4: Detectar regresiones
+      - name: Detect regressions
+        run: |
+          THRESHOLD=${{ inputs.regression-threshold-pct }}
+          REGRESSIONS=$(grep -E '\+[0-9]+\.[0-9]+%' /tmp/bench-comparison.txt | awk -F'[+%]' '{if ($2+0 > '"$THRESHOLD"') print $0}')
+          if [ -n "$REGRESSIONS" ]; then
+            echo "::error::Performance regressions detected (>${THRESHOLD}% slower):"
+            echo "$REGRESSIONS"
+            exit 1
+          fi
+          echo "::notice::No performance regressions detected (threshold: ${THRESHOLD}%)"
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        with:
+          name: benchmark-results-${{ github.run_number }}
+          path: |
+            /tmp/bench-baseline.txt
+            /tmp/bench-pr.txt
+            /tmp/bench-comparison.txt
+          retention-days: 14
+
+      # Paso 5: Comentar en el PR
+      - name: Comment benchmark results on PR
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/post-benchmark-comment
+        with:
+          comparison: ${{ steps.compare.outputs.comparison }}
+          threshold: ${{ inputs.regression-threshold-pct }}
+
+  # ======================================================================
+  # BENCHMARK PYTHON — using pytest-benchmark for comparison
+  # ======================================================================
+  benchmark-python:
+    name: Benchmark Python
+    if: ${{ inputs.language == 'python' }}
+    runs-on: arc-runner-set
+    steps:
+      # Baseline
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          ref: ${{ inputs.baseline-branch }}
+          token: ${{ secrets.GH_TOKEN }}
+
+      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+        with:
+          python-version: '3.12'
+
+      - run: pip install pytest pytest-benchmark --quiet
+
+      - name: Run baseline benchmarks
+        working-directory: ${{ inputs.working-directory }}
+        run: pytest tests/benchmarks/ --benchmark-json=/tmp/bench-baseline.json
+
+      # PR
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+
+      - run: pip install pytest pytest-benchmark --quiet
+
+      - name: Run PR benchmarks
+        working-directory: ${{ inputs.working-directory }}
+        run: pytest tests/benchmarks/ --benchmark-json=/tmp/bench-pr.json
+
+      - name: Compare benchmarks
+        id: compare
+        run: |
+          python3 << 'PY'
+          import json, sys
+
+          try:
+              baseline = json.load(open('/tmp/bench-baseline.json'))
+              pr = json.load(open('/tmp/bench-pr.json'))
+          except FileNotFoundError:
+              print("::warning::Benchmark results not found")
+              sys.exit(0)
+
+          threshold = ${{ inputs.regression-threshold-pct }}
+          baseline_map = {b['name']: b['stats']['mean'] for b in baseline.get('benchmarks', [])}
+          pr_map = {b['name']: b['stats']['mean'] for b in pr.get('benchmarks', [])}
+
+          regressions = []
+          report_lines = ["| Benchmark | Baseline | PR | Change |", "|---|---|---|---|"]
+
+          for name, pr_mean in pr_map.items():
+              if name in baseline_map:
+                  base_mean = baseline_map[name]
+                  pct = ((pr_mean - base_mean) / base_mean) * 100 if base_mean > 0 else 0
+                  status = "🔴" if pct > threshold else ("🟡" if pct > 5 else "🟢")
+                  report_lines.append(f"| {name} | {base_mean:.4f}s | {pr_mean:.4f}s | {status} {pct:+.1f}% |")
+                  if pct > threshold:
+                      regressions.append(f"{name}: {pct:+.1f}%")
+
+          print('\n'.join(report_lines))
+          with open('/tmp/bench-comparison.md', 'w') as f:
+              f.write('\n'.join(report_lines))
+
+          if regressions:
+              print(f"\n::error::Regressions > {threshold}%: {regressions}")
+              sys.exit(1)
+          PY
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        with:
+          name: benchmark-results-${{ github.run_number }}
+          path: |
+            /tmp/bench-baseline.json
+            /tmp/bench-pr.json
+            /tmp/bench-comparison.md
+          retention-days: 14
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/post-benchmark-comment
+        with:
+          comparison-file: /tmp/bench-comparison.md
+          threshold: ${{ inputs.regression-threshold-pct }}
+
+  # ======================================================================
+  # BENCHMARK ELIXIR — using Benchee for comparison
+  # ======================================================================
+  benchmark-elixir:
+    name: Benchmark Elixir
+    if: ${{ inputs.language == 'elixir' }}
+    runs-on: arc-runner-set
+    steps:
+      # Baseline
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          ref: ${{ inputs.baseline-branch }}
+          token: ${{ secrets.GH_TOKEN }}
+
+      - uses: erlef/setup-beam@7bac9ca1bd48b5e4021d43cbe9ce61172821b092  # v1.18.1
+        with:
+          elixir-version: '1.18'
+          otp-version: '27'
+
+      - run: mix deps.get
+
+      - name: Run baseline Benchee
+        working-directory: ${{ inputs.working-directory }}
+        run: mix run bench/run_all.exs --output json > /tmp/bench-baseline.json
+
+      # PR
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+
+      - run: mix deps.get
+
+      - name: Run PR Benchee
+        working-directory: ${{ inputs.working-directory }}
+        run: mix run bench/run_all.exs --output json > /tmp/bench-pr.json
+
+      - name: Compare Benchee results
+        run: |
+          python3 << 'PY'
+          import json, sys
+          threshold = ${{ inputs.regression-threshold-pct }}
+
+          try:
+              b = json.load(open('/tmp/bench-baseline.json'))
+              p = json.load(open('/tmp/bench-pr.json'))
+          except Exception as e:
+              print(f"::warning::Could not parse Benchee output: {e}")
+              sys.exit(0)
+
+          regressions = []
+          for scenario, data in p.items():
+              if scenario in b:
+                  base_avg = b[scenario].get('run_time_data', {}).get('statistics', {}).get('average', 0)
+                  pr_avg = data.get('run_time_data', {}).get('statistics', {}).get('average', 0)
+                  if base_avg > 0:
+                      pct = ((pr_avg - base_avg) / base_avg) * 100
+                      print(f"{scenario}: {pct:+.1f}%")
+                      if pct > threshold:
+                          regressions.append(f"{scenario}: {pct:+.1f}%")
+
+          if regressions:
+              print(f"\n::error::Regressions > {threshold}%: {regressions}")
+              sys.exit(1)
+          PY
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        with:
+          name: benchmark-results-${{ github.run_number }}
+          path: /tmp/bench-*.json
+          retention-days: 14

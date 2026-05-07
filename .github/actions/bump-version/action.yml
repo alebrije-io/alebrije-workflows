@@ -1,0 +1,75 @@
+name: Bump Version
+description: Bumps VERSION file based on Conventional Commits since last tag
+
+inputs:
+  version-file:
+    description: Path to VERSION file
+    default: VERSION
+  dry-run:
+    description: Calculate only, don't write
+    default: "false"
+
+outputs:
+  new-version:
+    description: New version string
+    value: ${{ steps.bump.outputs.new-version }}
+  bump-type:
+    description: "major | minor | patch | none"
+    value: ${{ steps.bump.outputs.bump-type }}
+
+runs:
+  using: composite
+  steps:
+    - name: Parse commits and bump version
+      id: bump
+      shell: bash
+      run: |
+        python3 << 'PY'
+        import subprocess, re, os
+
+        version_file = '${{ inputs.version-file }}'
+        try:
+            current = open(version_file).read().strip()
+        except FileNotFoundError:
+            current = '0.0.0'
+
+        m = re.match(r'^(\d+)\.(\d+)\.(\d+)', current)
+        if m:
+            major, minor, patch = (int(m.group(i)) for i in (1, 2, 3))
+        else:
+            major, minor, patch = (0, 0, 0)
+
+        result = subprocess.run(
+            ['git', 'log', '--pretty=format:%s', f'v{current}..HEAD'],
+            capture_output=True, text=True
+        )
+        stdout = result.stdout.strip()
+        commits = stdout.split('\n') if stdout else []
+
+        bump = 'none'
+        for msg in commits:
+            if 'BREAKING CHANGE' in msg or re.match(r'^[a-z]+!:', msg):
+                bump = 'major'
+                break
+            elif re.match(r'^feat(\([^)]+\))?:', msg) and bump != 'major':
+                bump = 'minor'
+            elif (re.match(r'^(fix|perf|refactor)(\([^)]+\))?:', msg)
+                  and bump not in ('major', 'minor')):
+                bump = 'patch'
+
+        if bump == 'major':
+            new_v = f'{major+1}.0.0'
+        elif bump == 'minor':
+            new_v = f'{major}.{minor+1}.0'
+        elif bump == 'patch':
+            new_v = f'{major}.{minor}.{patch+1}'
+        else:
+            new_v = current
+
+        if '${{ inputs.dry-run }}' != 'true' and bump != 'none':
+            open(version_file, 'w').write(new_v + '\n')
+
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+            f.write(f'new-version={new_v}\n')
+            f.write(f'bump-type={bump}\n')
+        PY

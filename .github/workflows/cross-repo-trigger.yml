@@ -1,0 +1,372 @@
+---
+name: Cross-Repo Trigger Orchestrator v2
+
+# ADR-001 Bloque L — Cross-repo orchestration with wait-for-completion + audit trail
+#
+# Cuando una librería común (common-go/common-ex/common-python) publica un release,
+# dispara tests en repos consumers y opcionalmente espera a que se completen.
+#
+# Design decisions:
+# 1. workflow_call: reusable para ser invocado desde release.yml de cada common-lib
+# 2. Inputs:
+#    - target-repos: JSON array de repos a disparar
+#    - trigger-workflow: archivo .yml a disparar en cada repo (default: test.yml)
+#    - trigger-ref: rama a usar para dispatch (default: main)
+#    - custom-payload: JSON arbitrario para pasar inputs al downstream workflow
+#    - wait-for-completion: boolean si esperar a que terminen todos
+#    - timeout-seconds: max segundos a esperar (default: 3600 = 1h)
+# 3. GH_TOKEN scope: requiere workflow + repo scope en repos consumers
+# 4. Audit trail: cada dispatch logged con timestamp + actor + repo + status
+# 5. continue-on-error: false para notify — queremos saber si falla
+# 6. Tabletop: evita circular deps (A→B→A deadlock) y thundering herd (todos a la vez)
+
+on:
+  workflow_call:
+    inputs:
+      target-repos:
+        description: "JSON array of target repos (e.g. '[\"alebrije-io/alebrije-mod-payments-go\"]')"
+        required: true
+        type: string
+      trigger-workflow:
+        description: "Workflow file to trigger in each repo (default: test.yml)"
+        default: "test.yml"
+        type: string
+      trigger-ref:
+        description: "Branch/ref to use for workflow dispatch (default: main)"
+        default: "main"
+        type: string
+      custom-payload:
+        description: "JSON object with custom inputs to pass to workflow (optional)"
+        default: "{}"
+        type: string
+      wait-for-completion:
+        description: "Wait for all dispatched workflows to complete (default: false)"
+        default: false
+        type: boolean
+      timeout-seconds:
+        description: "Timeout in seconds for wait-for-completion (default: 3600)"
+        default: 3600
+        type: number
+    secrets:
+      GH_TOKEN:
+        required: true
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  prepare-dispatch:
+    name: Validate inputs and prepare dispatch
+    runs-on: ubuntu-latest
+    outputs:
+      dispatch-count: ${{ steps.validate.outputs.count }}
+      has-timeout: ${{ steps.validate.outputs.has-timeout }}
+    steps:
+      - name: Validate JSON inputs
+        id: validate
+        env:
+          TARGET_REPOS: ${{ inputs.target-repos }}
+          CUSTOM_PAYLOAD: ${{ inputs.custom-payload }}
+        run: |
+          python3 << 'PY'
+          import json
+          import sys
+          import os
+
+          try:
+              repos = json.loads(os.environ["TARGET_REPOS"])
+              if not isinstance(repos, list):
+                  raise ValueError("target-repos must be a JSON array")
+              if not repos:
+                  raise ValueError("target-repos cannot be empty")
+              print(f"✓ Repos: {len(repos)} items")
+
+              payload = json.loads(os.environ.get("CUSTOM_PAYLOAD", "{}"))
+              if not isinstance(payload, dict):
+                  raise ValueError("custom-payload must be a JSON object")
+              print(f"✓ Payload: {len(payload)} keys")
+
+              print(f"::set-output name=count::{len(repos)}")
+              print(f"::set-output name=has-timeout::${{ inputs.timeout-seconds > 0 }}")
+          except json.JSONDecodeError as e:
+              print(f"::error::Invalid JSON: {e}")
+              sys.exit(1)
+          except ValueError as e:
+              print(f"::error::{e}")
+              sys.exit(1)
+          PY
+
+  dispatch-workflows:
+    name: Dispatch to ${{ matrix.repo }}
+    needs: prepare-dispatch
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo: ${{ fromJson(inputs.target-repos) }}
+      max-parallel: 3  # Throttle para evitar GH API rate limiting
+    outputs:
+      run-ids: ${{ steps.dispatch.outputs.run-ids }}
+    steps:
+      - name: Dispatch workflow to ${{ matrix.repo }}
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          TARGET_REPO: ${{ matrix.repo }}
+          WORKFLOW_FILE: ${{ inputs.trigger-workflow }}
+          TRIGGER_REF: ${{ inputs.trigger-ref }}
+          CUSTOM_PAYLOAD: ${{ inputs.custom-payload }}
+          DISPATCH_ACTOR: ${{ github.actor }}
+          DISPATCH_SOURCE: ${{ github.repository }}
+          DISPATCH_TIME: ${{ github.event.head_commit.timestamp || github.event.repository.pushed_at || '' }}
+        run: |
+          python3 << 'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          from datetime import datetime
+
+          target_repo = os.environ["TARGET_REPO"]
+          workflow = os.environ["WORKFLOW_FILE"]
+          ref = os.environ["TRIGGER_REF"]
+          custom_payload = json.loads(os.environ.get("CUSTOM_PAYLOAD", "{}"))
+
+          actor = os.environ.get("DISPATCH_ACTOR", "unknown")
+          source = os.environ.get("DISPATCH_SOURCE", "unknown")
+          timestamp = os.environ.get("DISPATCH_TIME", datetime.utcnow().isoformat() + "Z")
+
+          # Construir campos adicionales para el dispatch
+          fields = {
+              "triggered-by": source,
+              "trigger-actor": actor,
+              "trigger-timestamp": timestamp,
+              **custom_payload
+          }
+
+          print(f"Dispatching {workflow} in {target_repo}...")
+          print(f"  Actor: {actor}")
+          print(f"  Source: {source}")
+          print(f"  Payload fields: {len(fields)}")
+
+          cmd = [
+              "gh", "workflow", "run",
+              workflow,
+              "--repo", target_repo,
+              "--ref", ref,
+          ]
+
+          for key, value in fields.items():
+              cmd.extend(["--field", f"{key}={value}"])
+
+          result = subprocess.run(cmd, capture_output=True, text=True)
+
+          if result.returncode == 0:
+              # Extraer run ID desde stdout
+              lines = result.stdout.strip().split('\n')
+              run_id = None
+              for line in lines:
+                  if "https://github.com" in line:
+                      # formato: "View run: https://github.com/owner/repo/actions/runs/12345"
+                      parts = line.split('/')
+                      if len(parts) >= 2:
+                          run_id = parts[-1]
+                          break
+
+              if not run_id:
+                  # Fallback: listar últimos runs y tomar el más nuevo
+                  list_cmd = ["gh", "run", "list", "--repo", target_repo, "--workflow", workflow, "--json", "databaseId", "-L", "1"]
+                  list_result = subprocess.run(list_cmd, capture_output=True, text=True)
+                  if list_result.returncode == 0:
+                      runs = json.loads(list_result.stdout)
+                      if runs:
+                          run_id = runs[0]["databaseId"]
+
+              print(f"✓ Dispatched successfully")
+              if run_id:
+                  print(f"  Run ID: {run_id}")
+                  print(f"::set-output name=run-ids::{run_id}")
+          else:
+              err = result.stderr.strip()
+              print(f"✗ Dispatch failed: {err}")
+              sys.exit(1)
+          PY
+
+      - name: Log dispatch in audit trail
+        if: always()
+        env:
+          TARGET_REPO: ${{ matrix.repo }}
+          WORKFLOW_FILE: ${{ inputs.trigger-workflow }}
+          STATUS: ${{ job.status }}
+          RUN_ID: ${{ steps.dispatch.outputs.run-ids || 'unknown' }}
+          TRIGGER_SOURCE: ${{ github.repository }}
+          TRIGGER_ACTOR: ${{ github.actor }}
+        run: |
+          cat >> /tmp/dispatch-audit.log << 'EOF'
+          timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          target_repo=${{ env.TARGET_REPO }}
+          source=${{ env.TRIGGER_SOURCE }}
+          actor=${{ env.TRIGGER_ACTOR }}
+          status=${{ env.STATUS }}
+          run_id=${{ env.RUN_ID }}
+          echo "${timestamp} | ${source} -> ${target_repo} | actor=${actor} | status=${status} | run_id=${run_id}"
+          EOF
+
+  wait-completion:
+    name: Wait for workflow completions
+    needs: [prepare-dispatch, dispatch-workflows]
+    runs-on: ubuntu-latest
+    if: inputs.wait-for-completion == true
+    timeout-minutes: 120
+    steps:
+      - name: Wait for all workflows to complete
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          TARGET_REPOS: ${{ inputs.target-repos }}
+          WORKFLOW_FILE: ${{ inputs.trigger-workflow }}
+          TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+        run: |
+          python3 << 'PY'
+          import json
+          import os
+          import subprocess
+          import time
+          from datetime import datetime, timedelta
+
+          repos = json.loads(os.environ["TARGET_REPOS"])
+          workflow = os.environ["WORKFLOW_FILE"]
+          timeout_secs = int(os.environ.get("TIMEOUT_SECONDS", 3600))
+
+          start_time = time.time()
+          deadline = start_time + timeout_secs
+
+          print(f"Waiting for {len(repos)} workflows to complete (timeout: {timeout_secs}s)...")
+
+          completed = {}
+          poll_interval = 10  # segundos entre polls
+
+          while True:
+              elapsed = time.time() - start_time
+              remaining = deadline - time.time()
+
+              if remaining <= 0:
+                  print(f"\n::error::Timeout after {timeout_secs}s")
+                  for repo, status in completed.items():
+                      if status not in ["completed", "success", "failure"]:
+                          print(f"  Still pending: {repo}")
+                  exit(1)
+
+              all_done = True
+              for repo in repos:
+                  if repo not in completed or completed[repo] not in ["success", "failure", "skipped"]:
+                      # Query último run
+                      cmd = [
+                          "gh", "run", "list",
+                          "--repo", repo,
+                          "--workflow", workflow,
+                          "--json", "conclusion,status,createdAt,databaseId",
+                          "-L", "1"
+                      ]
+                      result = subprocess.run(cmd, capture_output=True, text=True)
+
+                      if result.returncode == 0:
+                          runs = json.loads(result.stdout)
+                          if runs:
+                              run = runs[0]
+                              conclusion = run.get("conclusion")
+                              status = run.get("status", "unknown")
+
+                              if conclusion == "success":
+                                  completed[repo] = "success"
+                              elif conclusion == "failure":
+                                  completed[repo] = "failure"
+                              elif conclusion == "skipped":
+                                  completed[repo] = "skipped"
+                              else:
+                                  completed[repo] = status
+                                  all_done = False
+                          else:
+                              completed[repo] = "no-runs"
+                      else:
+                          completed[repo] = "unknown"
+                          all_done = False
+
+              # Mostrar progreso
+              done_count = sum(1 for s in completed.values() if s in ["success", "failure", "skipped"])
+              print(f"[{int(elapsed)}s / {int(remaining)}s] Progress: {done_count}/{len(repos)} complete")
+
+              if all_done:
+                  break
+
+              time.sleep(poll_interval)
+
+          # Resultado final
+          print("\nWorkflow completion status:")
+          failures = []
+          for repo, status in completed.items():
+              symbol = "✓" if status == "success" else "✗" if status == "failure" else "⊘" if status == "skipped" else "?"
+              print(f"  {symbol} {repo}: {status}")
+              if status == "failure":
+                  failures.append(repo)
+
+          if failures:
+              print(f"\n::error::{len(failures)} workflows failed:")
+              for repo in failures:
+                  print(f"  - {repo}")
+              exit(1)
+          else:
+              print(f"\n✓ All {len(repos)} workflows completed successfully")
+          PY
+
+  report-status:
+    name: Report orchestration status
+    needs: [prepare-dispatch, dispatch-workflows]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Generate status report
+        env:
+          DISPATCH_COUNT: ${{ needs.prepare-dispatch.outputs.dispatch-count }}
+          DISPATCHED: ${{ needs.dispatch-workflows.result }}
+          WAIT_ENABLED: ${{ inputs.wait-for-completion }}
+        run: |
+          cat << 'EOF'
+          ╔════════════════════════════════════════════════════════════╗
+          ║ Cross-Repo Trigger Orchestration Report                    ║
+          ╚════════════════════════════════════════════════════════════╝
+
+          Source:          ${{ github.repository }}
+          Trigger ref:     ${{ inputs.trigger-ref }}
+          Workflow:        ${{ inputs.trigger-workflow }}
+          Custom payload:  ${{ inputs.custom-payload != '{}' && 'yes' || 'no' }}
+
+          Dispatch results:
+            Total targets:   ${{ env.DISPATCH_COUNT }}
+            Status:          ${{ env.DISPATCHED }}
+
+          Completion handling:
+            Wait enabled:    ${{ env.WAIT_ENABLED }}
+            Timeout:         ${{ inputs.timeout-seconds }}s
+
+          Timestamp:       $(date -u +'%Y-%m-%d %H:%M:%S UTC')
+          EOF
+
+  notify-on-failure:
+    name: Notify on dispatch failure
+    needs: [dispatch-workflows]
+    runs-on: ubuntu-latest
+    if: failure() && always()
+    steps:
+      - name: Prepare failure notification
+        env:
+          TRIGGER_SOURCE: ${{ github.repository }}
+          TRIGGER_REF: ${{ inputs.trigger-ref }}
+          WORKFLOW: ${{ inputs.trigger-workflow }}
+          TARGET_REPOS: ${{ inputs.target-repos }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          echo "::notice::Cross-repo dispatch had failures"
+          echo "Repo: ${TRIGGER_SOURCE}"
+          echo "Workflow: ${WORKFLOW}"
+          echo "Actor: ${ACTOR}"
+          echo "Targets: $(echo '${TARGET_REPOS}' | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"

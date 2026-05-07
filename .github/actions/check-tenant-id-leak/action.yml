@@ -1,0 +1,140 @@
+name: Check Tenant ID Leak
+description: |
+  Scans source code for hardcoded tenant IDs (UUIDs or slug-style IDs) in
+  non-test, non-fixture files. Blocking — exit 1 if leak found.
+  ADR-001 Block P. Enforces multi-tenant isolation invariant (ADR-63).
+
+inputs:
+  scan-path:
+    description: "Directory to scan (default: .)"
+    required: false
+    default: "."
+  known-tenants-file:
+    description: "Path to JSON file with known tenant IDs to flag (array of strings)"
+    required: false
+    default: ""
+  exclude-patterns:
+    description: "Comma-separated glob patterns to exclude (appended to default test exclusions)"
+    required: false
+    default: ""
+  fail-on-leak:
+    description: "Exit 1 if leak detected (default true)"
+    required: false
+    default: "true"
+
+outputs:
+  leaks-found:
+    description: "Number of hardcoded tenant ID occurrences found"
+    value: ${{ steps.scan.outputs.leaks_found }}
+  leak-report:
+    description: "Newline-separated list of file:line matches"
+    value: ${{ steps.scan.outputs.leak_report }}
+
+runs:
+  using: composite
+  steps:
+    - name: Scan for hardcoded tenant IDs
+      id: scan
+      shell: python3 {0}
+      env:
+        SCAN_PATH: ${{ inputs.scan-path }}
+        KNOWN_TENANTS_FILE: ${{ inputs.known-tenants-file }}
+        EXCLUDE_PATTERNS: ${{ inputs.exclude-patterns }}
+        FAIL_ON_LEAK: ${{ inputs.fail-on-leak }}
+      run: |
+        import os
+        import re
+        import sys
+        import json
+        import fnmatch
+        from pathlib import Path
+
+        scan_path = os.environ.get("SCAN_PATH", ".")
+        known_file = os.environ.get("KNOWN_TENANTS_FILE", "")
+        extra_excludes = [p.strip() for p in os.environ.get("EXCLUDE_PATTERNS", "").split(",") if p.strip()]
+        fail_on_leak = os.environ.get("FAIL_ON_LEAK", "true").lower() == "true"
+
+        # Default patterns: skip test files, fixtures, seeds, migrations, mocks
+        DEFAULT_EXCLUDE_PATTERNS = [
+            "*/test*", "*/tests/*", "*_test.py", "*_test.go", "*_test.exs",
+            "*/fixtures/*", "*/seeds/*", "*/migrations/*", "*/mocks/*",
+            "*/spec/*", "*_spec.exs", "*.test.ts", "*.test.tsx", "*.spec.ts",
+            "*/.git/*", "*/node_modules/*", "*/__pycache__/*", "*/.venv/*",
+            "*/vendor/*", "*/dist/*", "*/build/*",
+        ]
+        exclude_patterns = DEFAULT_EXCLUDE_PATTERNS + extra_excludes
+
+        # Load known tenant IDs from file
+        known_ids: list[str] = []
+        if known_file and Path(known_file).exists():
+            with open(known_file) as f:
+                known_ids = json.load(f)
+
+        # UUID v4 pattern (tenant IDs are typically UUIDs)
+        uuid_re = re.compile(
+            r'["\']([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})["\']',
+            re.IGNORECASE
+        )
+
+        leaks: list[str] = []
+
+        def is_excluded(filepath: str) -> bool:
+            for pat in exclude_patterns:
+                if fnmatch.fnmatch(filepath, pat):
+                    return True
+            return False
+
+        root = Path(scan_path)
+        text_extensions = {
+            ".py", ".go", ".ex", ".exs", ".ts", ".tsx", ".js", ".jsx",
+            ".yaml", ".yml", ".json", ".toml", ".sh", ".env"
+        }
+
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            if path.suffix not in text_extensions:
+                continue
+            rel = str(path)
+            if is_excluded(rel):
+                continue
+
+            try:
+                content = path.read_text(errors="replace")
+            except Exception:
+                continue
+
+            for lineno, line in enumerate(content.splitlines(), 1):
+                # Check known tenant IDs explicitly
+                for tid in known_ids:
+                    if tid in line:
+                        leaks.append(f"{rel}:{lineno}: hardcoded known tenant ID '{tid}'")
+
+                # Check UUID pattern in assignments or config-like contexts
+                for m in uuid_re.finditer(line):
+                    uid = m.group(1).lower()
+                    # Skip if it's in a known-tenant check (already caught above)
+                    if uid in [t.lower() for t in known_ids]:
+                        continue
+                    # Only flag if it looks like a tenant assignment (variable named tenant/org/customer)
+                    ctx = line.lower()
+                    if any(kw in ctx for kw in ["tenant", "org_id", "organisation", "customer_id", "account_id"]):
+                        leaks.append(f"{rel}:{lineno}: possible hardcoded tenant UUID '{uid}'")
+
+        leak_report = "\n".join(leaks)
+
+        with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+            fh.write(f"leaks_found={len(leaks)}\n")
+            fh.write("leak_report<<EOF\n")
+            fh.write(leak_report + "\n")
+            fh.write("EOF\n")
+
+        if leaks:
+            print(f"::error::Found {len(leaks)} hardcoded tenant ID leak(s):")
+            for leak in leaks:
+                print(f"  {leak}")
+        else:
+            print("No hardcoded tenant ID leaks found.")
+
+        if leaks and fail_on_leak:
+            sys.exit(1)

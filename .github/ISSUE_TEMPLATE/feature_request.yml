@@ -1,0 +1,37 @@
+name: Feature Request
+about: Propose a new workflow, capability, or improvement
+title: "[FEATURE] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem does this feature solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How should the feature work?
+
+  - type: dropdown
+    id: language
+    attributes:
+      label: Affected language(s)
+      multiple: true
+      options:
+        - Go
+        - Elixir
+        - Python
+        - TypeScript
+        - Docker
+        - All / cross-language
+
+  - type: input
+    id: adr
+    attributes:
+      label: Related ADR (if any)
+      placeholder: ADR-001

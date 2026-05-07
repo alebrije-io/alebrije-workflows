@@ -1,0 +1,112 @@
+name: Reusable Approved Base Images Check
+
+# Valida que cada FROM en los Dockerfiles del repo esté en la whitelist
+# de approved-base-images.json de alebrije-workflows.
+#
+# Design decision: ubuntu-latest es adecuado aquí porque:
+# - No necesita acceso a Vault ni al cluster K8s
+# - Es un check de linting que solo lee archivos
+# - Corre más rápido en GH-hosted runners para pure-tool jobs
+
+on:
+  workflow_call:
+    inputs:
+      dockerfile-paths:
+        description: "Glob pattern para Dockerfiles (default: busca todos)"
+        default: "."
+        type: string
+      workflows-ref:
+        description: "Git ref de alebrije-workflows para leer la whitelist"
+        default: "main"
+        type: string
+      fail-on-violation:
+        description: "Fail if any FROM uses non-approved image"
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  check-images:
+    name: Validate Dockerfile base images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target repo
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          path: target
+
+      - name: Checkout alebrije-workflows (whitelist source)
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          repository: alebrije-io/alebrije-workflows
+          ref: ${{ inputs.workflows-ref }}
+          path: workflows
+
+      - name: Check Dockerfile base images against whitelist
+        shell: python3 {0}
+        env:
+          TARGET_PATH: target/${{ inputs.dockerfile-paths }}
+          WHITELIST_FILE: workflows/approved-base-images.json
+          FAIL_ON_VIOLATION: ${{ inputs.fail-on-violation }}
+        run: |
+          import json
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          target_root = Path(os.environ.get("TARGET_PATH", "target"))
+          whitelist_file = Path(os.environ.get("WHITELIST_FILE", "workflows/approved-base-images.json"))
+          fail_on_violation = os.environ.get("FAIL_ON_VIOLATION", "true").lower() == "true"
+
+          # Load whitelist
+          approved = json.load(whitelist_file.open())
+          approved_images = set()
+          for entry in approved.get("images", []):
+              name = entry.get("name", "")
+              for tag in entry.get("approved_tags", [entry.get("tag", "")]):
+                  approved_images.add(f"{name}:{tag}")
+              # Also allow the name without tag (latest)
+              approved_images.add(name)
+
+          print(f"[approved-images] Whitelist: {len(approved_images)} approved images")
+
+          # Find all Dockerfiles
+          dockerfiles = []
+          search_root = target_root if target_root.is_dir() else Path("target")
+          for path in search_root.rglob("Dockerfile*"):
+              if not path.is_file():
+                  continue
+              if any(part in {".git", "node_modules", "_build", "vendor"} for part in path.parts):
+                  continue
+              dockerfiles.append(path)
+
+          print(f"[approved-images] Found {len(dockerfiles)} Dockerfiles")
+
+          FROM_RE = re.compile(r'^FROM\s+(?:--platform=\S+\s+)?(\S+)', re.IGNORECASE | re.MULTILINE)
+
+          violations = []
+          for df in dockerfiles:
+              content = df.read_text(errors="replace")
+              for match in FROM_RE.finditer(content):
+                  image = match.group(1)
+                  if image.lower() == "scratch":
+                      continue  # scratch is always allowed
+                  # Normalize: if no tag, add :latest for check
+                  check_image = image if ":" in image else f"{image}:latest"
+                  # Check if base name (without tag) is approved
+                  base = image.split(":")[0]
+                  if check_image not in approved_images and base not in approved_images and image not in approved_images:
+                      violations.append(f"  {df.relative_to(Path('target'))}: FROM {image}")
+
+          if violations:
+              print(f"\n::{'error' if fail_on_violation else 'warning'}::Non-approved base images found:")
+              for v in violations:
+                  print(v)
+              print(f"\nApproved images: see alebrije-workflows/approved-base-images.json")
+              if fail_on_violation:
+                  sys.exit(1)
+          else:
+              print("[approved-images] All Dockerfile base images are approved ✓")

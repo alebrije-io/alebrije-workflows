@@ -1,0 +1,124 @@
+name: Reusable Go Test (Multi-version Matrix)
+
+# Workflow reusable para testing de librerías Go públicas contra múltiples versiones de Go.
+# Usado por: common-go, mcp-go, y otros módulos que exportan APIs públicas.
+#
+# Implementa:
+#   - Matrix testing: múltiples versiones Go (default: ["1.23", "1.24"])
+#   - fail-fast: false para ver todos los resultados antes de fallar
+#   - Coverage gate 90% en TODAS las versiones
+#   - Linting solo en la versión default (evita reports duplicados)
+#   - Sin services (librerías puras no necesitan DB)
+#   - Concurrency con cancel-in-progress: true
+#
+# Uso esperado:
+#   Repos de libs Go públicas que necesitan verificar compatibilidad cross-version.
+#   Llamar con:
+#     - uses: alebrije-io/alebrije-workflows/.github/workflows/reusable-test-go-matrix.yml@main
+#       with:
+#         go-versions: '["1.23", "1.24"]'
+#       secrets: inherit
+
+on:
+  workflow_call:
+    inputs:
+      go-versions:
+        description: "JSON array of Go versions to test (e.g., '[\"1.23\", \"1.24\"]')"
+        type: string
+        default: '["1.23", "1.24"]'
+        required: false
+      module-path:
+        description: "Go module path within the repo (default: '.')"
+        type: string
+        default: "."
+        required: false
+      coverage-threshold:
+        description: "Coverage percentage threshold (default: 90, INMÓVIL)"
+        type: number
+        default: 90
+        required: false
+      lint-only-default:
+        description: "Run golangci-lint only on default version (true) or all versions (false, slower)"
+        type: boolean
+        default: true
+        required: false
+    secrets:
+      GH_TOKEN:
+        description: "GitHub token for private repo access"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-go-matrix-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (Go ${{ matrix.go-version }})
+    runs-on: arc-runner-set
+
+    strategy:
+      matrix:
+        go-version: ${{ fromJson(inputs.go-versions) }}
+      fail-fast: false
+
+    env:
+      GOPRIVATE: github.com/alebrije-io
+      GONOSUMCHECK: github.com/alebrije-io
+
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - name: Configure git for private repos
+        run: git config --global url."https://${{ secrets.GH_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Set up Go ${{ matrix.go-version }}
+        uses: actions/setup-go@cdcb36256b49618355e264982131d2dec09dee08  # v5.1.0
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+          cache-dependency-path: ${{ inputs.module-path }}/go.sum
+
+      - name: Download dependencies
+        run: |
+          cd ${{ inputs.module-path }}
+          go mod download
+          go mod verify
+
+      # Lint only on the first (default) version to avoid duplicate reports
+      # and to speed up the matrix job overall.
+      - name: Lint with golangci-lint
+        if: |
+          ${{ inputs.lint-only-default }} &&
+          matrix.go-version == fromJson(inputs.go-versions)[0]
+        uses: golangci/golangci-lint-action@3f06ab41dd0f7fbf14c900841e8861faca4e8e38  # v6.1.0
+        with:
+          working-directory: ${{ inputs.module-path }}
+          args: --config .golangci.yml
+
+      - name: Run tests with coverage
+        run: |
+          cd ${{ inputs.module-path }}
+          go test -race -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Check coverage gate (90% immutable, Rule G)
+        run: |
+          cd ${{ inputs.module-path }}
+          COVERAGE=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
+          echo "Coverage (Go ${{ matrix.go-version }}): ${COVERAGE}%"
+
+          # Portable floating-point comparison using awk
+          if awk "BEGIN { exit !($COVERAGE + 0 < ${{ inputs.coverage-threshold }}) }"; then
+            echo "::error::Coverage ${COVERAGE}% is below threshold ${{ inputs.coverage-threshold }}% (Go ${{ matrix.go-version }})"
+            exit 1
+          fi
+          echo "::notice::Coverage ${COVERAGE}% meets threshold ${{ inputs.coverage-threshold }}% (Go ${{ matrix.go-version }})"
+
+      - name: Upload coverage to codecov (best-effort)
+        uses: codecov/codecov-action@125fc84a2bfd3c102d6a49fa07367b1ac6dbf2ac  # v4.4.1
+        with:
+          files: ${{ inputs.module-path }}/coverage.out
+          flags: go-${{ matrix.go-version }}
+          fail_ci_if_error: false

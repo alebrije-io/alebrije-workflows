@@ -1,0 +1,136 @@
+name: Post Coverage Comment
+description: |
+  Posts a coverage comparison table as a PR comment (current vs baseline).
+  ADR-001 Block P. Reads coverage-summary.json (Istanbul/vitest) or
+  coverage.txt (Go/pytest text format) and generates markdown table.
+  Non-blocking (continue-on-error: true at call-site) — informational only.
+
+inputs:
+  coverage-file:
+    description: "Path to coverage summary file"
+    required: true
+  coverage-format:
+    description: "Format: istanbul-json | go-text | pytest-text"
+    required: false
+    default: "istanbul-json"
+  baseline-coverage:
+    description: "Baseline overall % for comparison (e.g., '87.5')"
+    required: false
+    default: ""
+  gate-threshold:
+    description: "Gate threshold % displayed in comment footer"
+    required: false
+    default: "90"
+  pr-number:
+    description: "PR number to comment on (defaults to github.event.pull_request.number)"
+    required: false
+    default: ""
+
+outputs:
+  coverage-pct:
+    description: "Extracted overall coverage % as float string"
+    value: ${{ steps.parse.outputs.coverage_pct }}
+  delta:
+    description: "Delta vs baseline (e.g., +1.2 or -0.5)"
+    value: ${{ steps.parse.outputs.delta }}
+
+runs:
+  using: composite
+  steps:
+    - name: Parse coverage file
+      id: parse
+      shell: python3 {0}
+      env:
+        COVERAGE_FILE: ${{ inputs.coverage-file }}
+        FORMAT: ${{ inputs.coverage-format }}
+        BASELINE: ${{ inputs.baseline-coverage }}
+        GATE: ${{ inputs.gate-threshold }}
+      run: |
+        import os
+        import sys
+        import json
+        from pathlib import Path
+
+        cov_file = os.environ["COVERAGE_FILE"]
+        fmt = os.environ.get("FORMAT", "istanbul-json")
+        baseline_str = os.environ.get("BASELINE", "")
+        gate = float(os.environ.get("GATE", "90"))
+
+        if not Path(cov_file).exists():
+            print(f"::warning::Coverage file not found: {cov_file}")
+            sys.exit(0)
+
+        pct = 0.0
+        detail_lines = []
+
+        if fmt == "istanbul-json":
+            data = json.loads(Path(cov_file).read_text())
+            total = data.get("total", {})
+            pct = total.get("lines", {}).get("pct", 0.0)
+            for metric in ("statements", "branches", "functions", "lines"):
+                v = total.get(metric, {})
+                detail_lines.append(f"| {metric.capitalize()} | {v.get('covered',0)}/{v.get('total',0)} | {v.get('pct',0):.1f}% |")
+        elif fmt == "go-text":
+            text = Path(cov_file).read_text()
+            for line in text.splitlines():
+                if line.startswith("total:"):
+                    pct = float(line.split()[-1].replace("%", ""))
+                    break
+            detail_lines.append(f"| Total | — | {pct:.1f}% |")
+        elif fmt == "pytest-text":
+            text = Path(cov_file).read_text()
+            for line in text.splitlines():
+                if "TOTAL" in line:
+                    parts = line.split()
+                    pct = float(parts[-1].replace("%", ""))
+                    break
+            detail_lines.append(f"| Total | — | {pct:.1f}% |")
+
+        delta_str = ""
+        if baseline_str:
+            try:
+                delta = pct - float(baseline_str)
+                sign = "+" if delta >= 0 else ""
+                delta_str = f"{sign}{delta:.1f}"
+            except ValueError:
+                pass
+
+        status = "🟢" if pct >= gate else "🔴"
+
+        with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+            fh.write(f"coverage_pct={pct:.1f}\n")
+            fh.write(f"delta={delta_str}\n")
+
+        # Write to env for comment step
+        with open(os.environ["GITHUB_ENV"], "a") as fh:
+            fh.write(f"_COVERAGE_PCT={pct:.1f}\n")
+            fh.write(f"_COVERAGE_DELTA={delta_str}\n")
+            fh.write(f"_COVERAGE_STATUS={status}\n")
+            fh.write(f"_COVERAGE_GATE={gate}\n")
+            fh.write(f"_COVERAGE_DETAILS=" + "\\n".join(detail_lines) + "\n")
+
+    - name: Find existing coverage comment
+      id: find-comment
+      uses: peter-evans/find-comment@3eae4d37986fb5a8592848f6a574fdf654e61f9e  # v3
+      with:
+        issue-number: ${{ inputs.pr-number || github.event.pull_request.number }}
+        comment-author: "github-actions[bot]"
+        body-includes: "## Coverage Report"
+
+    - name: Post coverage comment
+      uses: peter-evans/create-or-update-comment@71345be0265236311c031f5c7866368bd1eff043  # v4
+      with:
+        comment-id: ${{ steps.find-comment.outputs.comment-id }}
+        issue-number: ${{ inputs.pr-number || github.event.pull_request.number }}
+        edit-mode: replace
+        body: |
+          ## Coverage Report ${{ env._COVERAGE_STATUS }}
+
+          | Metric | Covered/Total | % |
+          |--------|--------------|---|
+          ${{ env._COVERAGE_DETAILS }}
+
+          **Overall: ${{ env._COVERAGE_PCT }}%**${{ env._COVERAGE_DELTA != '' && format(' (Δ {0}%)', env._COVERAGE_DELTA) || '' }}
+
+          > Gate: **${{ env._COVERAGE_GATE }}%** (Rule G — immovable)
+          > Add to `.trivyignore` for security false-positives; fix coverage gaps, never lower the gate.

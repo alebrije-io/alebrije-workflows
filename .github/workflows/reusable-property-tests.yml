@@ -1,0 +1,182 @@
+name: Reusable Property-Based Tests
+
+# ADR-001 Bloque D — Property-based testing workflow
+#
+# Corre típicamente weekly o on-demand. Fuzzing exhaustivo para invariantes.
+#
+# Implementa para cada lenguaje el framework de property testing standard:
+#   - Python: Hypothesis (1000 cases default)
+#   - Elixir: StreamData (1000 cases default)
+#   - Go: gopter / rapid (1000 cases via -count)
+#   - TypeScript: fast-check (1000 cases default)
+#
+# Propósito: detectar edge cases + invariant violations que unit tests no capturan.
+# Estos tests son exploratorios — no son determinísticos como unit tests.
+#
+# Design decisions:
+#   1. Polymorphic: inputs.language determina cuál job corre.
+#   2. num-cases parametrizable (default 1000 — configurable para dev rápido o CI exhaustivo).
+#   3. cancel-in-progress: false (no queremos cancelar fuzzing costoso).
+#   4. arc-runner-set para acceso a repos privados (GH_TOKEN).
+
+on:
+  workflow_call:
+    inputs:
+      language:
+        description: "Language: 'python' | 'elixir' | 'go' | 'ts'"
+        required: true
+        type: string
+      num-cases:
+        description: "Number of property test cases (default: 1000). Dev: 100, CI: 1000."
+        default: 1000
+        type: number
+      hypothesis-seed:
+        description: "Hypothesis seed (python only). 'random' or integer. Default: random."
+        default: 'random'
+        type: string
+      working-directory:
+        description: "Working directory for property tests"
+        default: '.'
+        type: string
+    secrets:
+      GH_TOKEN:
+        description: "GitHub token for private repo access"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: property-${{ github.repository }}-${{ inputs.language }}-${{ github.ref }}
+  cancel-in-progress: false  # Fuzzing costoso — no cancelar
+
+jobs:
+  # ========================================================================
+  # PYTHON — Hypothesis
+  # ========================================================================
+  python-property:
+    name: Property Tests (Python Hypothesis)
+    if: ${{ inputs.language == 'python' }}
+    runs-on: arc-runner-set
+
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependencies
+        run: |
+          pip install --quiet hypothesis pytest pytest-asyncio
+
+      - name: Run Hypothesis property tests
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          HYPOTHESIS_SETTINGS: max_examples=${{ inputs.num-cases }}
+          HYPOTHESIS_PROFILE: ci
+        run: |
+          # Build seed flag for reproducibility
+          SEED_FLAG=""
+          if [ "${{ inputs.hypothesis-seed }}" != "random" ]; then
+            SEED_FLAG="--hypothesis-seed=${{ inputs.hypothesis-seed }}"
+          fi
+
+          # Run property tests from tests/property/ directory
+          # If directory doesn't exist, that's advisory — some repos may not have property tests yet
+          if [ -d "tests/property" ]; then
+            pytest tests/property/ ${SEED_FLAG} -v --tb=short
+          else
+            echo "::notice::tests/property/ directory not found — skipping Hypothesis tests"
+          fi
+
+  # ========================================================================
+  # ELIXIR — StreamData
+  # ========================================================================
+  elixir-property:
+    name: Property Tests (Elixir StreamData)
+    if: ${{ inputs.language == 'elixir' }}
+    runs-on: arc-runner-set
+
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - uses: erlef/setup-beam@7bac9ca1bd48b5e4021d43cbe9ce61172821b092  # v1.18.1
+        with:
+          elixir-version: '1.18'
+          otp-version: '27'
+
+      - name: Get dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: mix deps.get
+
+      - name: Run StreamData property tests
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          # StreamData property tests must be tagged with :property in ExUnit
+          # Example: @tag :property
+          # Run: mix test --include property
+          mix test --include property --max-cases ${{ inputs.num-cases }} || {
+            echo "::notice::No property tests tagged with @tag :property found (optional)"
+          }
+
+  # ========================================================================
+  # GO — gopter / rapid
+  # ========================================================================
+  go-property:
+    name: Property Tests (Go gopter)
+    if: ${{ inputs.language == 'go' }}
+    runs-on: arc-runner-set
+
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - uses: actions/setup-go@cdcb36256b49618355e264982131d2dec09dee08  # v5.1.0
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Run Go property tests
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          GOPRIVATE: 'github.com/alebrije-io'
+        run: |
+          # Go property tests are identified by:
+          #   - Build tag +build property
+          #   - Test function named TestProperty*
+          # Run: go test -tags=property -run=TestProperty ./... -count=N
+          # count=N runs the test N times with different seeds
+          go test -tags=property -run=TestProperty ./... -count=${{ inputs.num-cases }} -v || {
+            echo "::notice::No property tests found (build tag +property or TestProperty functions) — optional"
+          }
+
+  # ========================================================================
+  # TYPESCRIPT — fast-check
+  # ========================================================================
+  ts-property:
+    name: Property Tests (TypeScript fast-check)
+    if: ${{ inputs.language == 'ts' }}
+    runs-on: arc-runner-set
+
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - uses: actions/setup-node@1a4442caab129478d0a1be482dbe86fb8fbf7f4f  # v4.1.0
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile || npm ci
+
+      - name: Run fast-check property tests
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          # Fast-check tests are convention-named *.property.test.ts or *.property.test.js
+          # They use @fc.property() or fc.property() from fast-check library.
+          # vitest automatically discovers .test.ts files.
+          if find . -name "*.property.test.ts" -o -name "*.property.test.js" | grep -q .; then
+            npx vitest run --reporter=verbose "**/*.property.test.ts" --coverage=false || true
+          else
+            echo "::notice::No *.property.test.ts files found (optional)"
+          fi

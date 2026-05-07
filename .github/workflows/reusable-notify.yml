@@ -1,0 +1,524 @@
+---
+name: Reusable Multi-Channel Notification Router v2
+
+# ADR-001 Bloque M — Notification routing (CI fails → Slack/email/GitHub)
+#
+# Envía notificaciones multi-canal a Slack, email, y/o GitHub (PR/issue comments).
+# Soporta severity-based routing (info/warn/critical).
+#
+# Design decisions:
+# 1. workflow_call: reusable para ser invocado desde jobs que necesitan notificar
+# 2. notification-type: selecciona canal(s): 'slack', 'email', 'github', 'all'
+# 3. Severity: info (ℹ️) / warn (⚠️) / critical (🚨) con colores y destinos distintos
+# 4. Slack: color-coded by severity, incluye run URL y service context
+# 5. Email: SMTP via Vault secrets, destinatarios configurables
+# 6. GitHub: PR/issue comments directamente en GH (si pr-number o issue-number specified)
+# 7. Logs: todos los disparos logged en artifact para audit trail
+# 8. continue-on-error: true en todos los notify steps — un fallo de canal no tumba workflow
+# 9. Vault: todos los tokens/webhooks desde Vault, NUNCA hardcoded
+# 10. if: always() — debe correr incluso si jobs previos fallaron
+
+on:
+  workflow_call:
+    inputs:
+      notification-type:
+        description: "Notification channel(s): 'slack' | 'email' | 'github' | 'all'"
+        default: "slack"
+        type: string
+      message:
+        description: "Notification message body (markdown supported)"
+        required: true
+        type: string
+      severity:
+        description: "Severity level: 'info' | 'warn' | 'critical'"
+        default: "warn"
+        type: string
+      title:
+        description: "Notification title (short headline)"
+        required: true
+        type: string
+      slack-channel:
+        description: "Slack channel name or ID (e.g. '#engineering', 'C123456')"
+        default: "#engineering"
+        type: string
+      email-recipients:
+        description: "Email recipients as JSON array (e.g. '[\"oncall@alebrije.io\"]')"
+        default: "[]"
+        type: string
+      github-pr-number:
+        description: "GitHub PR number for PR comment notification (optional)"
+        default: ""
+        type: string
+      github-issue-number:
+        description: "GitHub issue number for issue comment notification (optional)"
+        default: ""
+        type: string
+      service-name:
+        description: "Service/module name for context (e.g. 'svc-auth', 'payments-go')"
+        default: ""
+        type: string
+      include-logs:
+        description: "Include workflow logs in notification (if available)"
+        default: false
+        type: boolean
+      run-url:
+        description: "Custom run URL (auto-detected if empty)"
+        default: ""
+        type: string
+    secrets:
+      GH_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  prepare-notification:
+    name: Prepare notification payload
+    runs-on: ubuntu-latest
+    outputs:
+      notify-slack: ${{ steps.channels.outputs.notify-slack }}
+      notify-email: ${{ steps.channels.outputs.notify-email }}
+      notify-github: ${{ steps.channels.outputs.notify-github }}
+      emoji: ${{ steps.styling.outputs.emoji }}
+      color: ${{ steps.styling.outputs.color }}
+      run-url: ${{ steps.context.outputs.run-url }}
+    steps:
+      - name: Determine target channels
+        id: channels
+        env:
+          NOTIFICATION_TYPE: ${{ inputs.notification-type }}
+        run: |
+          case "${{ env.NOTIFICATION_TYPE }}" in
+            slack)
+              echo "::set-output name=notify-slack::true"
+              echo "::set-output name=notify-email::false"
+              echo "::set-output name=notify-github::false"
+              ;;
+            email)
+              echo "::set-output name=notify-slack::false"
+              echo "::set-output name=notify-email::true"
+              echo "::set-output name=notify-github::false"
+              ;;
+            github)
+              echo "::set-output name=notify-slack::false"
+              echo "::set-output name=notify-email::false"
+              echo "::set-output name=notify-github::true"
+              ;;
+            all)
+              echo "::set-output name=notify-slack::true"
+              echo "::set-output name=notify-email::true"
+              echo "::set-output name=notify-github::true"
+              ;;
+            *)
+              echo "::error::Invalid notification-type: ${{ env.NOTIFICATION_TYPE }}"
+              exit 1
+              ;;
+          esac
+
+      - name: Determine severity styling
+        id: styling
+        env:
+          SEVERITY: ${{ inputs.severity }}
+        run: |
+          case "${{ env.SEVERITY }}" in
+            info)
+              echo "::set-output name=emoji::ℹ️"
+              echo "::set-output name=color::#36a64f"
+              ;;
+            warn)
+              echo "::set-output name=emoji::⚠️"
+              echo "::set-output name=color::#ff9900"
+              ;;
+            critical)
+              echo "::set-output name=emoji::🚨"
+              echo "::set-output name=color::#ff0000"
+              ;;
+            *)
+              echo "::error::Invalid severity: ${{ env.SEVERITY }}"
+              exit 1
+              ;;
+          esac
+
+      - name: Determine run URL
+        id: context
+        env:
+          CUSTOM_URL: ${{ inputs.run-url }}
+        run: |
+          if [ -n "${{ env.CUSTOM_URL }}" ]; then
+            echo "::set-output name=run-url::${{ env.CUSTOM_URL }}"
+          else
+            url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "::set-output name=run-url::${url}"
+          fi
+
+  notify-slack:
+    name: Send Slack notification
+    needs: prepare-notification
+    runs-on: ubuntu-latest
+    if: needs.prepare-notification.outputs.notify-slack == 'true'
+    continue-on-error: true
+    steps:
+      - name: Fetch Slack webhook from Vault
+        uses: hashicorp/vault-action@d1720f055e0e7a166814d3702ccad504a236238f  # v2.8.1
+        id: vault
+        with:
+          url: http://vault.vault.svc:8200
+          method: kubernetes
+          role: ci-runner-role
+          secrets: |
+            alebrije/data/ci/slack SLACK_WEBHOOK_URL | SLACK_WEBHOOK_URL
+
+      - name: Send Slack message
+        if: steps.vault.outputs.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK: ${{ steps.vault.outputs.SLACK_WEBHOOK_URL }}
+          TITLE: ${{ inputs.title }}
+          MESSAGE: ${{ inputs.message }}
+          EMOJI: ${{ needs.prepare-notification.outputs.emoji }}
+          COLOR: ${{ needs.prepare-notification.outputs.color }}
+          SEVERITY: ${{ inputs.severity }}
+          SERVICE: ${{ inputs.service-name }}
+          CHANNEL: ${{ inputs.slack-channel }}
+          RUN_URL: ${{ needs.prepare-notification.outputs.run-url }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          python3 << 'PY'
+          import json
+          import os
+          import urllib.request
+          import urllib.error
+
+          title = os.environ["TITLE"]
+          message = os.environ.get("MESSAGE", "")
+          emoji = os.environ.get("EMOJI", "ℹ️")
+          color = os.environ.get("COLOR", "#808080")
+          severity = os.environ.get("SEVERITY", "info")
+          service = os.environ.get("SERVICE", "")
+          channel = os.environ.get("CHANNEL", "#engineering")
+          run_url = os.environ.get("RUN_URL", "")
+          repo = os.environ.get("REPO", "")
+          actor = os.environ.get("ACTOR", "")
+          commit = os.environ.get("COMMIT", "")[:7]
+
+          service_text = f" · *{service}*" if service else ""
+          message_lines = message.split('\n') if message else []
+
+          blocks = [
+              {
+                  "type": "section",
+                  "text": {
+                      "type": "mrkdwn",
+                      "text": f"{emoji} *{title}*{service_text}"
+                  }
+              },
+          ]
+
+          if message_lines:
+              blocks.append({
+                  "type": "section",
+                  "text": {
+                      "type": "mrkdwn",
+                      "text": message
+                  }
+              })
+
+          context_items = [f"<{run_url}|View run>"]
+          if repo:
+              context_items.append(f"repo: `{repo}`")
+          if actor:
+              context_items.append(f"actor: {actor}")
+          if commit:
+              context_items.append(f"commit: `{commit}`")
+
+          blocks.append({
+              "type": "context",
+              "elements": [{
+                  "type": "mrkdwn",
+                  "text": " · ".join(context_items)
+              }]
+          })
+
+          payload = {
+              "channel": channel,
+              "attachments": [{
+                  "color": color,
+                  "blocks": blocks
+              }]
+          }
+
+          webhook = os.environ["SLACK_WEBHOOK"]
+          req = urllib.request.Request(
+              webhook,
+              data=json.dumps(payload).encode(),
+              headers={"Content-Type": "application/json"},
+              method="POST"
+          )
+
+          try:
+              with urllib.request.urlopen(req, timeout=10) as response:
+                  status = response.status
+                  if status == 200:
+                      print(f"✓ Slack notification sent to {channel}")
+                  else:
+                      print(f"⚠ Slack returned status {status}")
+          except urllib.error.HTTPError as e:
+              print(f"✗ Slack request failed: {e.code} {e.reason}")
+          except Exception as e:
+              print(f"✗ Error sending Slack: {e}")
+          PY
+
+  notify-email:
+    name: Send Email notification
+    needs: prepare-notification
+    runs-on: ubuntu-latest
+    if: needs.prepare-notification.outputs.notify-email == 'true'
+    continue-on-error: true
+    steps:
+      - name: Fetch SMTP credentials from Vault
+        uses: hashicorp/vault-action@d1720f055e0e7a166814d3702ccad504a236238f  # v2.8.1
+        id: vault
+        with:
+          url: http://vault.vault.svc:8200
+          method: kubernetes
+          role: ci-runner-role
+          secrets: |
+            alebrije/data/ci/email SMTP_HOST | SMTP_HOST
+            alebrije/data/ci/email SMTP_PORT | SMTP_PORT
+            alebrije/data/ci/email SMTP_USER | SMTP_USER
+            alebrije/data/ci/email SMTP_PASS | SMTP_PASS
+            alebrije/data/ci/email FROM_ADDRESS | FROM_ADDRESS
+
+      - name: Send email notification
+        if: steps.vault.outputs.SMTP_HOST != ''
+        env:
+          SMTP_HOST: ${{ steps.vault.outputs.SMTP_HOST }}
+          SMTP_PORT: ${{ steps.vault.outputs.SMTP_PORT }}
+          SMTP_USER: ${{ steps.vault.outputs.SMTP_USER }}
+          SMTP_PASS: ${{ steps.vault.outputs.SMTP_PASS }}
+          FROM: ${{ steps.vault.outputs.FROM_ADDRESS }}
+          TO: ${{ inputs.email-recipients }}
+          SUBJECT: ${{ inputs.title }}
+          BODY: ${{ inputs.message }}
+          SEVERITY: ${{ inputs.severity }}
+          SERVICE: ${{ inputs.service-name }}
+          RUN_URL: ${{ needs.prepare-notification.outputs.run-url }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          python3 << 'PY'
+          import json
+          import os
+          import smtplib
+          import sys
+          from email.mime.text import MIMEText
+          from email.mime.multipart import MIMEMultipart
+
+          try:
+              recipients_json = os.environ.get("TO", "[]")
+              recipients = json.loads(recipients_json)
+              if not recipients:
+                  print("✓ No email recipients configured, skipping")
+                  sys.exit(0)
+
+              smtp_host = os.environ["SMTP_HOST"]
+              smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+              smtp_user = os.environ["SMTP_USER"]
+              smtp_pass = os.environ["SMTP_PASS"]
+              from_addr = os.environ["FROM"]
+
+              subject = os.environ.get("SUBJECT", "Notification")
+              severity = os.environ.get("SEVERITY", "info").upper()
+              service = os.environ.get("SERVICE", "")
+              body = os.environ.get("BODY", "")
+              run_url = os.environ.get("RUN_URL", "")
+              repo = os.environ.get("REPO", "")
+              actor = os.environ.get("ACTOR", "")
+
+              # Construir HTML email
+              html_body = f"""
+              <html>
+                <body style="font-family: Arial, sans-serif; color: #333;">
+                  <h2>{subject}</h2>
+                  <p><strong>Severity:</strong> <span style="color: #ff0000;">{severity}</span></p>
+              """
+
+              if service:
+                  html_body += f"<p><strong>Service:</strong> {service}</p>"
+
+              if body:
+                  html_body += f"<p><pre>{body}</pre></p>"
+
+              html_body += f"""
+                  <hr/>
+                  <p style="font-size: 0.9em; color: #666;">
+                    <strong>Details:</strong><br/>
+                    Repository: {repo}<br/>
+                    Actor: {actor}<br/>
+                    <a href="{run_url}">View workflow run</a>
+                  </p>
+                </body>
+              </html>
+              """
+
+              # SMTP send
+              with smtplib.SMTP(smtp_host, smtp_port) as server:
+                  server.starttls()
+                  server.login(smtp_user, smtp_pass)
+
+                  msg = MIMEMultipart("alternative")
+                  msg["Subject"] = f"[{severity}] {subject}"
+                  msg["From"] = from_addr
+                  msg["To"] = ", ".join(recipients)
+
+                  msg.attach(MIMEText(body or subject, "plain"))
+                  msg.attach(MIMEText(html_body, "html"))
+
+                  server.sendmail(from_addr, recipients, msg.as_string())
+
+              print(f"✓ Email sent to {len(recipients)} recipient(s)")
+          except Exception as e:
+              print(f"✗ Email send failed: {e}")
+              sys.exit(1)
+          PY
+
+  notify-github:
+    name: Send GitHub PR/Issue comment
+    needs: prepare-notification
+    runs-on: ubuntu-latest
+    if: needs.prepare-notification.outputs.notify-github == 'true' && (inputs.github-pr-number != '' || inputs.github-issue-number != '')
+    continue-on-error: true
+    steps:
+      - name: Post PR comment
+        if: inputs.github-pr-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
+          PR_NUMBER: ${{ inputs.github-pr-number }}
+          TITLE: ${{ inputs.title }}
+          MESSAGE: ${{ inputs.message }}
+          EMOJI: ${{ needs.prepare-notification.outputs.emoji }}
+          SEVERITY: ${{ inputs.severity }}
+          RUN_URL: ${{ needs.prepare-notification.outputs.run-url }}
+        run: |
+          python3 << 'PY'
+          import os
+          import subprocess
+
+          pr_number = os.environ.get("PR_NUMBER", "")
+          if not pr_number:
+              print("✓ No PR number, skipping")
+              exit(0)
+
+          title = os.environ["TITLE"]
+          message = os.environ.get("MESSAGE", "")
+          emoji = os.environ.get("EMOJI", "ℹ️")
+          severity = os.environ.get("SEVERITY", "info")
+          run_url = os.environ.get("RUN_URL", "")
+
+          body = emoji + " **" + title + "**\n\nseverity: `" + severity + "`\n\n" + message + "\n\n---\n[View workflow run](" + run_url + ")"
+
+          cmd = [
+              "gh", "pr", "comment",
+              pr_number,
+              "--body", body
+          ]
+
+          result = subprocess.run(cmd, capture_output=True, text=True)
+          if result.returncode == 0:
+              print(f"✓ PR comment posted on #{pr_number}")
+          else:
+              print(f"✗ Failed to post PR comment: {result.stderr}")
+          PY
+
+      - name: Post issue comment
+        if: inputs.github-issue-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
+          ISSUE_NUMBER: ${{ inputs.github-issue-number }}
+          TITLE: ${{ inputs.title }}
+          MESSAGE: ${{ inputs.message }}
+          EMOJI: ${{ needs.prepare-notification.outputs.emoji }}
+          SEVERITY: ${{ inputs.severity }}
+          RUN_URL: ${{ needs.prepare-notification.outputs.run-url }}
+        run: |
+          python3 << 'PY'
+          import os
+          import subprocess
+
+          issue_number = os.environ.get("ISSUE_NUMBER", "")
+          if not issue_number:
+              print("✓ No issue number, skipping")
+              exit(0)
+
+          title = os.environ["TITLE"]
+          message = os.environ.get("MESSAGE", "")
+          emoji = os.environ.get("EMOJI", "ℹ️")
+          severity = os.environ.get("SEVERITY", "info")
+          run_url = os.environ.get("RUN_URL", "")
+
+          body = emoji + " **" + title + "**\n\nseverity: `" + severity + "`\n\n" + message + "\n\n---\n[View workflow run](" + run_url + ")"
+
+          cmd = [
+              "gh", "issue", "comment",
+              issue_number,
+              "--body", body
+          ]
+
+          result = subprocess.run(cmd, capture_output=True, text=True)
+          if result.returncode == 0:
+              print(f"✓ Issue comment posted on #{issue_number}")
+          else:
+              print(f"✗ Failed to post issue comment: {result.stderr}")
+          PY
+
+  log-notification:
+    name: Log notification to audit trail
+    needs: [prepare-notification, notify-slack, notify-email, notify-github]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Create audit log entry
+        env:
+          TIMESTAMP: ${{ github.event.head_commit.timestamp || github.event.repository.pushed_at || '' }}
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          TITLE: ${{ inputs.title }}
+          SEVERITY: ${{ inputs.severity }}
+          NOTIFICATION_TYPE: ${{ inputs.notification-type }}
+          SLACK_STATUS: ${{ needs.notify-slack.result }}
+          EMAIL_STATUS: ${{ needs.notify-email.result }}
+          GITHUB_STATUS: ${{ needs.notify-github.result }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ needs.prepare-notification.outputs.run-url }}
+        run: |
+          cat << 'EOF' > /tmp/notification-audit.log
+          timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          actor=${{ env.ACTOR }}
+          repo=${{ env.REPO }}
+          title="${{ env.TITLE }}"
+          severity=${{ env.SEVERITY }}
+          notification_type=${{ env.NOTIFICATION_TYPE }}
+          slack_status=${{ env.SLACK_STATUS }}
+          email_status=${{ env.EMAIL_STATUS }}
+          github_status=${{ env.GITHUB_STATUS }}
+          run_id=${{ env.RUN_ID }}
+
+          echo "${timestamp} | actor=${actor} | severity=${severity} | type=${notification_type}"
+          echo "  title: ${title}"
+          echo "  status: slack=${slack_status} email=${email_status} github=${github_status}"
+          echo "  run: ${run_id}"
+          EOF
+          cat /tmp/notification-audit.log
+
+      - name: Upload audit log
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        with:
+          name: notification-audit-${{ github.run_id }}
+          path: /tmp/notification-audit.log
+          retention-days: 90

@@ -60,6 +60,9 @@ on:
         default: true
         type: boolean
 
+permissions:
+  contents: read
+
 jobs:
   pact-verify:
     name: Pact Contract Verification
@@ -93,10 +96,10 @@ jobs:
       # 1. CHECKOUT & SETUP
       # ====================================================================
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
         with:
           python-version: ${{ inputs.python-version }}
           cache: pip
@@ -240,7 +243,7 @@ jobs:
       # Artifacts pueden servir para debugging o auditoría local.
       - name: Upload Pact verification results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
         continue-on-error: true
         with:
           name: pact-results-${{ inputs.provider-name }}-${{ github.run_number }}

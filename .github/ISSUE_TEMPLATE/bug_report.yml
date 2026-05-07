@@ -1,0 +1,54 @@
+name: Bug Report
+about: Report a bug or failure in an Alebrije CI/CD workflow
+title: "[BUG] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. Please fill out this form as completely as possible.
+
+  - type: input
+    id: workflow
+    attributes:
+      label: Affected workflow
+      description: Which workflow is failing? (e.g., reusable-test-go.yml)
+      placeholder: reusable-test-go.yml
+    validations:
+      required: true
+
+  - type: input
+    id: repo
+    attributes:
+      label: Consumer repo
+      description: Which repo is calling this workflow?
+      placeholder: alebrije-io/my-service
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug description
+      description: What happened? What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Copy-paste the relevant part of the workflow run log
+      render: shell
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Low (informational)
+        - Medium (workflow fails, workaround exists)
+        - High (workflow fails, no workaround)
+        - Critical (blocks all deployments)
+    validations:
+      required: true

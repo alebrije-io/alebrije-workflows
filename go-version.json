@@ -1,0 +1,6 @@
+{
+  "version": "1.23",
+  "minimum": "1.21",
+  "ci_matrix": "[\"1.23\",\"1.24\"]",
+  "notes": "Go 1.23 es la versión primaria del fleet Alebrije (STACK.md). 1.24 para forward-compatibility en libs públicas (common-go, mcp-go)."
+}

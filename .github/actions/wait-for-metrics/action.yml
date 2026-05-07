@@ -1,0 +1,193 @@
+name: Wait for Metrics
+description: "Wait for soak time and validate Prometheus metrics (error_rate, p99_latency). Rolls back automatically if thresholds breached."
+
+inputs:
+  duration-minutes:
+    description: "Max duration to wait overall (minutes)"
+    required: true
+  check-interval-seconds:
+    description: "Interval to check Prometheus (seconds)"
+    default: "60"
+  prometheus-url:
+    description: "Prometheus URL (empty = skip metrics check)"
+    default: ""
+  service-name:
+    description: "Service name for Prometheus job selector"
+    required: true
+  error-rate-threshold:
+    description: "Max 5xx error rate % before rollback"
+    default: "5"
+  p99-latency-threshold:
+    description: "Max p99 latency ms before rollback"
+    default: "2000"
+  soak-time-minutes:
+    description: "Minimum soak time per weight step (minutes)"
+    default: "5"
+
+outputs:
+  metrics-healthy:
+    description: "true if all checks passed, false if any threshold exceeded"
+    value: ${{ steps.validate.outputs.metrics-healthy }}
+  error-rate:
+    description: "Final 5xx error rate %"
+    value: ${{ steps.validate.outputs.error-rate }}
+  p99-latency:
+    description: "Final p99 latency ms"
+    value: ${{ steps.validate.outputs.p99-latency }}
+  checks-passed:
+    description: "Number of successful metric checks"
+    value: ${{ steps.validate.outputs.checks-passed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download metric check script
+      shell: bash
+      run: |
+        # Create check script inline to avoid file lookup
+        cat > /tmp/check-metrics.sh << 'SCRIPT_EOF'
+        #!/bin/bash
+        set -euo pipefail
+
+        PROMETHEUS_URL="$1"
+        SERVICE_NAME="$2"
+        ERROR_RATE_THRESHOLD="$3"
+        P99_LATENCY_THRESHOLD="$4"
+        CHECK_INTERVAL="$5"
+        DURATION_MINUTES="$6"
+        SOAK_TIME_MINUTES="$7"
+
+        SOAK_SECONDS=$((SOAK_TIME_MINUTES * 60))
+        MAX_SECONDS=$((DURATION_MINUTES * 60))
+        ELAPSED=0
+        CHECKS=0
+        ERROR_RATE=0
+        P99_LATENCY=0
+        METRICS_HEALTHY=true
+
+        echo "=== Metrics Validation ==="
+        echo "Service: ${SERVICE_NAME}"
+        echo "Error rate threshold: ${ERROR_RATE_THRESHOLD}%"
+        echo "P99 latency threshold: ${P99_LATENCY_THRESHOLD}ms"
+        echo "Check interval: ${CHECK_INTERVAL}s"
+        echo "Soak time: ${SOAK_TIME_MINUTES}m"
+        echo "Max duration: ${DURATION_MINUTES}m"
+        echo ""
+
+        if [ -z "$PROMETHEUS_URL" ]; then
+          echo "No Prometheus URL — waiting soak time only"
+          sleep ${SOAK_SECONDS}
+          echo "Soak complete (no metrics checked)"
+          exit 0
+        fi
+
+        # Pre-check Prometheus availability
+        if ! curl -sf "${PROMETHEUS_URL}/api/v1/status/config" &>/dev/null; then
+          echo "::warning::Prometheus unreachable at ${PROMETHEUS_URL} — proceeding with soak time only"
+          sleep ${SOAK_SECONDS}
+          echo "Soak complete (Prometheus unavailable)"
+          exit 0
+        fi
+
+        # Monitor loop
+        while [ ${ELAPSED} -lt ${MAX_SECONDS} ]; do
+          sleep ${CHECK_INTERVAL}
+          ELAPSED=$((ELAPSED + CHECK_INTERVAL))
+
+          # Query 1: 5xx error rate (%)
+          QUERY_ERROR_RATE="(sum(rate(http_requests_total{job=\"${SERVICE_NAME}\",status=~\"5..\"}[2m])) / sum(rate(http_requests_total{job=\"${SERVICE_NAME}\"}[2m])) * 100)"
+          RESPONSE_ER=$(curl -sf "${PROMETHEUS_URL}/api/v1/query" --data-urlencode "query=${QUERY_ERROR_RATE}" 2>/dev/null || echo '{"data":{"result":[]}}')
+
+          ERROR_RATE=$(echo "$RESPONSE_ER" | jq -r '.data.result[0].value[1] // "0"' 2>/dev/null || echo "0")
+          ERROR_RATE=$(printf "%.2f" "${ERROR_RATE}")
+
+          # Query 2: p99 latency (ms)
+          QUERY_P99="histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job=\"${SERVICE_NAME}\"}[2m])) by (le)) * 1000"
+          RESPONSE_P99=$(curl -sf "${PROMETHEUS_URL}/api/v1/query" --data-urlencode "query=${QUERY_P99}" 2>/dev/null || echo '{"data":{"result":[]}}')
+
+          P99_LATENCY=$(echo "$RESPONSE_P99" | jq -r '.data.result[0].value[1] // "0"' 2>/dev/null || echo "0")
+          P99_LATENCY=$(printf "%.0f" "${P99_LATENCY}")
+
+          CHECKS=$((CHECKS + 1))
+
+          # Log metrics
+          SOAK_ELAPSED=$((ELAPSED - SOAK_SECONDS))
+          if [ ${SOAK_ELAPSED} -lt 0 ]; then
+            SOAK_ELAPSED="soak-$((-SOAK_ELAPSED))s"
+          else
+            SOAK_ELAPSED="${SOAK_ELAPSED}s"
+          fi
+
+          echo "[Check #${CHECKS} | ${SOAK_ELAPSED}] Error rate: ${ERROR_RATE}% | P99 latency: ${P99_LATENCY}ms"
+
+          # Check thresholds (only after soak time)
+          if [ ${ELAPSED} -ge ${SOAK_SECONDS} ]; then
+            ER_CHECK=$(echo "${ERROR_RATE} <= ${ERROR_RATE_THRESHOLD}" | bc -l)
+            P99_CHECK=$(echo "${P99_LATENCY} <= ${P99_LATENCY_THRESHOLD}" | bc -l)
+
+            if [ "${ER_CHECK}" != "1" ]; then
+              echo "::error::Error rate ${ERROR_RATE}% EXCEEDS threshold ${ERROR_RATE_THRESHOLD}%"
+              METRICS_HEALTHY=false
+              break
+            fi
+
+            if [ "${P99_CHECK}" != "1" ]; then
+              echo "::error::P99 latency ${P99_LATENCY}ms EXCEEDS threshold ${P99_LATENCY_THRESHOLD}ms"
+              METRICS_HEALTHY=false
+              break
+            fi
+          fi
+        done
+
+        # Output results
+        echo ""
+        echo "=== Summary ==="
+        echo "Checks completed: ${CHECKS}"
+        echo "Final error rate: ${ERROR_RATE}%"
+        echo "Final p99 latency: ${P99_LATENCY}ms"
+        echo "Metrics healthy: ${METRICS_HEALTHY}"
+        echo ""
+
+        if [ "${METRICS_HEALTHY}" == "true" ]; then
+          echo "::notice::All metrics within threshold"
+          exit 0
+        else
+          echo "::error::Metrics validation FAILED — initiating rollback"
+          exit 1
+        fi
+        SCRIPT_EOF
+        chmod +x /tmp/check-metrics.sh
+
+    - name: Validate metrics
+      id: validate
+      shell: bash
+      run: |
+        RESULT=0
+        OUTPUT=$(/tmp/check-metrics.sh \
+          "${{ inputs.prometheus-url }}" \
+          "${{ inputs.service-name }}" \
+          "${{ inputs.error-rate-threshold }}" \
+          "${{ inputs.p99-latency-threshold }}" \
+          "${{ inputs.check-interval-seconds }}" \
+          "${{ inputs.duration-minutes }}" \
+          "${{ inputs.soak-time-minutes }}" 2>&1) || RESULT=$?
+
+        # Parse outputs from script
+        ERROR_RATE=$(echo "$OUTPUT" | grep "Final error rate:" | awk '{print $4}')
+        P99_LATENCY=$(echo "$OUTPUT" | grep "Final p99 latency:" | awk '{print $4}')
+        CHECKS=$(echo "$OUTPUT" | grep "Checks completed:" | awk '{print $3}')
+        HEALTHY=$(echo "$OUTPUT" | grep "Metrics healthy:" | awk '{print $3}')
+
+        # Default values if parse failed
+        ERROR_RATE="${ERROR_RATE:-0}"
+        P99_LATENCY="${P99_LATENCY:-0}"
+        CHECKS="${CHECKS:-0}"
+        HEALTHY="${HEALTHY:-false}"
+
+        echo "metrics-healthy=${HEALTHY}" >> $GITHUB_OUTPUT
+        echo "error-rate=${ERROR_RATE}" >> $GITHUB_OUTPUT
+        echo "p99-latency=${P99_LATENCY}" >> $GITHUB_OUTPUT
+        echo "checks-passed=${CHECKS}" >> $GITHUB_OUTPUT
+
+        echo "$OUTPUT"
+        exit $RESULT

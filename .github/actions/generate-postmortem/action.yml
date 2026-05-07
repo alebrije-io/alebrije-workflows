@@ -1,0 +1,136 @@
+name: Generate Postmortem
+description: >-
+  Generates a postmortem markdown template for incident documentation.
+  ADR-001 Block P. Uploads as a GitHub Actions artifact for download.
+  Non-blocking - informational artifact, does not fail the workflow.
+
+inputs:
+  incident-title:
+    description: "Short incident title (e.g., 'svc-auth 503 on prod 2026-05-07')"
+    required: true
+  severity:
+    description: "Severity level: P0 | P1 | P2 | P3"
+    required: false
+    default: "P1"
+  service:
+    description: "Primary affected service (e.g., svc-auth)"
+    required: false
+    default: "unknown"
+  detected-at:
+    description: "ISO 8601 timestamp when incident was detected"
+    required: false
+    default: "TBD"
+  resolved-at:
+    description: "ISO 8601 timestamp when incident was resolved"
+    required: false
+    default: "TBD"
+  triggered-by:
+    description: "What triggered the incident (e.g., deploy, traffic spike, config change)"
+    required: false
+    default: "TBD"
+  output-filename:
+    description: "Output markdown filename (defaults to postmortem-<run-id>.md)"
+    required: false
+    default: ""
+  artifact-name:
+    description: "GitHub artifact name for upload"
+    required: false
+    default: "postmortem"
+  retention-days:
+    description: "Artifact retention in days"
+    required: false
+    default: "90"
+
+outputs:
+  postmortem-file:
+    description: "Path to generated postmortem markdown file"
+    value: ${{ steps.generate.outputs.postmortem_file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Generate postmortem template
+      id: generate
+      shell: bash
+      run: |
+        OUT="${{ inputs.output-filename }}"
+        if [ -z "$OUT" ]; then
+          OUT="postmortem-${{ github.run_id }}.md"
+        fi
+
+        GENERATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        SHA="${{ github.sha }}"
+        SHA="${SHA:0:8}"
+
+        cat > "$OUT" <<'POSTMORTEM_EOF'
+        TITLE_PLACEHOLDER
+        POSTMORTEM_EOF
+
+        # Build the file properly (avoid heredoc marker collisions)
+        {
+          printf "# Postmortem: %s\n\n" "${{ inputs.incident-title }}"
+          printf "> **Severity**: %s | **Service**: %s | **Generated**: %s\n" \
+            "${{ inputs.severity }}" "${{ inputs.service }}" "$GENERATED_AT"
+          printf "> **Repo**: %s | **Actor**: %s | **Commit**: %s\n\n" \
+            "${{ github.repository }}" "${{ github.actor }}" "$SHA"
+          printf -- "---\n\n"
+          printf "## Summary\n\n"
+          printf "<!-- 1-3 sentences: what happened, impact, resolution -->\n\n"
+          printf "_To be filled by incident owner._\n\n"
+          printf -- "---\n\n"
+          printf "## Timeline\n\n"
+          printf "| Time (UTC) | Event |\n"
+          printf "|------------|-------|\n"
+          printf "| %s | Incident detected |\n" "${{ inputs.detected-at }}"
+          printf "| TBD | Acknowledged |\n"
+          printf "| TBD | Root cause identified |\n"
+          printf "| %s | Incident resolved |\n" "${{ inputs.resolved-at }}"
+          printf "| TBD | All-clear confirmed |\n\n"
+          printf -- "---\n\n"
+          printf "## Root Cause\n\n"
+          printf "<!-- Describe the technical root cause. What failed and why? -->\n\n"
+          printf "_Triggered by_: %s\n\n" "${{ inputs.triggered-by }}"
+          printf -- "---\n\n"
+          printf "## Impact\n\n"
+          printf "- **Duration**: <!-- from detected_at to resolved_at -->\n"
+          printf "- **Services affected**: %s\n" "${{ inputs.service }}"
+          printf "- **Users affected**: <!-- count or percentage -->\n"
+          printf "- **Data loss**: <!-- yes/no -->\n"
+          printf "- **SLA breach**: <!-- yes/no -->\n\n"
+          printf -- "---\n\n"
+          printf "## Contributing Factors\n\n"
+          printf "1. \n2. \n\n"
+          printf -- "---\n\n"
+          printf "## Resolution\n\n"
+          printf "### Immediate fix\n\n### Root fix (long-term)\n\n"
+          printf -- "---\n\n"
+          printf "## Action Items\n\n"
+          printf "| # | Action | Owner | Due Date | Status |\n"
+          printf "|---|--------|-------|----------|--------|\n"
+          printf "| 1 | | | | pending |\n"
+          printf "| 2 | | | | pending |\n\n"
+          printf -- "---\n\n"
+          printf "## Detection and Alerting\n\n"
+          printf "- **How detected**: <!-- monitoring alert / user report / CI -->\n"
+          printf "- **Alert lag**: <!-- time between incident start and alert -->\n"
+          printf "- **Alerting gaps**: <!-- what should have fired but did not -->\n\n"
+          printf -- "---\n\n"
+          printf "## Lessons Learned\n\n"
+          printf "<!-- What did we learn? What would you do differently? -->\n\n"
+          printf -- "---\n\n"
+          printf "## References\n\n"
+          printf "- Commit: %s\n" "$SHA"
+          printf "- GitHub Run: https://github.com/%s/actions/runs/%s\n" \
+            "${{ github.repository }}" "${{ github.run_id }}"
+          printf "- Related ADRs: <!-- link relevant ADRs -->\n"
+        } > "$OUT"
+
+        echo "Generated postmortem template: $OUT"
+        echo "postmortem_file=$OUT" >> "$GITHUB_OUTPUT"
+
+    - name: Upload postmortem artifact
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+      with:
+        name: ${{ inputs.artifact-name }}-${{ github.run_number }}
+        path: ${{ steps.generate.outputs.postmortem_file }}
+        retention-days: ${{ inputs.retention-days }}

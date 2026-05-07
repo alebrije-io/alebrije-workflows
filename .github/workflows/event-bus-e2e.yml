@@ -25,6 +25,9 @@ concurrency:
   group: event-bus-e2e-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
@@ -38,33 +41,33 @@ jobs:
 
     steps:
       - name: Checkout workflows repo (self)
-        uses: actions/checkout@v4
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:
           path: alebrije-workflows
 
       - name: Checkout alebrije-common (Python)
-        uses: actions/checkout@v4
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:
           repository: alebrije-io/alebrije-common
           path: alebrije-common
           token: ${{ secrets.ALEBRIJE_CI_TOKEN }}
 
       - name: Checkout alebrije-common-go
-        uses: actions/checkout@v4
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:
           repository: alebrije-io/alebrije-common-go
           path: alebrije-common-go
           token: ${{ secrets.ALEBRIJE_CI_TOKEN }}
 
       - name: Checkout alebrije-common-ex
-        uses: actions/checkout@v4
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:
           repository: alebrije-io/alebrije-common-ex
           path: alebrije-common-ex
           token: ${{ secrets.ALEBRIJE_CI_TOKEN }}
 
       - name: Checkout tests workspace
-        uses: actions/checkout@v4
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:
           repository: alebrije-io/alebrije-tests
           path: tests
@@ -76,7 +79,7 @@ jobs:
 
       # ── Toolchains ────────────────────────────────────────────────────
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
         with:
           python-version: "3.12"
           cache: pip
@@ -87,7 +90,7 @@ jobs:
           pip install redis jsonschema prometheus_client
 
       - name: Set up Go 1.25
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@cdcb36256b49618355e264982131d2dec09dee08  # v5.1.0
         with:
           go-version: "1.25"
           cache-dependency-path: |
@@ -95,7 +98,7 @@ jobs:
             tests/event-bus-integration/testdata/go.mod
 
       - name: Set up Elixir
-        uses: erlef/setup-beam@v1
+        uses: erlef/setup-beam@7bac9ca1bd48b5e4021d43cbe9ce61172821b092  # v1.18.1
         with:
           otp-version: "27"
           elixir-version: "1.17"
@@ -117,7 +120,7 @@ jobs:
 
       - name: Upload scenario logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
         with:
           name: event-bus-e2e-reports
           path: tests/event-bus-integration/reports/

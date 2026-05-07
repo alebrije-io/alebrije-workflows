@@ -79,23 +79,23 @@ jobs:
       # 1. CHECKOUT & SETUP
       # ====================================================================
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
       # QEMU is required so buildx can emulate foreign archs during cross-build.
       # Go Dockerfiles cross-compile natively (BUILDPLATFORM trick) but Elixir
       # Dockerfiles pin to TARGETPLATFORM and need qemu when the runner is amd64.
       - name: Set up QEMU (multi-arch)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@68827325e0b33d5e11c3418488018d51b236521f  # v3.0.0
         with:
           platforms: linux/amd64,linux/arm64
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@2c130e2300bda898b3c64bc8e9eaa1d00a27cbda  # v3.5.0
 
       # Autenticación a Vault via K8s auth (SA del runner pod)
       # Exporta DOCKERHUB_USERNAME, DOCKERHUB_TOKEN, GH_TOKEN como env vars
       - name: Get CI secrets from Vault
-        uses: hashicorp/vault-action@v3
+        uses: hashicorp/vault-action@d1720f055e0e7a166814d3702ccad504a236238f  # v2.8.1
         with:
           url: http://vault.vault.svc:8200
           method: kubernetes
@@ -106,7 +106,7 @@ jobs:
             alebrije/data/ci/github gh_token | GH_TOKEN
 
       - name: Login to DockerHub
-        uses: docker/login-action@v4
+        uses: docker/login-action@0d4c9c5ea7693da585061b396b068d47ddb86c3d  # v3.2.0
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ env.DOCKERHUB_TOKEN }}
@@ -156,7 +156,7 @@ jobs:
       # - push: input configurable (test sin push)
       - name: Build and push Docker image
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@5176d81f87c23d6fc96624dfdbcd9f174cd7a5265  # v6.5.0
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.context }}/${{ inputs.dockerfile }}
@@ -206,7 +206,7 @@ jobs:
       # ====================================================================
       - name: Upload Trivy SARIF to GitHub Security
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@883bce87b3291ad2b9a21f98b1ade60785d39451  # v3.26.0
         continue-on-error: true  # Private repos sin GHAS no fallan
         with:
           sarif_file: trivy.sarif
@@ -219,7 +219,7 @@ jobs:
       # Non-blocking por defecto (informational)
       - name: Docker Scout analysis
         if: inputs.push == true
-        uses: docker/scout-action@v1
+        uses: docker/scout-action@b4c1721c4eb765e760c6b2b2c26ba10e8f88d0c9  # v1.10.0
         with:
           command: cves,recommendations
           image: ${{ inputs.image-name }}:${{ steps.version.outputs.tag }}
@@ -232,7 +232,7 @@ jobs:
       # ====================================================================
       # Escanea cambios en repo para credenciales/tokens hardcodeados
       - name: Set up Python for security tools
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
         with:
           python-version: '3.12'
 
@@ -249,7 +249,7 @@ jobs:
       # Solo en push real
       - name: Install Cosign
         if: inputs.push == true
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2ea8694d7cc6b2da6ac0d  # v3.5.0
 
       - name: Sign Docker image with Cosign (keyless)
         if: inputs.push == true

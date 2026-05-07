@@ -1,0 +1,6 @@
+{
+  "version": "27",
+  "minimum": "26",
+  "ci_matrix": "[\"27\"]",
+  "notes": "OTP 27 es la versión primaria (STACK.md). OTP 26 para backward compat testing."
+}

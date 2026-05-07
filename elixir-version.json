@@ -1,0 +1,6 @@
+{
+  "version": "1.18",
+  "minimum": "1.16",
+  "ci_matrix": "[\"1.18\"]",
+  "notes": "Elixir 1.18 es la versión primaria del fleet (STACK.md). Compatible con OTP 27."
+}

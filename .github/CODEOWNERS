@@ -1,7 +1,31 @@
-# Global owner
-*                         @ileonelperea
+# Default CODEOWNERS for alebrije-workflows
+# This file defines who must review and approve changes.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 
-# CI and infrastructure
-.github/                  @ileonelperea
-/k8s/                     @ileonelperea
-/Dockerfile               @ileonelperea
+# Root-level configuration and documentation
+*                          @ileonelperea
+VERSION                    @ileonelperea
+LICENSE                    @ileonelperea
+README.md                  @ileonelperea
+
+# GitHub-specific configuration
+.github/                   @ileonelperea
+.github/workflows/         @ileonelperea
+.github/actions/           @ileonelperea
+.github/*.md               @ileonelperea
+.github/CODEOWNERS         @ileonelperea
+
+# Infrastructure and deployment
+/k8s/                      @ileonelperea
+/scripts/                  @ileonelperea
+/Dockerfile                @ileonelperia
+Makefile                   @ileonelperea
+
+# Documentation
+/docs/                     @ileonelperea
+/docs/adr/                 @ileonelperea
+
+# Workflow-specific patterns (audit trail)
+.github/workflows/reusable-test-*.yml      @ileonelperea
+.github/workflows/reusable-security-*.yml  @ileonelperea
+.github/workflows/ci-*.yml                 @ileonelperea

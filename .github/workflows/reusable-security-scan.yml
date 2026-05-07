@@ -66,6 +66,26 @@ on:
         required: false
         default: true
         type: boolean
+      run-grype:
+        description: "Run Grype supply chain scan"
+        required: false
+        default: true
+        type: boolean
+      run-osv:
+        description: "Run OSV-Scanner dependency vulnerabilities"
+        required: false
+        default: true
+        type: boolean
+      run-codeql:
+        description: "Run CodeQL SAST analysis (advisory)"
+        required: false
+        default: false
+        type: boolean
+      codeql-languages:
+        description: "Comma-separated CodeQL languages (go,python,javascript,typescript)"
+        required: false
+        default: "python"
+        type: string
 
 permissions:
   contents: read
@@ -81,10 +101,10 @@ jobs:
     if: ${{ inputs.scan-type == 'fs' || inputs.scan-type == 'all' }}
     runs-on: arc-runner-set
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
       - name: Trivy fs scan (blocking on ${{ inputs.fail-on }})
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@6e7b7d1feac57900da086aab9910c4a723a29e20  # v0.24.0
         with:
           scan-type: fs
           scan-ref: .
@@ -96,7 +116,7 @@ jobs:
 
       - name: Upload fs SARIF to GitHub Security
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@883bce87b3291ad2b9a21f98b1ade60785d39451  # v3.26.0
         continue-on-error: true
         with:
           sarif_file: trivy-fs.sarif
@@ -111,7 +131,7 @@ jobs:
     runs-on: arc-runner-set
     steps:
       - name: Trivy image scan (blocking on ${{ inputs.fail-on }})
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@6e7b7d1feac57900da086aab9910c4a723a29e20  # v0.24.0
         with:
           scan-type: image
           image-ref: ${{ inputs.image-ref }}
@@ -123,7 +143,7 @@ jobs:
 
       - name: Upload image SARIF to GitHub Security
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@883bce87b3291ad2b9a21f98b1ade60785d39451  # v3.26.0
         continue-on-error: true
         with:
           sarif_file: trivy-image.sarif
@@ -139,7 +159,7 @@ jobs:
     if: ${{ inputs.scan-type == 'config' || inputs.scan-type == 'all' }}
     runs-on: arc-runner-set
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
       - name: Check if config path exists
         id: check-path
@@ -153,7 +173,7 @@ jobs:
 
       - name: Trivy config scan (table, non-blocking)
         if: steps.check-path.outputs.exists == 'true'
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@6e7b7d1feac57900da086aab9910c4a723a29e20  # v0.24.0
         with:
           scan-type: config
           scan-ref: ${{ inputs.config-scan-path }}
@@ -174,7 +194,7 @@ jobs:
 
       - name: Upload config SARIF to GitHub Security
         if: always() && steps.check-path.outputs.exists == 'true'
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@883bce87b3291ad2b9a21f98b1ade60785d39451  # v3.26.0
         continue-on-error: true
         with:
           sarif_file: trivy-config.sarif
@@ -190,10 +210,10 @@ jobs:
     runs-on: arc-runner-set
     continue-on-error: true   # best-effort, no tumba el pipeline
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
       - name: Generate SBOM (CycloneDX JSON)
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@94c5171b85ffd3245328d33f126e8afc59d4341e  # v0.17.1
         with:
           path: ${{ inputs.sbom-path }}
           format: cyclonedx-json
@@ -201,7 +221,7 @@ jobs:
 
       - name: Upload SBOM artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
         with:
           name: sbom-cyclonedx-${{ github.run_number }}
           path: sbom.cdx.json
@@ -216,9 +236,9 @@ jobs:
     if: ${{ inputs.scan-secrets }}
     runs-on: arc-runner-set
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
         with:
           python-version: "3.12"
 
@@ -250,7 +270,7 @@ jobs:
       github.ref == 'refs/heads/main'
     runs-on: arc-runner-set
     steps:
-      - uses: sigstore/cosign-installer@v3
+      - uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2ea8694d7cc6b2da6ac0d  # v3.5.0
 
       - name: Sign image with Cosign (keyless)
         env:
@@ -261,12 +281,100 @@ jobs:
           echo "Image signed via Sigstore transparency log"
 
   # ======================================================================
+  # GRYPE — supply chain scan (Block E)
+  # ======================================================================
+  # Runs in parallel con otros scanners. Cada scanner encuentra vulns diferentes.
+  grype-scan:
+    name: Grype supply chain scan
+    if: ${{ inputs.run-grype }}
+    runs-on: arc-runner-set
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - name: Grype filesystem scan (blocking HIGH/CRITICAL)
+        uses: anchore/scan-action@3343887d815470937b28435c1f47a622ac5a202d  # v4.1.0
+        id: grype
+        with:
+          path: "."
+          severity-cutoff: high
+          output-format: sarif
+          fail-build: true
+
+      - name: Upload Grype SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@883bce87b3291ad2b9a21f98b1ade60785d39451  # v3.26.0
+        continue-on-error: true
+        with:
+          sarif_file: ${{ steps.grype.outputs.sarif }}
+          category: grype-supply-chain
+
+  # ======================================================================
+  # OSV-SCANNER — dependency vulnerabilities cross-language (Block E)
+  # ======================================================================
+  osv-scan:
+    name: OSV-Scanner dependency vulnerabilities
+    if: ${{ inputs.run-osv }}
+    runs-on: arc-runner-set
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - name: OSV-Scanner (blocking HIGH/CRITICAL)
+        uses: google/osv-scanner-action/osv-scanner-action@216810cdc61a81e1e59d9c84b8047cd93fcde376  # v1.8.0
+        with:
+          scan-args: |-
+            --recursive
+            --format=sarif
+            --output=osv-results.sarif
+            .
+
+      - name: Upload OSV SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@883bce87b3291ad2b9a21f98b1ade60785d39451  # v3.26.0
+        continue-on-error: true
+        with:
+          sarif_file: osv-results.sarif
+          category: osv-scanner
+
+  # ======================================================================
+  # CODEQL — SAST analysis (Block E, advisory only)
+  # ======================================================================
+  # CodeQL results go to Security tab. No exit code failure — es análisis estático,
+  # las alertas son informativas, no bloquean el pipeline.
+  codeql-analysis:
+    name: CodeQL SAST (advisory)
+    if: ${{ inputs.run-codeql }}
+    runs-on: arc-runner-set
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJson(format('[{0}]', join(split(inputs.codeql-languages, ','), ','))) }}
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@883bce87b3291ad2b9a21f98b1ade60785d39451  # v3.26.0
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@883bce87b3291ad2b9a21f98b1ade60785d39451  # v3.26.0
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@883bce87b3291ad2b9a21f98b1ade60785d39451  # v3.26.0
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  # ======================================================================
   # SUMMARY — runs even if upstream jobs fail
   # ======================================================================
   summary:
     name: Security scan summary
     if: always()
-    needs: [trivy-fs-scan, trivy-image-scan, trivy-config-scan, sbom, detect-secrets, cosign-sign]
+    needs: [trivy-fs-scan, trivy-image-scan, trivy-config-scan, sbom, detect-secrets, cosign-sign, grype-scan, osv-scan, codeql-analysis]
     runs-on: arc-runner-set
     steps:
       - name: Print summary
@@ -285,6 +393,9 @@ jobs:
           echo "  sbom:              ${{ needs.sbom.result }}"
           echo "  detect-secrets:    ${{ needs.detect-secrets.result }}"
           echo "  cosign-sign:       ${{ needs.cosign-sign.result }}"
+          echo "  grype-scan:        ${{ needs.grype-scan.result }}"
+          echo "  osv-scan:          ${{ needs.osv-scan.result }}"
+          echo "  codeql-analysis:   ${{ needs.codeql-analysis.result }}"
           echo ""
           echo "False positives: add CVE IDs to .trivyignore at repo root"
           echo "SBOM artifact:   sbom-cyclonedx-${{ github.run_number }}"

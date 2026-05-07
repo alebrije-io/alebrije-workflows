@@ -1,0 +1,47 @@
+name: Post Benchmark Comment
+description: Posts benchmark comparison results as a PR comment
+
+inputs:
+  comparison:
+    description: "Benchmark comparison text (inline)"
+    required: false
+  comparison-file:
+    description: "Path to markdown file with comparison table"
+    required: false
+  threshold:
+    description: "Regression threshold % used"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Build comment body
+      id: build-comment
+      shell: bash
+      run: |
+        BODY="## Benchmark Results 📊\n\n"
+        if [ -n "${{ inputs.comparison-file }}" ] && [ -f "${{ inputs.comparison-file }}" ]; then
+          BODY="${BODY}$(cat '${{ inputs.comparison-file }}')\n\n"
+        elif [ -n "${{ inputs.comparison }}" ]; then
+          BODY="${BODY}\`\`\`\n${{ inputs.comparison }}\n\`\`\`\n\n"
+        fi
+        BODY="${BODY}> Regression threshold: ${{ inputs.threshold }}% | 🟢 OK | 🟡 >5% | 🔴 >${{ inputs.threshold }}%"
+        echo "body<<EOF" >> $GITHUB_OUTPUT
+        echo -e "${BODY}" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Find existing benchmark comment
+      id: find-comment
+      uses: peter-evans/find-comment@3eae4d37986fb5a8592848f6a574fdf654e61f9e # v3
+      with:
+        issue-number: ${{ github.event.pull_request.number }}
+        comment-author: 'github-actions[bot]'
+        body-includes: '## Benchmark Results'
+
+    - name: Create or update PR comment
+      uses: peter-evans/create-or-update-comment@71345be0265236311c031f5c7866368bd1eff043 # v4
+      with:
+        comment-id: ${{ steps.find-comment.outputs.comment-id }}
+        issue-number: ${{ github.event.pull_request.number }}
+        body: ${{ steps.build-comment.outputs.body }}
+        edit-mode: replace

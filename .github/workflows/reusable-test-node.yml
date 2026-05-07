@@ -14,13 +14,16 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test & Build
     runs-on: arc-runner-set
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
       - name: Detect package manager
         id: pm
@@ -34,7 +37,7 @@ jobs:
           fi
 
       - name: Set up Node.js ${{ inputs.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@1a4442caab129478d0a1be482dbe86fb8fbf7f4f  # v4.1.0
         with:
           node-version: ${{ inputs.node-version }}
           cache: ${{ steps.pm.outputs.manager }}
@@ -67,7 +70,7 @@ jobs:
 
       - name: Upload coverage (if available)
         if: always()
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@125fc84a2bfd3c102d6a49fa07367b1ac6dbf2ac  # v4.4.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: frontend

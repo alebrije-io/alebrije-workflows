@@ -1,0 +1,81 @@
+name: Sign with Cosign (Keyless)
+description: |
+  Signs a Docker image with Cosign using Sigstore keyless OIDC signing.
+  ADR-001 Block P. Only runs on push to main (guard built-in).
+  No keys stored — transparency log entry created automatically.
+
+inputs:
+  image-ref:
+    description: "Full image ref to sign (e.g. ileonelperea/alebrije-svc-auth:1.2.3)"
+    required: true
+  image-digest:
+    description: "Image digest (sha256:...) for immutable signing reference"
+    required: false
+    default: ""
+  only-on-main:
+    description: "Enforce signing only on push to main branch (default true)"
+    required: false
+    default: "true"
+  cosign-experimental:
+    description: "Enable COSIGN_EXPERIMENTAL for Rekor transparency log"
+    required: false
+    default: "true"
+
+outputs:
+  signed:
+    description: "Whether the image was signed (true/false)"
+    value: ${{ steps.sign.outputs.signed }}
+  signature-ref:
+    description: "The reference that was signed"
+    value: ${{ steps.sign.outputs.signature_ref }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check branch guard
+      id: check-guard
+      shell: bash
+      run: |
+        if [ "${{ inputs.only-on-main }}" = "true" ]; then
+          if [ "${{ github.event_name }}" != "push" ] || [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cosign signing skipped — not a push to main (event=${{ github.event_name }}, ref=${{ github.ref }})"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+        else
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Install Cosign
+      if: steps.check-guard.outputs.skip != 'true'
+      uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac  # v3
+
+    - name: Sign image with Cosign (keyless)
+      id: sign
+      if: steps.check-guard.outputs.skip != 'true'
+      shell: bash
+      env:
+        COSIGN_EXPERIMENTAL: ${{ inputs.cosign-experimental }}
+      run: |
+        # Prefer digest-pinned ref for immutable signing
+        if [ -n "${{ inputs.image-digest }}" ]; then
+          # Sign by digest — immutable, not just tag
+          REF="${{ inputs.image-ref }}@${{ inputs.image-digest }}"
+        else
+          REF="${{ inputs.image-ref }}"
+        fi
+
+        echo "Signing: ${REF}"
+        cosign sign --yes "${REF}"
+        echo "Image signed via Sigstore transparency log"
+
+        echo "signed=true" >> "$GITHUB_OUTPUT"
+        echo "signature_ref=${REF}" >> "$GITHUB_OUTPUT"
+
+    - name: Output skipped status
+      if: steps.check-guard.outputs.skip == 'true'
+      shell: bash
+      run: |
+        echo "signed=false" >> "$GITHUB_OUTPUT"
+        echo "signature_ref=" >> "$GITHUB_OUTPUT"
