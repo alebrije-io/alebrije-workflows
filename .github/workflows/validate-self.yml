@@ -3,11 +3,11 @@ name: Validate alebrije-workflows (Security Hardening Block R)
 # ADR-001 Block R: GitHub Actions Security Hardening
 #
 # Comprehensive self-validation of alebrije-workflows reusable workflows:
-#   1. audit-shas: ALL uses: statements MUST be pinned to SHAs, not @v* or @master
-#   2. check-hardcoded-secrets: NO hardcoded AWS keys, GH tokens, or other credentials
-#   3. check-permissions: EVERY workflow must have explicit permissions: block
-#   4. validate-yaml: All YAML syntax valid + line lengths reasonable
-#   5. anti-patterns: Flag any || true in critical contexts (quality gates, deploys)
+#   1. audit-shas: ALL uses: SHA-pinned (not @v* or @master)
+#   2. check-hardcoded-secrets: NO AWS keys, GH tokens
+#   3. check-permissions: EVERY workflow has permissions: block
+#   4. validate-yaml: All YAML syntax valid
+#   5. anti-patterns: Flag || true in critical contexts
 #
 # Runs on: PR (path filter), push main/develop, weekly schedule, manual dispatch
 #
@@ -42,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
-      - name: Check for untagged uses: statements (supply chain risk)
+      - name: "Check for untagged uses: statements (supply chain risk)"
         id: audit-shas
         run: |
           echo "::group::Searching for untagged uses: statements..."
@@ -110,7 +110,7 @@ jobs:
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
-      - name: Check all workflows have permissions: block
+      - name: "Check all workflows have permissions: block"
         id: check-perms
         run: |
           echo "::group::Checking permissions: blocks..."
@@ -166,7 +166,7 @@ jobs:
   # AUDIT 5: Anti-patterns (|| true in quality gates, --no-verify, etc)
   # ======================================================================
   check-anti-patterns:
-    name: Anti-patterns scan (Rule #11 compliance)
+    name: "Anti-patterns scan (Rule #11 compliance)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
@@ -276,7 +276,14 @@ jobs:
           echo "| Action References | ${{ needs.check-action-refs.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Workflow Structure | ${{ needs.validate-structure.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Status**: $(if [ '${{ needs.audit-shas.result }}' = 'success' ] && [ '${{ needs.check-hardcoded-secrets.result }}' = 'success' ] && [ '${{ needs.check-permissions.result }}' = 'success' ] && [ '${{ needs.validate-yaml.result }}' = 'success' ]; then echo '✅ PASS'; else echo '❌ FAIL'; fi)" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.audit-shas.result }}" = "success" ] && \
+             [ "${{ needs.check-hardcoded-secrets.result }}" = "success" ] && \
+             [ "${{ needs.check-permissions.result }}" = "success" ] && \
+             [ "${{ needs.validate-yaml.result }}" = "success" ]; then
+            echo "**Status**: ✅ PASS" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Status**: ❌ FAIL" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Comment audit results on PR (if PR)
         if: github.event_name == 'pull_request' && failure()

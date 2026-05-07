@@ -181,7 +181,7 @@ jobs:
       # SBOM: eliminado aquí — 'sbom: true' en el build step ya genera SBOM como
       #   OCI attestation en DockerHub. Trivy CycloneDX era duplicado (+10-40min).
       - name: Trivy scan — CRITICAL (table, blocking)
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
         continue-on-error: true  # Trivy exits 1 on infra errors, not just real CVEs
         with:
           image-ref: ${{ inputs.image-name }}:${{ steps.version.outputs.tag }}
@@ -192,7 +192,7 @@ jobs:
 
       - name: Trivy scan — CRITICAL+HIGH (SARIF, non-blocking)
         if: always()
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
         with:
           image-ref: ${{ inputs.image-name }}:${{ steps.version.outputs.tag }}
           format: sarif
