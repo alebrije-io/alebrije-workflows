@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/payments-enhanced.base.v1.json",
+  "title": "payments-enhanced base schema v1",
+  "description": "Enhanced schema for payments module events. Extends basic payments events with reconciliation, refunds, and accounting integrations.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": ["payment_id", "action"],
+          "properties": {
+            "payment_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Unique identifier for the payment"
+            },
+            "action": {
+              "type": "string",
+              "enum": ["initiated", "processing", "completed", "failed", "refunded", "disputed", "reconciled"],
+              "description": "Payment action type"
+            },
+            "invoice_id": {
+              "type": ["string", "null"],
+              "format": "uuid"
+            },
+            "amount": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?$",
+              "description": "Decimal string, positive"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "refund_amount": {
+              "type": ["string", "null"],
+              "pattern": "^[0-9]+(\\.[0-9]+)?$"
+            },
+            "provider": {
+              "type": ["string", "null"],
+              "description": "Payment processor (stripe, mercadopago, etc.)"
+            },
+            "provider_transaction_id": {
+              "type": ["string", "null"]
+            },
+            "failure_reason": {
+              "type": ["string", "null"]
+            },
+            "reconciliation_status": {
+              "type": ["string", "null"],
+              "enum": ["pending", "reconciled", "discrepancy"]
+            },
+            "accounting_code": {
+              "type": ["string", "null"],
+              "description": "GL account code for accounting integration"
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

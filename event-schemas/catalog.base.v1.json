@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/catalog.base.v1.json",
+  "title": "catalog base schema v1",
+  "description": "Base schema for catalog module events. Represents product/service catalog management, inventory updates, and pricing changes.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": ["item_id", "action"],
+          "properties": {
+            "item_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Product/service identifier"
+            },
+            "action": {
+              "type": "string",
+              "enum": ["created", "updated", "deleted", "inventory_adjusted", "price_changed", "published", "archived"],
+              "description": "Catalog event type"
+            },
+            "sku": {
+              "type": ["string", "null"],
+              "description": "Stock keeping unit"
+            },
+            "name": {
+              "type": ["string", "null"],
+              "description": "Item name"
+            },
+            "category": {
+              "type": ["string", "null"],
+              "description": "Product category"
+            },
+            "inventory_quantity": {
+              "type": ["integer", "null"],
+              "description": "Current quantity in stock"
+            },
+            "previous_quantity": {
+              "type": ["integer", "null"],
+              "description": "Previous quantity before adjustment"
+            },
+            "price": {
+              "type": ["string", "null"],
+              "pattern": "^[0-9]+(\\.[0-9]+)?$"
+            },
+            "previous_price": {
+              "type": ["string", "null"],
+              "pattern": "^[0-9]+(\\.[0-9]+)?$"
+            },
+            "currency": {
+              "type": ["string", "null"],
+              "pattern": "^[A-Z]{3}$"
+            },
+            "reason": {
+              "type": ["string", "null"],
+              "description": "Business reason for change (restocking, demand, etc.)"
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/agentic.base.v1.json",
+  "title": "agentic base schema v1",
+  "description": "Base schema for agentic module events. Represents agent execution, graph operations, and tool invocations.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": ["agent_id", "action"],
+          "properties": {
+            "agent_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Unique identifier for the agent instance"
+            },
+            "graph_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Agent computation graph identifier"
+            },
+            "action": {
+              "type": "string",
+              "enum": ["started", "step_completed", "tool_invoked", "graph_executed", "error", "completed"],
+              "description": "Type of agentic event"
+            },
+            "step_index": {
+              "type": ["integer", "null"],
+              "description": "Index of current step in execution"
+            },
+            "tool_name": {
+              "type": ["string", "null"],
+              "description": "Name of tool invoked, if applicable"
+            },
+            "result": {
+              "type": ["object", "null"],
+              "description": "Result of agent action or tool invocation"
+            },
+            "error_message": {
+              "type": ["string", "null"],
+              "description": "Error details if action failed"
+            },
+            "execution_time_ms": {
+              "type": ["number", "null"],
+              "description": "Time taken for this action in milliseconds"
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

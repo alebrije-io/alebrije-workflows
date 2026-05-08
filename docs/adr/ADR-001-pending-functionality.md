@@ -588,9 +588,12 @@ Solo si fleet supera N min/mes que justifique infra ops.
 5. **Vuln scan:** Trivy + Grype + OSV + CodeQL + cosign signing.
 6. **Perf regression:** PR comment con benchmark diff + auto-fail si > 10%.
 7. **Dependabot + versions:** centralized JSON + auto-bump PR cross-fleet.
+   > **Note**: auto-bump PR cross-fleet is not yet automated — trigger framework exists but opening PRs automatically requires additional implementation (DEBT-004).
 8. **OpenAPI check:** spectral lint + oasdiff breaking detection.
 9. **Event schemas:** breaking change detection + auto-registry publish.
+   > **Note**: auto-registry publish to Confluent/custom registry not implemented — only validation exists (AQ-001).
 10. **Release auto:** semver + changelog + signed + multi-lang publish.
+   > **Note**: Multi-language publish framework exists but not battle-tested in production for all languages (Python/Elixir/TS — Go proven) (AQ-002, DEBT-005).
 11. **Canary deploy:** integration con Prometheus + auto-rollback.
 12. **Cross-repo:** trigger downstream tests on bumps.
 13. **Notification routing:** Slack/email/PagerDuty con severity-based.

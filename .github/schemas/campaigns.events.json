@@ -1,0 +1,161 @@
+{
+  "allOf": [
+    {
+      "$id": "https://alebrije.io/schemas/campaigns.events/campaign_created.json",
+      "description": "Emitted when a new campaign is created",
+      "type": "object",
+      "event_type": "campaign_created",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "campaign_created" },
+        "data": {
+          "type": "object",
+          "required": ["campaign_id", "tenant_id", "name"],
+          "properties": {
+            "campaign_id": { "type": "string", "format": "uuid" },
+            "tenant_id": { "type": "string", "format": "uuid" },
+            "name": { "type": "string" },
+            "created_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "campaign_created",
+          "data": {
+            "campaign_id": "550e8400-e29b-41d4-a716-446655440001",
+            "tenant_id": "650e8400-e29b-41d4-a716-446655440000",
+            "name": "Q2 Spring Promotion",
+            "created_at": "2026-05-07T09:00:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/campaigns.events/campaign_started.json",
+      "description": "Emitted when campaign execution starts",
+      "type": "object",
+      "event_type": "campaign_started",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "campaign_started" },
+        "data": {
+          "type": "object",
+          "required": ["campaign_id", "tenant_id", "audience_count"],
+          "properties": {
+            "campaign_id": { "type": "string", "format": "uuid" },
+            "tenant_id": { "type": "string", "format": "uuid" },
+            "audience_count": { "type": "integer" },
+            "started_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "campaign_started",
+          "data": {
+            "campaign_id": "550e8400-e29b-41d4-a716-446655440001",
+            "tenant_id": "650e8400-e29b-41d4-a716-446655440000",
+            "audience_count": 15000,
+            "started_at": "2026-05-07T10:00:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/campaigns.events/message_sent.json",
+      "description": "Emitted when a message is sent to a recipient",
+      "type": "object",
+      "event_type": "message_sent",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "message_sent" },
+        "data": {
+          "type": "object",
+          "required": ["campaign_id", "recipient_id", "message_id"],
+          "properties": {
+            "campaign_id": { "type": "string", "format": "uuid" },
+            "recipient_id": { "type": "string" },
+            "message_id": { "type": "string", "format": "uuid" },
+            "channel": { "enum": ["email", "sms", "push", "in_app"] },
+            "sent_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "message_sent",
+          "data": {
+            "campaign_id": "550e8400-e29b-41d4-a716-446655440001",
+            "recipient_id": "usr_12345",
+            "message_id": "msg_67890",
+            "channel": "email",
+            "sent_at": "2026-05-07T10:15:30Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/campaigns.events/message_delivered.json",
+      "description": "Emitted when a message is successfully delivered",
+      "type": "object",
+      "event_type": "message_delivered",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "message_delivered" },
+        "data": {
+          "type": "object",
+          "required": ["message_id", "recipient_id"],
+          "properties": {
+            "message_id": { "type": "string", "format": "uuid" },
+            "recipient_id": { "type": "string" },
+            "delivered_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "message_delivered",
+          "data": {
+            "message_id": "msg_67890",
+            "recipient_id": "usr_12345",
+            "delivered_at": "2026-05-07T10:15:45Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/campaigns.events/subscription_updated.json",
+      "description": "Emitted when a user subscription preference changes",
+      "type": "object",
+      "event_type": "subscription_updated",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "subscription_updated" },
+        "data": {
+          "type": "object",
+          "required": ["recipient_id", "tenant_id", "subscribed"],
+          "properties": {
+            "recipient_id": { "type": "string" },
+            "tenant_id": { "type": "string", "format": "uuid" },
+            "subscribed": { "type": "boolean" },
+            "reason": { "type": "string" },
+            "updated_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "subscription_updated",
+          "data": {
+            "recipient_id": "usr_12345",
+            "tenant_id": "650e8400-e29b-41d4-a716-446655440000",
+            "subscribed": false,
+            "reason": "user_unsubscribe",
+            "updated_at": "2026-05-07T11:00:00Z"
+          }
+        }
+      ]
+    }
+  ]
+}

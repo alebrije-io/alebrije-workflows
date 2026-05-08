@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/omnichannel.base.v1.json",
+  "title": "omnichannel base schema v1",
+  "description": "Base schema for omnichannel module events. Represents customer interactions across email, SMS, WhatsApp, Instagram, and other channels.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": ["conversation_id", "channel", "action"],
+          "properties": {
+            "conversation_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Unique conversation identifier"
+            },
+            "contact_id": {
+              "type": ["string", "null"],
+              "format": "uuid"
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["email", "sms", "whatsapp", "instagram", "facebook", "telegram", "phone", "webchat"],
+              "description": "Communication channel"
+            },
+            "action": {
+              "type": "string",
+              "enum": ["message_received", "message_sent", "message_read", "conversation_opened", "conversation_closed", "contact_assigned", "contact_unassigned"],
+              "description": "Omnichannel event type"
+            },
+            "message_id": {
+              "type": ["string", "null"],
+              "format": "uuid"
+            },
+            "message_content": {
+              "type": ["string", "null"],
+              "description": "Message body (may be redacted)"
+            },
+            "message_type": {
+              "type": ["string", "null"],
+              "enum": ["text", "image", "file", "location", "template", "interactive"],
+              "description": "Type of message"
+            },
+            "assigned_to": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Agent/user assigned to this conversation"
+            },
+            "sentiment": {
+              "type": ["string", "null"],
+              "enum": ["positive", "neutral", "negative"],
+              "description": "Detected sentiment of incoming message"
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

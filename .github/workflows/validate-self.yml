@@ -247,13 +247,186 @@ jobs:
           echo "::endgroup::"
 
   # ======================================================================
+  # AUDIT 8: Check concurrency blocks in reusable workflows
+  # ======================================================================
+  check-concurrency:
+    name: Check concurrency blocks in reusable workflows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - name: Verify concurrency blocks
+        run: |
+          MISSING=0
+          for f in .github/workflows/reusable-*.yml; do
+            if ! grep -q "concurrency:" "$f"; then
+              echo "::warning::Missing concurrency block in $f"
+              MISSING=$((MISSING + 1))
+            fi
+          done
+          if [ $MISSING -gt 0 ]; then
+            echo "::notice::$MISSING reusable workflows missing concurrency blocks (non-blocking)"
+          else
+            echo "PASS: All reusable workflows have concurrency blocks"
+          fi
+
+  # ======================================================================
+  # AUDIT 9: Verify SHA-pinned actions have version comments
+  # ======================================================================
+  check-action-versions-commented:
+    name: Verify SHA-pinned actions have version comments
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - name: Check SHA pins have version comments
+        run: |
+          MISSING=$(grep -rn 'uses:.*@[a-f0-9]\{40\}' .github/workflows .github/actions 2>/dev/null | grep -v '#[[:space:]]*v' | wc -l)
+          if [ "$MISSING" -gt 0 ]; then
+            echo "::warning::$MISSING SHA-pinned uses: without version comment (e.g., '# v4.1.7')"
+            grep -rn 'uses:.*@[a-f0-9]\{40\}' .github/workflows .github/actions 2>/dev/null | grep -v '#[[:space:]]*v' | head -5
+          else
+            echo "PASS: All SHA-pinned uses: have version comments"
+          fi
+
+  # ======================================================================
+  # AUDIT 10: Detect script injection via GitHub contexts
+  # ======================================================================
+  check-script-injection:
+    name: Detect script injection via GitHub contexts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - name: Scan for direct context use in run steps
+        run: |
+          # Check for ${{ github.event.* }} used inline in run: (injection risk)
+          # Safe pattern: wrapped in env: variable first
+          RISKY=$(grep -rn '\${{[[:space:]]*github\.event\.' .github/workflows/ \
+            --include="*.yml" 2>/dev/null | grep -v '^.*#' | wc -l)
+          if [ "$RISKY" -gt 0 ]; then
+            echo "::warning::$RISKY potential script injection points (github.event.* in workflows)"
+            echo "Recommendation: wrap in env: variable before use in run:"
+            grep -rn '\${{[[:space:]]*github\.event\.' .github/workflows/ --include="*.yml" 2>/dev/null | grep -v '^.*#' | head -5
+          else
+            echo "PASS: No direct github.event context usage detected"
+          fi
+
+  # ======================================================================
+  # AUDIT 11: Validate event schemas structure
+  # ======================================================================
+  check-event-schemas-valid:
+    name: Validate event schemas structure
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+        with:
+          python-version: "3.12"
+      - name: Validate all event schemas
+        shell: python3 {0}
+        run: |
+          import json
+          import glob
+          import sys
+          errors = []
+          schemas = glob.glob("event-schemas/*.json")
+          for f in schemas:
+              if "envelope" in f or "README" in f:
+                  continue
+              try:
+                  schema = json.load(open(f))
+                  if "allOf" not in schema:
+                      errors.append(f"{f}: missing allOf (not extending envelope)")
+                      continue
+                  last_allof = schema["allOf"][-1]
+                  props = last_allof.get("properties", {})
+                  if "event_type" not in props:
+                      errors.append(f"{f}: missing event_type const in properties")
+                  if "data" not in props:
+                      errors.append(f"{f}: missing data object in properties")
+                  if "$id" not in schema:
+                      errors.append(f"{f}: missing $id field")
+              except json.JSONDecodeError as e:
+                  errors.append(f"{f}: invalid JSON: {e}")
+          if errors:
+              for e in errors:
+                  print(f"::error::{e}")
+              sys.exit(1)
+          print(f"PASS: All {len(schemas)} event schemas valid")
+
+  # ======================================================================
+  # AUDIT 12: Audit workflow permissions (least privilege)
+  # ======================================================================
+  check-minimum-permissions:
+    name: Audit workflow permissions (least privilege)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - name: Check for missing permissions blocks
+        run: |
+          MISSING=0
+          for f in .github/workflows/*.yml; do
+            if ! grep -q "^permissions:" "$f"; then
+              echo "::warning::Missing top-level permissions block in $f"
+              MISSING=$((MISSING + 1))
+            fi
+          done
+          echo "Workflows without top-level permissions: $MISSING"
+      - name: Flag write permissions without comments
+        run: |
+          grep -rn 'contents: write\|packages: write\|security-events: write' \
+            .github/workflows/ 2>/dev/null | head -20 || true
+          echo "Review above write permissions are intentional"
+
+  # ======================================================================
+  # AUDIT 13: Validate reusable workflow inputs have descriptions
+  # ======================================================================
+  validate-workflow-inputs-documented:
+    name: Validate reusable workflow inputs have descriptions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+        with:
+          python-version: "3.12"
+      - name: Check inputs have descriptions
+        shell: python3 {0}
+        run: |
+          import yaml
+          import glob
+          import sys
+          warnings = []
+          for f in glob.glob(".github/workflows/reusable-*.yml"):
+              try:
+                  doc = yaml.safe_load(open(f))
+                  inputs = (doc or {}).get("on", {}).get("workflow_call", {}).get("inputs", {})
+                  for name, spec in (inputs or {}).items():
+                      if not (spec or {}).get("description"):
+                          warnings.append(f"{f}: input '{name}' has no description")
+              except Exception:
+                  pass
+          for w in warnings:
+              print(f"::warning::{w}")
+          print(f"Inputs audit: {len(warnings)} missing descriptions (advisory)")
+
+  # ======================================================================
   # SUMMARY: Aggregate all audit results
   # ======================================================================
   security-audit-summary:
     name: Security audit summary (Block R)
     if: always()
     runs-on: ubuntu-latest
-    needs: [audit-shas, check-hardcoded-secrets, check-permissions, validate-yaml, check-anti-patterns, check-action-refs, validate-structure]
+    needs: [audit-shas, check-hardcoded-secrets, check-permissions, validate-yaml, check-anti-patterns, check-action-refs, validate-structure, check-concurrency, check-action-versions-commented, check-script-injection, check-event-schemas-valid, check-minimum-permissions, validate-workflow-inputs-documented]
     permissions:
       contents: read
       pull-requests: write
@@ -275,6 +448,12 @@ jobs:
           echo "| Anti-patterns (Rule #11) | ${{ needs.check-anti-patterns.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Action References | ${{ needs.check-action-refs.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Workflow Structure | ${{ needs.validate-structure.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Concurrency Blocks | ${{ needs.check-concurrency.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SHA Version Comments | ${{ needs.check-action-versions-commented.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Script Injection (github.event) | ${{ needs.check-script-injection.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Event Schemas Valid | ${{ needs.check-event-schemas-valid.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Minimum Permissions | ${{ needs.check-minimum-permissions.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Inputs Documented | ${{ needs.validate-workflow-inputs-documented.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ needs.audit-shas.result }}" = "success" ] && \
              [ "${{ needs.check-hardcoded-secrets.result }}" = "success" ] && \
@@ -330,5 +509,6 @@ jobs:
           needs.check-hardcoded-secrets.result != 'success' ||
           needs.check-permissions.result != 'success' ||
           needs.validate-yaml.result != 'success' ||
-          needs.check-anti-patterns.result != 'success'
+          needs.check-anti-patterns.result != 'success' ||
+          needs.check-event-schemas-valid.result != 'success'
         run: exit 1

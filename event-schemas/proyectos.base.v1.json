@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/proyectos.base.v1.json",
+  "title": "proyectos base schema v1",
+  "description": "Base schema for proyectos module events. Represents project/opportunity lifecycle, stage transitions, and team assignments.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": ["project_id", "action"],
+          "properties": {
+            "project_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Unique project identifier"
+            },
+            "action": {
+              "type": "string",
+              "enum": ["created", "stage_changed", "assigned", "completed", "archived", "deleted", "updated"],
+              "description": "Project event type"
+            },
+            "stage": {
+              "type": ["string", "null"],
+              "description": "Current project stage/status"
+            },
+            "previous_stage": {
+              "type": ["string", "null"],
+              "description": "Previous stage if stage changed"
+            },
+            "assigned_to": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "User assigned to project"
+            },
+            "contact_id": {
+              "type": ["string", "null"],
+              "format": "uuid"
+            },
+            "value": {
+              "type": ["string", "null"],
+              "pattern": "^[0-9]+(\\.[0-9]+)?$",
+              "description": "Project monetary value"
+            },
+            "currency": {
+              "type": ["string", "null"],
+              "pattern": "^[A-Z]{3}$"
+            },
+            "probability": {
+              "type": ["number", "null"],
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Success probability percentage"
+            },
+            "expected_close_date": {
+              "type": ["string", "null"],
+              "format": "date"
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

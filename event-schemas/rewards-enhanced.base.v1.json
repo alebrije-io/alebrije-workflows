@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/rewards-enhanced.base.v1.json",
+  "title": "rewards-enhanced base schema v1",
+  "description": "Enhanced schema for rewards module events. Covers loyalty points, redemptions, tier changes, and expiration.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": ["contact_id", "action"],
+          "properties": {
+            "contact_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Contact identifier for rewards tracking"
+            },
+            "action": {
+              "type": "string",
+              "enum": ["points_earned", "points_redeemed", "points_expired", "tier_changed", "tier_locked", "balance_adjusted"],
+              "description": "Rewards action type"
+            },
+            "points_amount": {
+              "type": ["integer", "null"],
+              "description": "Number of points affected (positive or negative)"
+            },
+            "balance_before": {
+              "type": ["integer", "null"],
+              "description": "Point balance before this action"
+            },
+            "balance_after": {
+              "type": ["integer", "null"],
+              "description": "Point balance after this action"
+            },
+            "tier": {
+              "type": ["string", "null"],
+              "enum": ["bronze", "silver", "gold", "platinum", "vip"],
+              "description": "Loyalty tier"
+            },
+            "previous_tier": {
+              "type": ["string", "null"],
+              "description": "Previous tier if tier changed"
+            },
+            "expiration_date": {
+              "type": ["string", "null"],
+              "format": "date",
+              "description": "Expiration date for redeemed points or tier"
+            },
+            "reason": {
+              "type": ["string", "null"],
+              "description": "Business reason for the points adjustment"
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

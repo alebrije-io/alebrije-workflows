@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/campaigns.base.v1.json",
+  "title": "campaigns base schema v1",
+  "description": "Base schema for campaigns module events. Represents marketing campaign lifecycle, audience segmentation, and message delivery.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": ["campaign_id", "event_type"],
+          "properties": {
+            "campaign_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Unique identifier for the campaign"
+            },
+            "event_type": {
+              "type": "string",
+              "enum": ["created", "started", "paused", "resumed", "completed", "cancelled", "audience_updated", "message_sent", "message_bounced", "message_opened"],
+              "description": "Campaign lifecycle event type"
+            },
+            "audience_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Audience segment targeted by campaign"
+            },
+            "message_count": {
+              "type": ["integer", "null"],
+              "description": "Number of messages sent in this event"
+            },
+            "channel": {
+              "type": ["string", "null"],
+              "enum": ["email", "sms", "push", "whatsapp", "in_app"],
+              "description": "Communication channel used"
+            },
+            "status": {
+              "type": ["string", "null"],
+              "enum": ["draft", "scheduled", "running", "paused", "completed", "failed"],
+              "description": "Campaign status"
+            },
+            "error_message": {
+              "type": ["string", "null"],
+              "description": "Error details if event represents a failure"
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

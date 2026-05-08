@@ -1,0 +1,124 @@
+{
+  "allOf": [
+    {
+      "$id": "https://alebrije.io/schemas/omnichannel.events/conversation_started.json",
+      "description": "Emitted when a new conversation is initiated",
+      "type": "object",
+      "event_type": "conversation_started",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "conversation_started" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id", "channel"],
+          "properties": {
+            "conversation_id": { "type": "string", "format": "uuid" },
+            "channel": { "enum": ["email", "sms", "whatsapp", "telegram", "facebook"] },
+            "started_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "conversation_started",
+          "data": {
+            "conversation_id": "conv_12345",
+            "channel": "whatsapp",
+            "started_at": "2026-05-07T10:00:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/omnichannel.events/message_received.json",
+      "description": "Emitted when a message is received from a customer",
+      "type": "object",
+      "event_type": "message_received",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "message_received" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id", "message_id", "content"],
+          "properties": {
+            "conversation_id": { "type": "string", "format": "uuid" },
+            "message_id": { "type": "string", "format": "uuid" },
+            "content": { "type": "string" },
+            "sender_id": { "type": "string" },
+            "received_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "message_received",
+          "data": {
+            "conversation_id": "conv_12345",
+            "message_id": "msg_abc123",
+            "content": "Hello, I need help with my order",
+            "sender_id": "usr_cust123",
+            "received_at": "2026-05-07T10:05:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/omnichannel.events/channel_synced.json",
+      "description": "Emitted when channel data is synchronized",
+      "type": "object",
+      "event_type": "channel_synced",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "channel_synced" },
+        "data": {
+          "type": "object",
+          "required": ["channel", "synced_at"],
+          "properties": {
+            "channel": { "enum": ["email", "sms", "whatsapp", "telegram", "facebook"] },
+            "message_count": { "type": "integer" },
+            "synced_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "channel_synced",
+          "data": {
+            "channel": "whatsapp",
+            "message_count": 42,
+            "synced_at": "2026-05-07T11:00:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/omnichannel.events/integration_connected.json",
+      "description": "Emitted when an external integration is connected",
+      "type": "object",
+      "event_type": "integration_connected",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "integration_connected" },
+        "data": {
+          "type": "object",
+          "required": ["integration_name", "status"],
+          "properties": {
+            "integration_name": { "type": "string" },
+            "status": { "enum": ["active", "inactive", "error"] },
+            "connected_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "integration_connected",
+          "data": {
+            "integration_name": "zendesk",
+            "status": "active",
+            "connected_at": "2026-05-07T09:00:00Z"
+          }
+        }
+      ]
+    }
+  ]
+}

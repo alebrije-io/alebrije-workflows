@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/control-medico.base.v1.json",
+  "title": "control-medico base schema v1",
+  "description": "Base schema for control-medico module events. Represents medical records, appointments, prescriptions, and health monitoring.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": ["patient_id", "action"],
+          "properties": {
+            "patient_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Patient identifier"
+            },
+            "action": {
+              "type": "string",
+              "enum": ["appointment_scheduled", "appointment_completed", "prescription_created", "test_result_received", "vital_sign_recorded", "record_updated", "alert_generated"],
+              "description": "Medical event action"
+            },
+            "appointment_id": {
+              "type": ["string", "null"],
+              "format": "uuid"
+            },
+            "provider_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Healthcare provider identifier"
+            },
+            "appointment_type": {
+              "type": ["string", "null"],
+              "enum": ["consultation", "follow_up", "procedure", "vaccination", "lab_test", "imaging"],
+              "description": "Type of medical appointment"
+            },
+            "vital_sign_type": {
+              "type": ["string", "null"],
+              "enum": ["blood_pressure", "heart_rate", "temperature", "blood_glucose", "weight", "height"],
+              "description": "Type of vital sign measurement"
+            },
+            "vital_sign_value": {
+              "type": ["string", "null"],
+              "description": "Measured vital sign value with unit"
+            },
+            "prescription": {
+              "type": ["object", "null"],
+              "description": "Prescription details if applicable"
+            },
+            "test_result": {
+              "type": ["object", "null"],
+              "description": "Lab test result if applicable"
+            },
+            "alert_level": {
+              "type": ["string", "null"],
+              "enum": ["info", "warning", "critical"],
+              "description": "Alert severity if applicable"
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -76,6 +76,7 @@ jobs:
   test:
     name: Test
     runs-on: arc-runner-set
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -151,6 +152,12 @@ jobs:
       - name: Install dependencies
         run: mix deps.get
 
+      - name: Audit dependencies for known vulnerabilities
+        run: mix deps.audit
+        continue-on-error: true
+        env:
+          MIX_ENV: test
+
       - name: Compile with warnings-as-errors
         run: mix compile --warnings-as-errors
 
@@ -190,6 +197,14 @@ jobs:
             sys.exit(1)
           print(f'::notice::Coverage {coverage}% meets threshold {threshold}%')
           EOF
+
+      - name: Write coverage summary
+        if: always()
+        run: |
+          echo "### Elixir Coverage" >> $GITHUB_STEP_SUMMARY
+          mix coveralls 2>/dev/null | grep -E "Total|TOTAL|Coverage" | tail -5 >> $GITHUB_STEP_SUMMARY || echo "Coverage data not available" >> $GITHUB_STEP_SUMMARY
+        env:
+          MIX_ENV: test
 
       - name: Dialyzer (type checker)
         if: ${{ inputs.with-dialyzer }}

@@ -1,0 +1,128 @@
+{
+  "allOf": [
+    {
+      "$id": "https://alebrije.io/schemas/catalog.events/product_listed.json",
+      "description": "Emitted when a product is listed in the catalog",
+      "type": "object",
+      "event_type": "product_listed",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "product_listed" },
+        "data": {
+          "type": "object",
+          "required": ["product_id", "catalog_id", "name"],
+          "properties": {
+            "product_id": { "type": "string", "format": "uuid" },
+            "catalog_id": { "type": "string", "format": "uuid" },
+            "name": { "type": "string" },
+            "listed_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "product_listed",
+          "data": {
+            "product_id": "prod_12345",
+            "catalog_id": "cat_abc",
+            "name": "Premium Widget",
+            "listed_at": "2026-05-07T10:00:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/catalog.events/price_changed.json",
+      "description": "Emitted when a product price changes",
+      "type": "object",
+      "event_type": "price_changed",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "price_changed" },
+        "data": {
+          "type": "object",
+          "required": ["product_id", "new_price", "old_price"],
+          "properties": {
+            "product_id": { "type": "string", "format": "uuid" },
+            "new_price": { "type": "number" },
+            "old_price": { "type": "number" },
+            "changed_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "price_changed",
+          "data": {
+            "product_id": "prod_12345",
+            "new_price": 29.99,
+            "old_price": 39.99,
+            "changed_at": "2026-05-07T11:00:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/catalog.events/inventory_updated.json",
+      "description": "Emitted when product inventory is updated",
+      "type": "object",
+      "event_type": "inventory_updated",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "inventory_updated" },
+        "data": {
+          "type": "object",
+          "required": ["product_id", "quantity"],
+          "properties": {
+            "product_id": { "type": "string", "format": "uuid" },
+            "quantity": { "type": "integer" },
+            "previous_quantity": { "type": "integer" },
+            "updated_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "inventory_updated",
+          "data": {
+            "product_id": "prod_12345",
+            "quantity": 150,
+            "previous_quantity": 200,
+            "updated_at": "2026-05-07T12:00:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/catalog.events/availability_changed.json",
+      "description": "Emitted when product availability changes",
+      "type": "object",
+      "event_type": "availability_changed",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "availability_changed" },
+        "data": {
+          "type": "object",
+          "required": ["product_id", "available"],
+          "properties": {
+            "product_id": { "type": "string", "format": "uuid" },
+            "available": { "type": "boolean" },
+            "reason": { "type": "string" },
+            "changed_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "availability_changed",
+          "data": {
+            "product_id": "prod_12345",
+            "available": false,
+            "reason": "out_of_stock",
+            "changed_at": "2026-05-07T13:30:00Z"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/auth-enhanced.base.v1.json",
+  "title": "auth-enhanced base schema v1",
+  "description": "Enhanced schema for auth module events. Covers authentication, authorization, session management, and security events.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": ["user_id", "action"],
+          "properties": {
+            "user_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "User identifier"
+            },
+            "action": {
+              "type": "string",
+              "enum": ["login", "logout", "mfa_enrolled", "mfa_verified", "password_changed", "session_created", "session_revoked", "permission_granted", "permission_revoked", "suspicious_activity"],
+              "description": "Authentication/authorization action"
+            },
+            "session_id": {
+              "type": ["string", "null"],
+              "format": "uuid"
+            },
+            "method": {
+              "type": ["string", "null"],
+              "enum": ["password", "magic_link", "oauth", "saml", "mfa"],
+              "description": "Authentication method used"
+            },
+            "mfa_method": {
+              "type": ["string", "null"],
+              "enum": ["totp", "email", "sms", "backup_code"]
+            },
+            "ip_address": {
+              "type": ["string", "null"],
+              "description": "Client IP address"
+            },
+            "user_agent": {
+              "type": ["string", "null"],
+              "description": "Client user agent"
+            },
+            "risk_level": {
+              "type": ["string", "null"],
+              "enum": ["low", "medium", "high"],
+              "description": "Estimated security risk"
+            },
+            "reason": {
+              "type": ["string", "null"],
+              "description": "Reason for session revocation or security flag"
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

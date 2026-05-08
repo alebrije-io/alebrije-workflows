@@ -1,0 +1,165 @@
+{
+  "allOf": [
+    {
+      "$id": "https://alebrije.io/schemas/agentic.events/graph_run_created.json",
+      "description": "Emitted when a new graph execution (workflow) is created",
+      "type": "object",
+      "event_type": "graph_run_created",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "graph_run_created" },
+        "data": {
+          "type": "object",
+          "required": ["graph_run_id", "tenant_id", "status"],
+          "properties": {
+            "graph_run_id": { "type": "string", "format": "uuid" },
+            "tenant_id": { "type": "string", "format": "uuid" },
+            "status": { "enum": ["created"] },
+            "created_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "graph_run_created",
+          "data": {
+            "graph_run_id": "550e8400-e29b-41d4-a716-446655440000",
+            "tenant_id": "650e8400-e29b-41d4-a716-446655440000",
+            "status": "created",
+            "created_at": "2026-05-07T10:30:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/agentic.events/graph_run_started.json",
+      "description": "Emitted when graph execution begins processing",
+      "type": "object",
+      "event_type": "graph_run_started",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "graph_run_started" },
+        "data": {
+          "type": "object",
+          "required": ["graph_run_id", "tenant_id", "started_at"],
+          "properties": {
+            "graph_run_id": { "type": "string", "format": "uuid" },
+            "tenant_id": { "type": "string", "format": "uuid" },
+            "started_at": { "type": "string", "format": "date-time" },
+            "input_tokens": { "type": "integer" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "graph_run_started",
+          "data": {
+            "graph_run_id": "550e8400-e29b-41d4-a716-446655440000",
+            "tenant_id": "650e8400-e29b-41d4-a716-446655440000",
+            "started_at": "2026-05-07T10:30:05Z",
+            "input_tokens": 250
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/agentic.events/graph_run_completed.json",
+      "description": "Emitted when graph execution completes successfully",
+      "type": "object",
+      "event_type": "graph_run_completed",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "graph_run_completed" },
+        "data": {
+          "type": "object",
+          "required": ["graph_run_id", "tenant_id", "completed_at"],
+          "properties": {
+            "graph_run_id": { "type": "string", "format": "uuid" },
+            "tenant_id": { "type": "string", "format": "uuid" },
+            "completed_at": { "type": "string", "format": "date-time" },
+            "output_tokens": { "type": "integer" },
+            "total_steps": { "type": "integer" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "graph_run_completed",
+          "data": {
+            "graph_run_id": "550e8400-e29b-41d4-a716-446655440000",
+            "tenant_id": "650e8400-e29b-41d4-a716-446655440000",
+            "completed_at": "2026-05-07T10:31:30Z",
+            "output_tokens": 512,
+            "total_steps": 5
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/agentic.events/graph_run_failed.json",
+      "description": "Emitted when graph execution fails",
+      "type": "object",
+      "event_type": "graph_run_failed",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "graph_run_failed" },
+        "data": {
+          "type": "object",
+          "required": ["graph_run_id", "tenant_id", "error_message"],
+          "properties": {
+            "graph_run_id": { "type": "string", "format": "uuid" },
+            "tenant_id": { "type": "string", "format": "uuid" },
+            "error_message": { "type": "string" },
+            "error_code": { "type": "string" },
+            "stack_trace": { "type": "string" },
+            "failed_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "graph_run_failed",
+          "data": {
+            "graph_run_id": "550e8400-e29b-41d4-a716-446655440000",
+            "tenant_id": "650e8400-e29b-41d4-a716-446655440000",
+            "error_message": "Tool execution timeout after 30s",
+            "error_code": "TOOL_TIMEOUT",
+            "stack_trace": "at executeTools() line 234...",
+            "failed_at": "2026-05-07T10:31:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/agentic.events/tool_invocation.json",
+      "description": "Emitted when an agent invokes a tool",
+      "type": "object",
+      "event_type": "tool_invocation",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "tool_invocation" },
+        "data": {
+          "type": "object",
+          "required": ["graph_run_id", "tool_name", "input"],
+          "properties": {
+            "graph_run_id": { "type": "string", "format": "uuid" },
+            "tool_name": { "type": "string" },
+            "input": { "type": "object" },
+            "invoked_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "tool_invocation",
+          "data": {
+            "graph_run_id": "550e8400-e29b-41d4-a716-446655440000",
+            "tool_name": "search_database",
+            "input": { "query": "SELECT * FROM users WHERE id = $1", "params": [123] },
+            "invoked_at": "2026-05-07T10:30:30Z"
+          }
+        }
+      ]
+    }
+  ]
+}

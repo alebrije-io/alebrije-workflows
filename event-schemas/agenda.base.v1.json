@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/agenda.base.v1.json",
+  "title": "agenda base schema v1",
+  "description": "Base schema for agenda module events. Represents scheduling, appointments, reminders, and calendar integrations.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": ["event_id", "action"],
+          "properties": {
+            "event_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Unique calendar event identifier"
+            },
+            "action": {
+              "type": "string",
+              "enum": ["scheduled", "confirmed", "cancelled", "rescheduled", "reminder_sent", "completed", "no_show"],
+              "description": "Calendar event action"
+            },
+            "contact_id": {
+              "type": ["string", "null"],
+              "format": "uuid"
+            },
+            "assigned_to": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "User assigned to event"
+            },
+            "event_title": {
+              "type": ["string", "null"],
+              "description": "Event title/name"
+            },
+            "event_type": {
+              "type": ["string", "null"],
+              "enum": ["call", "meeting", "follow_up", "task", "other"],
+              "description": "Type of calendar event"
+            },
+            "start_time": {
+              "type": ["string", "null"],
+              "format": "date-time"
+            },
+            "end_time": {
+              "type": ["string", "null"],
+              "format": "date-time"
+            },
+            "location": {
+              "type": ["string", "null"],
+              "description": "Physical or video meeting location"
+            },
+            "notes": {
+              "type": ["string", "null"],
+              "description": "Event notes or description"
+            },
+            "is_recurring": {
+              "type": ["boolean", "null"],
+              "description": "Whether this is a recurring event"
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

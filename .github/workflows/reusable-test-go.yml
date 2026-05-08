@@ -53,6 +53,11 @@ on:
         type: boolean
         default: true
         required: false
+      test-tags:
+        description: "Build tags for go test (e.g. 'integration'). Empty = no tags."
+        type: string
+        default: ""
+        required: false
     secrets:
       GH_TOKEN:
         description: "GitHub token for private repo access"
@@ -71,6 +76,7 @@ jobs:
     if: ${{ inputs.with-services }}
     name: Test with services
     runs-on: arc-runner-set
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -134,7 +140,11 @@ jobs:
           if [ "${{ inputs.race }}" == "true" ]; then
             RACE_FLAG="-race"
           fi
-          go test $RACE_FLAG -coverprofile=coverage.out -covermode=atomic ./...
+          TAGS_FLAG=""
+          if [ -n "${{ inputs.test-tags }}" ]; then
+            TAGS_FLAG="-tags ${{ inputs.test-tags }}"
+          fi
+          go test $RACE_FLAG $TAGS_FLAG -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Check coverage gate (90% immutable, Rule G)
         run: |
@@ -149,6 +159,22 @@ jobs:
           fi
           echo "::notice::Coverage ${COVERAGE}% meets threshold ${{ inputs.coverage-threshold }}%"
 
+      - name: Write coverage summary
+        if: always()
+        run: |
+          cd ${{ inputs.module-path }}
+          echo "### Go Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          if [ -f coverage.out ]; then
+            COVERAGE=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
+            echo "| Overall Coverage | ${COVERAGE}% |" >> $GITHUB_STEP_SUMMARY
+            echo "| Gate Threshold | ${{ inputs.coverage-threshold }}% |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Status | No coverage data |" >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Upload coverage to codecov (best-effort)
         uses: codecov/codecov-action@125fc84a2bfd3c102d6a49fa07367b1ac6dbf2ac  # v4.4.1
         with:
@@ -156,11 +182,20 @@ jobs:
           flags: go
           fail_ci_if_error: false
 
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68cf7e19c021a7b80b37814  # v4.6.1
+        with:
+          name: coverage-go-${{ github.run_id }}
+          path: ${{ inputs.module-path }}/coverage.out
+          retention-days: 7
+
   # Test job without services (for libraries with no DB dependency)
   test-without-services:
     if: ${{ !inputs.with-services }}
     name: Test (no services)
     runs-on: arc-runner-set
+    timeout-minutes: 20
 
     env:
       GOPRIVATE: github.com/alebrije-io
@@ -199,7 +234,11 @@ jobs:
           if [ "${{ inputs.race }}" == "true" ]; then
             RACE_FLAG="-race"
           fi
-          go test $RACE_FLAG -coverprofile=coverage.out -covermode=atomic ./...
+          TAGS_FLAG=""
+          if [ -n "${{ inputs.test-tags }}" ]; then
+            TAGS_FLAG="-tags ${{ inputs.test-tags }}"
+          fi
+          go test $RACE_FLAG $TAGS_FLAG -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Check coverage gate (90% immutable, Rule G)
         run: |
@@ -214,9 +253,33 @@ jobs:
           fi
           echo "::notice::Coverage ${COVERAGE}% meets threshold ${{ inputs.coverage-threshold }}%"
 
+      - name: Write coverage summary
+        if: always()
+        run: |
+          cd ${{ inputs.module-path }}
+          echo "### Go Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          if [ -f coverage.out ]; then
+            COVERAGE=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
+            echo "| Overall Coverage | ${COVERAGE}% |" >> $GITHUB_STEP_SUMMARY
+            echo "| Gate Threshold | ${{ inputs.coverage-threshold }}% |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Status | No coverage data |" >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Upload coverage to codecov (best-effort)
         uses: codecov/codecov-action@125fc84a2bfd3c102d6a49fa07367b1ac6dbf2ac  # v4.4.1
         with:
           files: ${{ inputs.module-path }}/coverage.out
           flags: go
           fail_ci_if_error: false
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68cf7e19c021a7b80b37814  # v4.6.1
+        with:
+          name: coverage-go-${{ github.run_id }}
+          path: ${{ inputs.module-path }}/coverage.out
+          retention-days: 7

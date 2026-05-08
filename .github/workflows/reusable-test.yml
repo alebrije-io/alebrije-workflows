@@ -61,6 +61,7 @@ jobs:
   test:
     name: Test
     runs-on: arc-runner-set
+    timeout-minutes: 20
 
     # Services run alongside the job. These are standard for all Alebrije services.
     services:
@@ -89,6 +90,7 @@ jobs:
     strategy:
       # Parse the python-versions input as JSON.
       # This allows repos to customize without modifying the workflow.
+      fail-fast: false
       matrix:
         python-version: ${{ fromJson(inputs.python-versions) }}
 
@@ -172,6 +174,10 @@ jobs:
       # by passing extra-env input with a JSON object containing additional vars.
       - name: Run tests (per-file)
         env:
+          # Python optimization: no bytecode writes, unbuffered output for CI logs
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONUNBUFFERED: "1"
+
           # Standard test DB connection strings
           DATABASE_URL: postgresql+asyncpg://alebrije:test@localhost:5432/alebrije
           DB_HOST: localhost
@@ -213,6 +219,17 @@ jobs:
         run: |
           coverage xml -o coverage.xml
           coverage report --show-missing --skip-covered
+
+      # Write coverage summary to step summary for visibility in CI logs
+      - name: Write coverage summary
+        if: always()
+        run: |
+          echo "### Python Coverage" >> $GITHUB_STEP_SUMMARY
+          if [ -f coverage.txt ]; then
+            grep -E "TOTAL|Total" coverage.txt >> $GITHUB_STEP_SUMMARY || true
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Gate: **90%** (Rule G — immovable)" >> $GITHUB_STEP_SUMMARY
 
       # Upload coverage to Codecov for tracking trends and PR comments.
       # Uses the codecov/codecov-action action with v4 API.

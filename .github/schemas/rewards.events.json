@@ -1,0 +1,132 @@
+{
+  "allOf": [
+    {
+      "$id": "https://alebrije.io/schemas/rewards.events/transaction_created.json",
+      "description": "Emitted when a reward transaction is recorded",
+      "type": "object",
+      "event_type": "transaction_created",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "transaction_created" },
+        "data": {
+          "type": "object",
+          "required": ["transaction_id", "user_id", "amount", "type"],
+          "properties": {
+            "transaction_id": { "type": "string", "format": "uuid" },
+            "user_id": { "type": "string" },
+            "amount": { "type": "number" },
+            "type": { "enum": ["earn", "redeem", "expire"] },
+            "created_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "transaction_created",
+          "data": {
+            "transaction_id": "txn_abc123",
+            "user_id": "usr_12345",
+            "amount": 100.00,
+            "type": "earn",
+            "created_at": "2026-05-07T10:00:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/rewards.events/payout_processed.json",
+      "description": "Emitted when rewards payout is processed",
+      "type": "object",
+      "event_type": "payout_processed",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "payout_processed" },
+        "data": {
+          "type": "object",
+          "required": ["payout_id", "user_id", "amount"],
+          "properties": {
+            "payout_id": { "type": "string", "format": "uuid" },
+            "user_id": { "type": "string" },
+            "amount": { "type": "number" },
+            "method": { "enum": ["bank_transfer", "credit", "gift_card"] },
+            "processed_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "payout_processed",
+          "data": {
+            "payout_id": "payout_123",
+            "user_id": "usr_12345",
+            "amount": 50.00,
+            "method": "bank_transfer",
+            "processed_at": "2026-05-07T15:00:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/rewards.events/balance_updated.json",
+      "description": "Emitted when user reward balance changes",
+      "type": "object",
+      "event_type": "balance_updated",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "balance_updated" },
+        "data": {
+          "type": "object",
+          "required": ["user_id", "new_balance", "previous_balance"],
+          "properties": {
+            "user_id": { "type": "string" },
+            "new_balance": { "type": "number" },
+            "previous_balance": { "type": "number" },
+            "updated_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "balance_updated",
+          "data": {
+            "user_id": "usr_12345",
+            "new_balance": 250.00,
+            "previous_balance": 200.00,
+            "updated_at": "2026-05-07T10:05:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/rewards.events/rule_triggered.json",
+      "description": "Emitted when a reward rule is triggered",
+      "type": "object",
+      "event_type": "rule_triggered",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "rule_triggered" },
+        "data": {
+          "type": "object",
+          "required": ["rule_id", "user_id", "reward_amount"],
+          "properties": {
+            "rule_id": { "type": "string", "format": "uuid" },
+            "user_id": { "type": "string" },
+            "reward_amount": { "type": "number" },
+            "triggered_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "rule_triggered",
+          "data": {
+            "rule_id": "rule_xyz",
+            "user_id": "usr_12345",
+            "reward_amount": 25.00,
+            "triggered_at": "2026-05-07T12:30:00Z"
+          }
+        }
+      ]
+    }
+  ]
+}
