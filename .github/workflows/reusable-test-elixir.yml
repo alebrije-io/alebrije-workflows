@@ -116,7 +116,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          git config --global url.https://${{ secrets.GH_TOKEN }}@github.com/.insteadOf https://github.com/
+          git config --global url.https://${GH_TOKEN}@github.com/.insteadOf https://github.com/
 
       - name: Setup Beam (Elixir + OTP)
         uses: erlef/setup-beam@7bac9ca1bd48b5e4021d43cbe9ce61172821b092  # v1.18.1
@@ -169,6 +169,8 @@ jobs:
         run: mix coveralls.json
 
       - name: Check coverage threshold (90% immovable — Rule G)
+        env:
+          COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
         run: |
           COVERAGE=$(python3 -c "
           import json
@@ -182,16 +184,15 @@ jobs:
             exit(1)
           " 2>/dev/null || echo "0")
 
-          THRESHOLD=${{ inputs.coverage-threshold }}
-
           echo "Coverage: ${COVERAGE}%"
-          echo "Threshold: ${THRESHOLD}%"
+          echo "Threshold: ${COVERAGE_THRESHOLD}%"
 
           # Portable float comparison using python (no bc dependency)
           python3 << EOF
           import sys
+          import os
           coverage = float('${COVERAGE}')
-          threshold = ${THRESHOLD}
+          threshold = float(os.environ['COVERAGE_THRESHOLD'])
           if coverage < threshold:
             print(f'::error::Coverage {coverage}% < threshold {threshold}%')
             sys.exit(1)

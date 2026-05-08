@@ -6,14 +6,19 @@
 
 set -euo pipefail
 
-# Inputs
-PROMETHEUS_URL="${1:?Prometheus URL required}"
-SERVICE_NAME="${2:?Service name required}"
-ERROR_RATE_THRESHOLD="${3:?Error rate threshold required}"
-P99_LATENCY_THRESHOLD="${4:?P99 latency threshold required}"
-CHECK_INTERVAL="${5:?Check interval required}"
-DURATION_MINUTES="${6:?Duration minutes required}"
-SOAK_TIME_MINUTES="${7:?Soak time minutes required}"
+# Inputs from environment (preferred) or positional args
+PROMETHEUS_URL="${PROMETHEUS_URL:-${1:-}}"
+SERVICE_NAME="${SERVICE_NAME:-${2:-}}"
+ERROR_RATE_THRESHOLD="${ERROR_RATE_THRESHOLD:-${3:-5}}"
+P99_LATENCY_THRESHOLD="${LATENCY_P99_THRESHOLD:-${4:-2000}}"
+CHECK_INTERVAL="${CHECK_INTERVAL:-${5:-15}}"
+DURATION_MINUTES="${DURATION_MINUTES:-${6:-10}}"
+SOAK_TIME_MINUTES="${SOAK_TIME_MINUTES:-${7:-5}}"
+
+if [[ -z "$PROMETHEUS_URL" || -z "$SERVICE_NAME" ]]; then
+  echo "Usage: $0 (uses env vars PROMETHEUS_URL, SERVICE_NAME, etc.)" >&2
+  exit 1
+fi
 
 # Time calculations
 SOAK_SECONDS=$((SOAK_TIME_MINUTES * 60))
@@ -52,6 +57,16 @@ fi
 
 echo "Prometheus reachable, starting metrics loop..."
 echo ""
+
+# Float comparison helper (fallback to awk if bc unavailable)
+_float_compare() {
+    local a="$1" op="$2" b="$3"
+    if command -v bc >/dev/null 2>&1; then
+        echo "${a} ${op} ${b}" | bc -l
+    else
+        awk "BEGIN { print (${a} ${op} ${b}) ? 1 : 0 }"
+    fi
+}
 
 # Monitoring loop
 while [ ${ELAPSED} -lt ${MAX_SECONDS} ]; do
@@ -98,9 +113,9 @@ while [ ${ELAPSED} -lt ${MAX_SECONDS} ]; do
 
   # Only validate thresholds AFTER soak time has elapsed
   if [ ${ELAPSED} -ge ${SOAK_SECONDS} ]; then
-    # Use bc for decimal comparison
-    ER_CHECK=$(echo "${ERROR_RATE} <= ${ERROR_RATE_THRESHOLD}" | bc -l)
-    P99_CHECK=$(echo "${P99_LATENCY} <= ${P99_LATENCY_THRESHOLD}" | bc -l)
+    # Use float_compare helper (bc with awk fallback)
+    ER_CHECK=$(_float_compare "${ERROR_RATE}" "<=" "${ERROR_RATE_THRESHOLD}")
+    P99_CHECK=$(_float_compare "${P99_LATENCY}" "<=" "${P99_LATENCY_THRESHOLD}")
 
     if [ "${ER_CHECK}" != "1" ]; then
       echo "::error::Error rate ${ERROR_RATE}% EXCEEDS threshold ${ERROR_RATE_THRESHOLD}%"

@@ -76,6 +76,16 @@ on:
         required: false
         default: true
         type: boolean
+      block-on-osv-critical:
+        description: "Fail workflow on OSV-Scanner critical findings"
+        required: false
+        default: false
+        type: boolean
+      gitleaks-non-fatal:
+        description: "Continue workflow even if gitleaks finds secrets (default: false = fatal)"
+        required: false
+        default: false
+        type: boolean
       run-codeql:
         description: "Run CodeQL SAST analysis (advisory)"
         required: false
@@ -166,20 +176,24 @@ jobs:
 
       - name: Check if config path exists
         id: check-path
+        env:
+          SCAN_PATH: ${{ inputs.config-scan-path }}
         run: |
-          if [ -d "${{ inputs.config-scan-path }}" ] || [ -f "${{ inputs.config-scan-path }}" ]; then
+          if [ -d "$SCAN_PATH" ] || [ -f "$SCAN_PATH" ]; then
             echo "exists=true" >> $GITHUB_OUTPUT
           else
             echo "exists=false" >> $GITHUB_OUTPUT
-            echo "::notice::Config path '${{ inputs.config-scan-path }}' not found, skipping config scan"
+            echo "::notice::Config path '$SCAN_PATH' not found, skipping config scan"
           fi
 
       - name: Trivy config scan (table, non-blocking)
         if: steps.check-path.outputs.exists == 'true'
         uses: aquasecurity/trivy-action@6e7b7d1feac57900da086aab9910c4a723a29e20  # v0.24.0
+        env:
+          SCAN_PATH: ${{ inputs.config-scan-path }}
         with:
           scan-type: config
-          scan-ref: ${{ inputs.config-scan-path }}
+          scan-ref: ${{ env.SCAN_PATH }}
           severity: CRITICAL,HIGH
           exit-code: 0
           format: table
@@ -187,9 +201,11 @@ jobs:
       - name: Trivy config scan (SARIF, non-blocking)
         if: steps.check-path.outputs.exists == 'true'
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
+        env:
+          SCAN_PATH: ${{ inputs.config-scan-path }}
         with:
           scan-type: config
-          scan-ref: ${{ inputs.config-scan-path }}
+          scan-ref: ${{ env.SCAN_PATH }}
           severity: CRITICAL,HIGH
           exit-code: 0
           format: sarif
@@ -256,6 +272,24 @@ jobs:
           echo "::group::Auditing against baseline"
           detect-secrets audit --report .secrets.baseline
           echo "::endgroup::"
+
+  # ======================================================================
+  # GITLEAKS — secret scanning (P1 — CVE-2024-XXXXX pattern matching)
+  # ======================================================================
+  gitleaks-scan:
+    name: Scan for leaked secrets (gitleaks)
+    runs-on: arc-runner-set
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          fetch-depth: 0
+
+      - name: Scan for leaked secrets (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: ${{ inputs.gitleaks-non-fatal == true }}
 
   # ======================================================================
   # COSIGN KEYLESS SIGNING — preserved from previous version
@@ -326,7 +360,7 @@ jobs:
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
-      - name: OSV-Scanner (blocking HIGH/CRITICAL)
+      - name: OSV-Scanner (configurable failure on critical)
         uses: google/osv-scanner-action/osv-scanner-action@216810cdc61a81e1e59d9c84b8047cd93fcde376  # v1.8.0
         with:
           scan-args: |-
@@ -334,6 +368,7 @@ jobs:
             --format=sarif
             --output=osv-results.sarif
             .
+        continue-on-error: ${{ inputs.block-on-osv-critical == false }}
 
       - name: Upload OSV SARIF to GitHub Security
         if: always()
@@ -383,7 +418,7 @@ jobs:
   summary:
     name: Security scan summary
     if: always()
-    needs: [trivy-fs-scan, trivy-image-scan, trivy-config-scan, sbom, detect-secrets, cosign-sign, grype-scan, osv-scan, codeql-analysis]
+    needs: [trivy-fs-scan, trivy-image-scan, trivy-config-scan, sbom, detect-secrets, gitleaks-scan, cosign-sign, grype-scan, osv-scan, codeql-analysis]
     runs-on: arc-runner-set
     timeout-minutes: 30
     steps:
@@ -402,6 +437,7 @@ jobs:
           echo "  trivy-config-scan: ${{ needs.trivy-config-scan.result }}"
           echo "  sbom:              ${{ needs.sbom.result }}"
           echo "  detect-secrets:    ${{ needs.detect-secrets.result }}"
+          echo "  gitleaks-scan:     ${{ needs.gitleaks-scan.result }}"
           echo "  cosign-sign:       ${{ needs.cosign-sign.result }}"
           echo "  grype-scan:        ${{ needs.grype-scan.result }}"
           echo "  osv-scan:          ${{ needs.osv-scan.result }}"

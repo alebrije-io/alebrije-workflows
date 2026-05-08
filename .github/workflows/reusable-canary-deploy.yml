@@ -188,27 +188,45 @@ jobs:
           echo "${{ steps.vault.outputs.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
 
       - name: Deploy canary deployment
+        env:
+          IMAGE_REF: ${{ inputs.image }}
+          SERVICE_NAME: ${{ inputs.service-name }}
+          NAMESPACE: ${{ inputs.namespace }}
+          MANIFEST_PATH: ${{ inputs.canary-manifest-path }}
         run: |
-          IMAGE="${{ inputs.image }}"
-          SVC="${{ inputs.service-name }}"
-          NS="${{ inputs.namespace }}"
+          echo "Deploying canary for ${SERVICE_NAME} with image ${IMAGE_REF}..."
 
-          echo "Deploying canary for ${SVC} with image ${IMAGE}..."
-
-          if [ -f "${{ inputs.canary-manifest-path }}" ]; then
-            sed "s|__IMAGE__|${IMAGE}|g; s|__VERSION__|${IMAGE##*:}|g" \
-              "${{ inputs.canary-manifest-path }}" | kubectl apply -f - -n ${NS}
+          if [ -f "${MANIFEST_PATH}" ]; then
+            # Use awk for safe template substitution (avoids sed delimiter issues with image refs)
+            awk \
+              -v image="${IMAGE_REF}" \
+              -v version="${IMAGE_REF##*:}" \
+              '{
+                gsub(/__IMAGE__/, image);
+                gsub(/__VERSION__/, version);
+                print;
+              }' "${MANIFEST_PATH}" | kubectl apply -f - -n ${NAMESPACE}
           else
             # Fallback: create canary deployment by copying stable and setting label
-            kubectl get deployment/${SVC} -n ${NS} -o yaml | \
-              sed "s/${SVC}/${SVC}-canary/g; s|__IMAGE__|${IMAGE}|g" | \
-              kubectl apply -f - -n ${NS}
+            # Extract version from image ref (after last colon)
+            VERSION="${IMAGE_REF##*:}"
+            kubectl get deployment/${SERVICE_NAME} -n ${NAMESPACE} -o yaml | \
+              awk \
+                -v svc="${SERVICE_NAME}" \
+                -v image="${IMAGE_REF}" \
+                '{
+                  # Replace deployment name (add -canary suffix if not already present)
+                  gsub(svc ":", svc "-canary:");
+                  gsub("name: " svc "$", "name: " svc "-canary");
+                  gsub(/__IMAGE__/, image);
+                  print;
+                }' | kubectl apply -f - -n ${NAMESPACE}
           fi
 
           echo "Waiting for canary rollout..."
-          kubectl rollout status deployment/${SVC}-canary -n ${NS} --timeout=300s
+          kubectl rollout status deployment/${SERVICE_NAME}-canary -n ${NAMESPACE} --timeout=300s
 
-          echo "::notice::Canary deployment ready: ${SVC}-canary"
+          echo "::notice::Canary deployment ready: ${SERVICE_NAME}-canary"
 
   # ──────────────────────────────────────────────────────────────────────
   # JOB 3: Wait and validate metrics (runs for each weight step)

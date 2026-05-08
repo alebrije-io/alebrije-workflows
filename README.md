@@ -7,15 +7,33 @@ Centralized GitHub Actions reusable workflows and CI/CD utilities for all Alebri
 | Workflow | Purpose |
 |---|---|
 | reusable-test.yml | Python tests (pytest + coverage, matrix 3.12/3.13) |
+| reusable-test-go.yml | Go tests with coverage reporting |
+| reusable-test-elixir.yml | Elixir/Phoenix tests with coverage |
+| reusable-test-ts.yml | TypeScript tests (vitest/jest) |
+| reusable-test-go-matrix.yml | Go tests across multiple Go versions |
+| reusable-test-elixir-matrix.yml | Elixir tests across multiple OTP/Elixir versions |
 | reusable-test-node.yml | Node.js tests |
 | reusable-build-push.yml | Docker build + push to Docker Hub + Cosign signing |
 | reusable-deploy.yml | Deploy to Kubernetes (OVH) + smoke test |
+| reusable-canary-deploy.yml | Progressive canary deployment with metrics validation |
 | reusable-security-scan.yml | Trivy multi-type scan (fs/image/config) + SBOM + Cosign |
 | reusable-pact-verify.yml | Contract testing (Pact) |
 | reusable-changelog-check.yml | Enforce CHANGELOG on VERSION bumps |
 | reusable-release.yml | GitHub Release automation on tag push |
+| reusable-release-extended.yml | Extended release workflow with additional validation |
 | reusable-contract-check.yml | FE/BE contract audit |
 | reusable-event-schema-check.yml | AsyncAPI / event-schemas validation |
+| reusable-approved-images-check.yml | Validate base images against approval list |
+| reusable-mutation-test.yml | Mutation testing (Stryker/mutmut) |
+| reusable-notify.yml | Notification/alert dispatcher |
+| reusable-openapi-check.yml | OpenAPI specification validation |
+| reusable-property-tests.yml | Property-based testing (StreamData/Hypothesis) |
+| reusable-benchmark.yml | Performance benchmarking |
+| api-collection-gen.yml | Generate API collection artifacts |
+| ci-cost-aggregator.yml | Aggregate CI spend metrics |
+| cross-repo-trigger.yml | Cross-repo workflow orchestration |
+| event-bus-e2e.yml | End-to-end event bus testing |
+| validate-self.yml | Self-validation of workflow syntax |
 
 ## Usage
 

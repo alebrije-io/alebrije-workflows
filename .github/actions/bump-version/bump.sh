@@ -57,7 +57,7 @@ case "$LANGUAGE" in
     # Go: VERSION file (root or version.go constant)
     if [[ -f "version.go" ]]; then
       # Update version.go const Version = "..."
-      sed -i'' -e "s/const Version = \"[^\"]*\"/const Version = \"$NEW_VERSION\"/" version.go
+      perl -pi -e "s/const Version = \"[^\"]*\"/const Version = \"$NEW_VERSION\"/" version.go
     else
       echo "$NEW_VERSION" > "$VERSION_FILE"
     fi
@@ -66,11 +66,11 @@ case "$LANGUAGE" in
   python)
     # Python: setup.py, setup.cfg, pyproject.toml, or VERSION file
     if [[ -f "setup.py" ]]; then
-      sed -i'' -e "s/version=['\"].*['\"]/version=\"$NEW_VERSION\"/" setup.py
+      perl -pi -e "s/version=['\"].*['\"]/version=\"$NEW_VERSION\"/" setup.py
     elif [[ -f "pyproject.toml" ]]; then
-      sed -i'' -e "s/^version = ['\"].*['\"]/version = \"$NEW_VERSION\"/" pyproject.toml
+      perl -pi -e "s/^version = ['\"].*['\"]/version = \"$NEW_VERSION\"/" pyproject.toml
     elif [[ -f "setup.cfg" ]]; then
-      sed -i'' -e "s/^version = .*/version = $NEW_VERSION/" setup.cfg
+      perl -pi -e "s/^version = .*/version = $NEW_VERSION/" setup.cfg
     else
       echo "$NEW_VERSION" > "$VERSION_FILE"
     fi
@@ -79,7 +79,7 @@ case "$LANGUAGE" in
   elixir)
     # Elixir: mix.exs project() version field
     if [[ -f "mix.exs" ]]; then
-      sed -i'' -e "s/@version \"[^\"]*\"/@version \"$NEW_VERSION\"/" mix.exs
+      perl -pi -e "s/@version \"[^\"]*\"/@version \"$NEW_VERSION\"/" mix.exs
     else
       echo "$NEW_VERSION" > "$VERSION_FILE"
     fi

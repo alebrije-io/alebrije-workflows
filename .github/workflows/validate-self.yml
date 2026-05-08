@@ -433,6 +433,91 @@ jobs:
           print(f"Inputs audit: {len(warnings)} missing descriptions (advisory)")
 
   # ======================================================================
+  # AUDIT 14: Lint workflows with actionlint
+  # ======================================================================
+  lint-workflows:
+    name: Lint workflows with actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - name: Run actionlint
+        uses: rhysd/actionlint@v1
+        with:
+          flags: -color
+
+  # ======================================================================
+  # AUDIT 15: Audit timeout-minutes coverage
+  # ======================================================================
+  check-timeouts:
+    name: Audit timeout-minutes coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+        with:
+          python-version: "3.12"
+      - name: Find jobs without timeout-minutes
+        shell: python3 {0}
+        run: |
+          import yaml
+          import glob
+          missing = []
+          for path in glob.glob('.github/workflows/*.yml'):
+              try:
+                  with open(path) as f:
+                      data = yaml.safe_load(f)
+                  for jname, jdef in (data.get('jobs') or {}).items():
+                      if isinstance(jdef, dict) and 'timeout-minutes' not in jdef:
+                          missing.append(f"{path}: {jname}")
+              except Exception as e:
+                  print(f"::warning::Error parsing {path}: {e}")
+          for m in missing:
+              print(f"::warning::No timeout-minutes: {m}")
+          if missing:
+              print(f"\nTotal jobs missing timeout-minutes: {len(missing)}")
+
+  # ======================================================================
+  # AUDIT 16: Check script injection via inputs.*
+  # ======================================================================
+  check-input-injection:
+    name: Check script injection via inputs.*
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+        with:
+          python-version: "3.12"
+      - name: Scan for inputs.* in run blocks
+        shell: python3 {0}
+        run: |
+          import glob
+          import re
+          pattern = re.compile(r'\$\{\{\s*inputs\.[^}]+\}\}')
+          found_issues = []
+          for path in glob.glob('.github/workflows/*.yml'):
+              with open(path) as f:
+                  lines = f.readlines()
+              in_run = False
+              for i, line in enumerate(lines):
+                  if re.search(r'^\s+run:\s*\|', line):
+                      in_run = True
+                  elif in_run and line.strip() and not line.startswith(' ' * 4):
+                      in_run = False
+                  if in_run and pattern.search(line):
+                      # Safe pattern: wrapped in env: variable first (starts with spaces + uppercase var name)
+                      if not re.search(r'^\s+[A-Z_]+:\s*\$\{\{', line):
+                          found_issues.append(f"{path}:{i+1}: {line.strip()[:80]}")
+          for issue in found_issues:
+              print(f"::warning::Potential injection {issue}")
+          if found_issues:
+              print(f"\nTotal potential injection points: {len(found_issues)}")
+          else:
+              print("PASS: No direct inputs.* usage in run blocks")
+
+  # ======================================================================
   # SUMMARY: Aggregate all audit results
   # ======================================================================
   security-audit-summary:
@@ -440,7 +525,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [audit-shas, check-hardcoded-secrets, check-permissions, validate-yaml, check-anti-patterns, check-action-refs, validate-structure, check-concurrency, check-action-versions-commented, check-script-injection, check-event-schemas-valid, check-minimum-permissions, validate-workflow-inputs-documented]
+    needs: [audit-shas, check-hardcoded-secrets, check-permissions, validate-yaml, check-anti-patterns, check-action-refs, validate-structure, check-concurrency, check-action-versions-commented, check-script-injection, check-event-schemas-valid, check-minimum-permissions, validate-workflow-inputs-documented, lint-workflows, check-timeouts, check-input-injection]
     permissions:
       contents: read
       pull-requests: write
@@ -468,6 +553,9 @@ jobs:
           echo "| Event Schemas Valid | ${{ needs.check-event-schemas-valid.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Minimum Permissions | ${{ needs.check-minimum-permissions.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Inputs Documented | ${{ needs.validate-workflow-inputs-documented.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Workflow Linting (actionlint) | ${{ needs.lint-workflows.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Timeout-minutes Audit | ${{ needs.check-timeouts.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Script Injection (inputs.*) | ${{ needs.check-input-injection.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ needs.audit-shas.result }}" = "success" ] && \
              [ "${{ needs.check-hardcoded-secrets.result }}" = "success" ] && \

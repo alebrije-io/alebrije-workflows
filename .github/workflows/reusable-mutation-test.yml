@@ -256,11 +256,5 @@ jobs:
 
       - name: Run Elixir mutation tests (muzak)
         working-directory: ${{ inputs.working-directory }}
-        run: |
-          # muzak es un mutation testing framework para Elixir (similar a Stryker para JS)
-          # Si la app no tiene muzak en deps, este step falla gracefully con warning.
-          mix muzak --threshold ${{ inputs.mutation-threshold }} && {
-            echo "::notice::Elixir mutation testing passed"
-          } || {
-            echo "::warning::muzak not configured in mix.exs (optional) — skipping Elixir mutation test"
-          }
+        run: mix muzak --threshold ${{ inputs.mutation-threshold }}
+        continue-on-error: true  # muzak is optional if not in mix.exs deps

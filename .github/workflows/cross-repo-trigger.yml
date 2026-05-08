@@ -55,6 +55,10 @@ permissions:
   actions: read
   contents: read
 
+concurrency:
+  group: cross-repo-trigger-${{ github.repository }}-${{ github.sha }}
+  cancel-in-progress: false
+
 jobs:
   prepare-dispatch:
     name: Validate inputs and prepare dispatch
@@ -120,6 +124,15 @@ jobs:
           DISPATCH_SOURCE: ${{ github.repository }}
           DISPATCH_TIME: ${{ github.event.head_commit.timestamp || github.event.repository.pushed_at || '' }}
         run: |
+          # Validate custom-payload JSON before using it
+          CUSTOM_PAYLOAD_INPUT="${CUSTOM_PAYLOAD}"
+          if [ -n "$CUSTOM_PAYLOAD_INPUT" ] && [ "$CUSTOM_PAYLOAD_INPUT" != "{}" ]; then
+            if ! echo "$CUSTOM_PAYLOAD_INPUT" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null; then
+              echo "::error::custom-payload is not valid JSON: $CUSTOM_PAYLOAD_INPUT"
+              exit 1
+            fi
+          fi
+
           python3 << 'PY'
           import json
           import os
@@ -130,7 +143,16 @@ jobs:
           target_repo = os.environ["TARGET_REPO"]
           workflow = os.environ["WORKFLOW_FILE"]
           ref = os.environ["TRIGGER_REF"]
-          custom_payload = json.loads(os.environ.get("CUSTOM_PAYLOAD", "{}"))
+
+          # Parse and validate custom_payload from env var (already pre-validated by shell)
+          custom_payload_raw = os.environ.get("CUSTOM_PAYLOAD", "{}")
+          try:
+            custom_payload = json.loads(custom_payload_raw)
+            if not isinstance(custom_payload, dict):
+              raise ValueError("custom-payload must be a JSON object")
+          except json.JSONDecodeError as e:
+            print(f"::error::Invalid JSON in custom-payload: {e}")
+            sys.exit(1)
 
           actor = os.environ.get("DISPATCH_ACTOR", "unknown")
           source = os.environ.get("DISPATCH_SOURCE", "unknown")

@@ -63,13 +63,19 @@ runs:
         pct = 0.0
         detail_lines = []
 
-        if fmt == "istanbul-json":
+        if fmt in ("istanbul-json", "istanbul"):
             data = json.loads(Path(cov_file).read_text())
-            total = data.get("total", {})
-            pct = total.get("lines", {}).get("pct", 0.0)
-            for metric in ("statements", "branches", "functions", "lines"):
-                v = total.get(metric, {})
-                detail_lines.append(f"| {metric.capitalize()} | {v.get('covered',0)}/{v.get('total',0)} | {v.get('pct',0):.1f}% |")
+            totals = data.get("total", {})
+            metrics = ["lines", "branches", "functions", "statements"]
+            pcts = []
+            for m in metrics:
+                if m in totals and "pct" in totals[m]:
+                    pct_val = totals[m]["pct"]
+                    covered = totals[m].get("covered", 0)
+                    total = totals[m].get("total", 0)
+                    pcts.append(pct_val)
+                    detail_lines.append(f"| {m.capitalize()} | {covered}/{total} | {pct_val:.1f}% |")
+            pct = sum(pcts) / len(pcts) if pcts else 0.0
         elif fmt == "go-text":
             text = Path(cov_file).read_text()
             for line in text.splitlines():
@@ -82,7 +88,11 @@ runs:
             for line in text.splitlines():
                 if "TOTAL" in line:
                     parts = line.split()
-                    pct = float(parts[-1].replace("%", ""))
+                    try:
+                        pct_str = next(p for p in reversed(parts) if "%" in p)
+                        pct = float(pct_str.replace("%", ""))
+                    except (StopIteration, ValueError):
+                        pct = 0.0
                     break
             detail_lines.append(f"| Total | — | {pct:.1f}% |")
 

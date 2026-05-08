@@ -18,7 +18,7 @@ README.md                  @ileonelperea
 # Infrastructure and deployment
 /k8s/                      @ileonelperea
 /scripts/                  @ileonelperea
-/Dockerfile                @ileonelperia
+/Dockerfile                @ileonelperea
 Makefile                   @ileonelperea
 
 # Documentation
@@ -29,3 +29,8 @@ Makefile                   @ileonelperea
 .github/workflows/reusable-test-*.yml      @ileonelperea
 .github/workflows/reusable-security-*.yml  @ileonelperea
 .github/workflows/ci-*.yml                 @ileonelperea
+
+# Issue templates and event schemas
+.github/ISSUE_TEMPLATE/  @ileonelperea
+.github/schemas/         @ileonelperea
+event-schemas/           @ileonelperea

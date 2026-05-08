@@ -91,6 +91,18 @@ jobs:
             echo "::notice::tests/property/ directory not found — skipping Hypothesis tests"
           fi
 
+      - name: Upload property test results
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        if: always()
+        with:
+          name: property-test-results-python-${{ github.run_id }}
+          path: |
+            **/property-test-results/**
+            **/*property*.json
+            **/*property*.xml
+          retention-days: 14
+          if-no-files-found: warn
+
   # ========================================================================
   # ELIXIR — StreamData
   # ========================================================================
@@ -121,6 +133,18 @@ jobs:
           mix test --include property --max-cases ${{ inputs.num-cases }} || {
             echo "::notice::No property tests tagged with @tag :property found (optional)"
           }
+
+      - name: Upload property test results
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        if: always()
+        with:
+          name: property-test-results-elixir-${{ github.run_id }}
+          path: |
+            **/property-test-results/**
+            **/*property*.json
+            **/*property*.xml
+          retention-days: 14
+          if-no-files-found: warn
 
   # ========================================================================
   # GO — gopter / rapid
@@ -153,6 +177,18 @@ jobs:
             echo "::notice::No property tests found (build tag +property or TestProperty functions) — optional"
           }
 
+      - name: Upload property test results
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        if: always()
+        with:
+          name: property-test-results-go-${{ github.run_id }}
+          path: |
+            **/property-test-results/**
+            **/*property*.json
+            **/*property*.xml
+          retention-days: 14
+          if-no-files-found: warn
+
   # ========================================================================
   # TYPESCRIPT — fast-check
   # ========================================================================
@@ -184,3 +220,15 @@ jobs:
           else
             echo "::notice::No *.property.test.ts files found (optional)"
           fi
+
+      - name: Upload property test results
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        if: always()
+        with:
+          name: property-test-results-typescript-${{ github.run_id }}
+          path: |
+            **/property-test-results/**
+            **/*property*.json
+            **/*property*.xml
+          retention-days: 14
+          if-no-files-found: warn

@@ -95,8 +95,9 @@ jobs:
 
       # Paso 4: Detectar regresiones
       - name: Detect regressions
+        env:
+          THRESHOLD: ${{ inputs.regression-threshold-pct }}
         run: |
-          THRESHOLD=${{ inputs.regression-threshold-pct }}
           REGRESSIONS=$(grep -E '\+[0-9]+\.[0-9]+%' /tmp/bench-comparison.txt | awk -F'[+%]' '{if ($2+0 > '"$THRESHOLD"') print $0}')
           if [ -n "$REGRESSIONS" ]; then
             echo "::error::Performance regressions detected (>${THRESHOLD}% slower):"
@@ -162,7 +163,9 @@ jobs:
 
       - name: Compare benchmarks
         id: compare
+        shell: bash
         run: |
+          set -euo pipefail
           python3 << 'PY'
           import json, sys
 
@@ -254,7 +257,9 @@ jobs:
         run: mix run bench/run_all.exs --output json > /tmp/bench-pr.json
 
       - name: Compare Benchee results
+        shell: bash
         run: |
+          set -euo pipefail
           python3 << 'PY'
           import json, sys
           threshold = ${{ inputs.regression-threshold-pct }}

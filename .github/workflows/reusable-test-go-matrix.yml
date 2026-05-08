@@ -23,9 +23,9 @@ on:
   workflow_call:
     inputs:
       go-versions:
-        description: "JSON array of Go versions to test (e.g., '[\"1.23\", \"1.24\"]')"
+        description: "JSON array of Go versions to test (e.g., '[\"1.23\", \"1.24\", \"1.25\"]')"
         type: string
-        default: '["1.23", "1.24"]'
+        default: '["1.23", "1.24", "1.25"]'
         required: false
       module-path:
         description: "Go module path within the repo (default: '.')"

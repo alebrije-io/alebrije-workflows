@@ -67,13 +67,18 @@ runs:
         # Load known tenant IDs from file
         known_ids: list[str] = []
         if known_file and Path(known_file).exists():
-            with open(known_file) as f:
-                known_ids = json.load(f)
+            try:
+                with open(known_file) as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        known_ids = data
+            except (json.JSONDecodeError, ValueError) as e:
+                print(f"::warning::Could not parse known-tenant-ids file: {e}")
+                known_ids = []
 
-        # UUID v4 pattern (tenant IDs are typically UUIDs)
+        # UUID pattern (case-insensitive, matches standard + compact form)
         uuid_re = re.compile(
-            r'["\']([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})["\']',
-            re.IGNORECASE
+            r'["\']?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32})["\']?'
         )
 
         leaks: list[str] = []
@@ -105,20 +110,22 @@ runs:
                 continue
 
             for lineno, line in enumerate(content.splitlines(), 1):
-                # Check known tenant IDs explicitly
+                # Check known tenant IDs explicitly (case-insensitive)
                 for tid in known_ids:
-                    if tid in line:
+                    if tid.lower() in line.lower():
                         leaks.append(f"{rel}:{lineno}: hardcoded known tenant ID '{tid}'")
 
                 # Check UUID pattern in assignments or config-like contexts
                 for m in uuid_re.finditer(line):
                     uid = m.group(1).lower()
                     # Skip if it's in a known-tenant check (already caught above)
-                    if uid in [t.lower() for t in known_ids]:
+                    known_ids_lower = [t.lower() for t in known_ids]
+                    if uid in known_ids_lower:
                         continue
                     # Only flag if it looks like a tenant assignment (variable named tenant/org/customer)
                     ctx = line.lower()
-                    if any(kw in ctx for kw in ["tenant", "org_id", "organisation", "customer_id", "account_id"]):
+                    tenant_keywords = {"tenant", "org_id", "organisation", "customer_id", "account_id", "tenantid", "tenant_id"}
+                    if any(kw in ctx for kw in tenant_keywords):
                         leaks.append(f"{rel}:{lineno}: possible hardcoded tenant UUID '{uid}'")
 
         leak_report = "\n".join(leaks)

@@ -123,8 +123,9 @@ jobs:
           # The extractor is intentionally tolerant: false positives get
           # filtered later against the registry.
 
+          # Only match event_type KEY-VALUE pairs, not arbitrary strings
           EVENT_TYPE_RE = re.compile(
-              r"[\"']((?:[a-z][a-z_]*\.){2}[a-z][a-z_]*)[\"']"
+              r'"event_type"\s*:\s*"([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)"'
           )
 
           PUBLISHER_GLOBS = [
@@ -233,11 +234,18 @@ jobs:
                   continue
 
               try:
-                  baseline_schema = json.loads(baseline_schema_file.read_text())
-                  pr_schema = json.loads(pr_schema_file.read_text())
+                  baseline_content = baseline_schema_file.read_text()
+                  baseline_schema = json.loads(baseline_content)
               except json.JSONDecodeError as e:
-                  breaking.append(f"{name}: invalid JSON: {e}")
-                  continue
+                  print(f"::error::Invalid JSON in baseline schema {name}: {e}")
+                  sys.exit(1)
+
+              try:
+                  pr_content = pr_schema_file.read_text()
+                  pr_schema = json.loads(pr_content)
+              except json.JSONDecodeError as e:
+                  print(f"::error::Invalid JSON in PR schema {name}: {e}")
+                  sys.exit(1)
 
               # Check 1: Required fields added (consumers won't provide them)
               baseline_required = set(baseline_schema.get("required", []))

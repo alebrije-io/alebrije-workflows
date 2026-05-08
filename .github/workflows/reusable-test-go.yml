@@ -134,33 +134,40 @@ jobs:
           args: --config .golangci.yml
 
       - name: Run tests with coverage
+        env:
+          TEST_TAGS: ${{ inputs.test-tags }}
+          RACE_FLAG_INPUT: ${{ inputs.race }}
         run: |
           cd ${{ inputs.module-path }}
           RACE_FLAG=""
-          if [ "${{ inputs.race }}" == "true" ]; then
+          if [ "$RACE_FLAG_INPUT" == "true" ]; then
             RACE_FLAG="-race"
           fi
           TAGS_FLAG=""
-          if [ -n "${{ inputs.test-tags }}" ]; then
-            TAGS_FLAG="-tags ${{ inputs.test-tags }}"
+          if [ -n "$TEST_TAGS" ]; then
+            TAGS_FLAG="-tags $TEST_TAGS"
           fi
           go test $RACE_FLAG $TAGS_FLAG -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Check coverage gate (90% immutable, Rule G)
+        env:
+          COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
         run: |
           cd ${{ inputs.module-path }}
           COVERAGE=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
           echo "Coverage: ${COVERAGE}%"
 
           # Portable floating-point comparison using awk
-          if awk "BEGIN { exit !($COVERAGE + 0 < ${{ inputs.coverage-threshold }}) }"; then
-            echo "::error::Coverage ${COVERAGE}% is below threshold ${{ inputs.coverage-threshold }}%"
+          if awk "BEGIN { exit !($COVERAGE + 0 < $COVERAGE_THRESHOLD) }"; then
+            echo "::error::Coverage ${COVERAGE}% is below threshold $COVERAGE_THRESHOLD%"
             exit 1
           fi
-          echo "::notice::Coverage ${COVERAGE}% meets threshold ${{ inputs.coverage-threshold }}%"
+          echo "::notice::Coverage ${COVERAGE}% meets threshold $COVERAGE_THRESHOLD%"
 
       - name: Write coverage summary
         if: always()
+        env:
+          COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
         run: |
           cd ${{ inputs.module-path }}
           echo "### Go Coverage Report" >> $GITHUB_STEP_SUMMARY
@@ -170,7 +177,7 @@ jobs:
           if [ -f coverage.out ]; then
             COVERAGE=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
             echo "| Overall Coverage | ${COVERAGE}% |" >> $GITHUB_STEP_SUMMARY
-            echo "| Gate Threshold | ${{ inputs.coverage-threshold }}% |" >> $GITHUB_STEP_SUMMARY
+            echo "| Gate Threshold | $COVERAGE_THRESHOLD% |" >> $GITHUB_STEP_SUMMARY
           else
             echo "| Status | No coverage data |" >> $GITHUB_STEP_SUMMARY
           fi
@@ -228,33 +235,40 @@ jobs:
           args: --config .golangci.yml
 
       - name: Run tests with coverage
+        env:
+          TEST_TAGS: ${{ inputs.test-tags }}
+          RACE_FLAG_INPUT: ${{ inputs.race }}
         run: |
           cd ${{ inputs.module-path }}
           RACE_FLAG=""
-          if [ "${{ inputs.race }}" == "true" ]; then
+          if [ "$RACE_FLAG_INPUT" == "true" ]; then
             RACE_FLAG="-race"
           fi
           TAGS_FLAG=""
-          if [ -n "${{ inputs.test-tags }}" ]; then
-            TAGS_FLAG="-tags ${{ inputs.test-tags }}"
+          if [ -n "$TEST_TAGS" ]; then
+            TAGS_FLAG="-tags $TEST_TAGS"
           fi
           go test $RACE_FLAG $TAGS_FLAG -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Check coverage gate (90% immutable, Rule G)
+        env:
+          COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
         run: |
           cd ${{ inputs.module-path }}
           COVERAGE=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
           echo "Coverage: ${COVERAGE}%"
 
           # Portable floating-point comparison using awk
-          if awk "BEGIN { exit !($COVERAGE + 0 < ${{ inputs.coverage-threshold }}) }"; then
-            echo "::error::Coverage ${COVERAGE}% is below threshold ${{ inputs.coverage-threshold }}%"
+          if awk "BEGIN { exit !($COVERAGE + 0 < $COVERAGE_THRESHOLD) }"; then
+            echo "::error::Coverage ${COVERAGE}% is below threshold $COVERAGE_THRESHOLD%"
             exit 1
           fi
-          echo "::notice::Coverage ${COVERAGE}% meets threshold ${{ inputs.coverage-threshold }}%"
+          echo "::notice::Coverage ${COVERAGE}% meets threshold $COVERAGE_THRESHOLD%"
 
       - name: Write coverage summary
         if: always()
+        env:
+          COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
         run: |
           cd ${{ inputs.module-path }}
           echo "### Go Coverage Report" >> $GITHUB_STEP_SUMMARY
@@ -264,7 +278,7 @@ jobs:
           if [ -f coverage.out ]; then
             COVERAGE=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
             echo "| Overall Coverage | ${COVERAGE}% |" >> $GITHUB_STEP_SUMMARY
-            echo "| Gate Threshold | ${{ inputs.coverage-threshold }}% |" >> $GITHUB_STEP_SUMMARY
+            echo "| Gate Threshold | $COVERAGE_THRESHOLD% |" >> $GITHUB_STEP_SUMMARY
           else
             echo "| Status | No coverage data |" >> $GITHUB_STEP_SUMMARY
           fi

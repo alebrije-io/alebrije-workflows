@@ -35,6 +35,10 @@ on:
         description: "Fail if oasdiff detects breaking changes"
         default: true
         type: boolean
+      pr-title:
+        description: "PR title to check for [allow-breaking-change] override"
+        type: string
+        default: ""
     secrets:
       GH_TOKEN:
         required: false
@@ -137,6 +141,24 @@ jobs:
           chmod +x oasdiff
           sudo mv oasdiff /usr/local/bin/
 
+      - name: Check for breaking change override
+        id: breaking-override
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_TITLE_INPUT: ${{ inputs.pr-title }}
+        run: |
+          # Check PR title from event (highest priority) or explicit input
+          TITLE="${PR_TITLE:-$PR_TITLE_INPUT}"
+          if [ -z "$TITLE" ]; then
+            echo "override=false" >> $GITHUB_OUTPUT
+          elif echo "$TITLE" | grep -qF '[allow-breaking-change]'; then
+            echo "override=true" >> $GITHUB_OUTPUT
+            echo "::notice::Breaking change override active via [allow-breaking-change] in PR title"
+          else
+            echo "override=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Get baseline spec (main branch)
         if: steps.check-spec.outputs.exists == 'true'
         run: |
@@ -159,7 +181,7 @@ jobs:
           cat /tmp/breaking-changes.md >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-          if [ $EXIT_CODE -ne 0 ] && [ "${{ inputs.fail-on-breaking-changes }}" = "true" ]; then
+          if [ $EXIT_CODE -ne 0 ] && [ "${{ inputs.fail-on-breaking-changes }}" = "true" ] && [ "${{ steps.breaking-override.outputs.override }}" != "true" ]; then
             echo "::error::Breaking changes detected in OpenAPI spec!"
             exit $EXIT_CODE
           fi

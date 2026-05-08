@@ -60,6 +60,9 @@ jobs:
         elixir-version: ${{ fromJson(inputs.elixir-versions) }}
         otp-version: ${{ fromJson(inputs.otp-versions) }}
       fail-fast: false
+      include:
+        - elixir-version: '1.17'
+          otp-version: '26'
 
     services:
       postgres:
@@ -172,3 +175,15 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: elixir
           fail_ci_if_error: false
+
+      - name: Upload property test results
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        if: always()
+        with:
+          name: property-test-results-elixir-${{ matrix.elixir-version }}-otp${{ matrix.otp-version }}-${{ github.run_id }}
+          path: |
+            **/property-test-results/**
+            **/*property*.json
+            **/*property*.xml
+          retention-days: 14
+          if-no-files-found: warn

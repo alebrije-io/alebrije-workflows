@@ -18,14 +18,18 @@ runs:
     - name: Build comment body
       id: build-comment
       shell: bash
+      env:
+        COMPARISON_FILE: ${{ inputs.comparison-file }}
+        THRESHOLD: ${{ inputs.threshold }}
       run: |
+        set -euo pipefail
         BODY="## Benchmark Results 📊\n\n"
-        if [ -n "${{ inputs.comparison-file }}" ] && [ -f "${{ inputs.comparison-file }}" ]; then
-          BODY="${BODY}$(cat '${{ inputs.comparison-file }}')\n\n"
+        if [ -n "$COMPARISON_FILE" ] && [ -f "$COMPARISON_FILE" ]; then
+          BODY="${BODY}$(cat "$COMPARISON_FILE")\n\n"
         elif [ -n "${{ inputs.comparison }}" ]; then
           BODY="${BODY}\`\`\`\n${{ inputs.comparison }}\n\`\`\`\n\n"
         fi
-        BODY="${BODY}> Regression threshold: ${{ inputs.threshold }}% | 🟢 OK | 🟡 >5% | 🔴 >${{ inputs.threshold }}%"
+        BODY="${BODY}> Regression threshold: ${THRESHOLD}% | 🟢 OK | 🟡 >5% | 🔴 >${THRESHOLD}%"
         echo "body<<EOF" >> $GITHUB_OUTPUT
         echo -e "${BODY}" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT

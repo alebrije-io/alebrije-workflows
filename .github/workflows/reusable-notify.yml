@@ -95,24 +95,24 @@ jobs:
         run: |
           case "${{ env.NOTIFICATION_TYPE }}" in
             slack)
-              echo "::set-output name=notify-slack::true"
-              echo "::set-output name=notify-email::false"
-              echo "::set-output name=notify-github::false"
+              echo "notify-slack=true" >> $GITHUB_OUTPUT
+              echo "notify-email=false" >> $GITHUB_OUTPUT
+              echo "notify-github=false" >> $GITHUB_OUTPUT
               ;;
             email)
-              echo "::set-output name=notify-slack::false"
-              echo "::set-output name=notify-email::true"
-              echo "::set-output name=notify-github::false"
+              echo "notify-slack=false" >> $GITHUB_OUTPUT
+              echo "notify-email=true" >> $GITHUB_OUTPUT
+              echo "notify-github=false" >> $GITHUB_OUTPUT
               ;;
             github)
-              echo "::set-output name=notify-slack::false"
-              echo "::set-output name=notify-email::false"
-              echo "::set-output name=notify-github::true"
+              echo "notify-slack=false" >> $GITHUB_OUTPUT
+              echo "notify-email=false" >> $GITHUB_OUTPUT
+              echo "notify-github=true" >> $GITHUB_OUTPUT
               ;;
             all)
-              echo "::set-output name=notify-slack::true"
-              echo "::set-output name=notify-email::true"
-              echo "::set-output name=notify-github::true"
+              echo "notify-slack=true" >> $GITHUB_OUTPUT
+              echo "notify-email=true" >> $GITHUB_OUTPUT
+              echo "notify-github=true" >> $GITHUB_OUTPUT
               ;;
             *)
               echo "::error::Invalid notification-type: ${{ env.NOTIFICATION_TYPE }}"
@@ -127,16 +127,16 @@ jobs:
         run: |
           case "${{ env.SEVERITY }}" in
             info)
-              echo "::set-output name=emoji::ℹ️"
-              echo "::set-output name=color::#36a64f"
+              echo "emoji=ℹ️" >> $GITHUB_OUTPUT
+              echo "color=#36a64f" >> $GITHUB_OUTPUT
               ;;
             warn)
-              echo "::set-output name=emoji::⚠️"
-              echo "::set-output name=color::#ff9900"
+              echo "emoji=⚠️" >> $GITHUB_OUTPUT
+              echo "color=#ff9900" >> $GITHUB_OUTPUT
               ;;
             critical)
-              echo "::set-output name=emoji::🚨"
-              echo "::set-output name=color::#ff0000"
+              echo "emoji=🚨" >> $GITHUB_OUTPUT
+              echo "color=#ff0000" >> $GITHUB_OUTPUT
               ;;
             *)
               echo "::error::Invalid severity: ${{ env.SEVERITY }}"
@@ -150,10 +150,10 @@ jobs:
           CUSTOM_URL: ${{ inputs.run-url }}
         run: |
           if [ -n "${{ env.CUSTOM_URL }}" ]; then
-            echo "::set-output name=run-url::${{ env.CUSTOM_URL }}"
+            echo "run-url=${{ env.CUSTOM_URL }}" >> $GITHUB_OUTPUT
           else
             url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo "::set-output name=run-url::${url}"
+            echo "run-url=${url}" >> $GITHUB_OUTPUT
           fi
 
   notify-slack:
@@ -319,6 +319,7 @@ jobs:
           import os
           import smtplib
           import sys
+          import html
           from email.mime.text import MIMEText
           from email.mime.multipart import MIMEMultipart
 
@@ -343,27 +344,36 @@ jobs:
               repo = os.environ.get("REPO", "")
               actor = os.environ.get("ACTOR", "")
 
+              # Escape HTML special chars in all user-controlled input
+              subject_safe = html.escape(subject)
+              severity_safe = html.escape(severity)
+              service_safe = html.escape(service) if service else ""
+              body_safe = html.escape(body) if body else ""
+              repo_safe = html.escape(repo)
+              actor_safe = html.escape(actor)
+              run_url_safe = html.escape(run_url)
+
               # Construir HTML email
               html_body = f"""
               <html>
                 <body style="font-family: Arial, sans-serif; color: #333;">
-                  <h2>{subject}</h2>
-                  <p><strong>Severity:</strong> <span style="color: #ff0000;">{severity}</span></p>
+                  <h2>{subject_safe}</h2>
+                  <p><strong>Severity:</strong> <span style="color: #ff0000;">{severity_safe}</span></p>
               """
 
-              if service:
-                  html_body += f"<p><strong>Service:</strong> {service}</p>"
+              if service_safe:
+                  html_body += f"<p><strong>Service:</strong> {service_safe}</p>"
 
-              if body:
-                  html_body += f"<p><pre>{body}</pre></p>"
+              if body_safe:
+                  html_body += f"<p><pre>{body_safe}</pre></p>"
 
               html_body += f"""
                   <hr/>
                   <p style="font-size: 0.9em; color: #666;">
                     <strong>Details:</strong><br/>
-                    Repository: {repo}<br/>
-                    Actor: {actor}<br/>
-                    <a href="{run_url}">View workflow run</a>
+                    Repository: {repo_safe}<br/>
+                    Actor: {actor_safe}<br/>
+                    <a href="{run_url_safe}">View workflow run</a>
                   </p>
                 </body>
               </html>

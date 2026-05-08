@@ -41,6 +41,7 @@
 - [ ] ADR compliance verified (if modifying patterns in PATTERNS.md or ADR refs)
 - [ ] No Phase-2/future comments in production code
 - [ ] Consistent with existing service standardization
+- [ ] Documentation updated (README entry, workflow header comment, inline comments for non-obvious logic)
 
 ## Fleet Impact
 

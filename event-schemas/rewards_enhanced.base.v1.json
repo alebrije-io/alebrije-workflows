@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://alebrije.io/schemas/rewards-enhanced.base.v1.json",
-  "title": "rewards-enhanced base schema v1",
+  "$id": "https://alebrije.io/schemas/rewards_enhanced.base.v1.json",
+  "title": "rewards_enhanced base schema v1",
   "description": "Enhanced schema for rewards module events. Covers loyalty points, redemptions, tier changes, and expiration.",
   "allOf": [
     { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },

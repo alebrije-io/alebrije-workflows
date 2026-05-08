@@ -1,20 +1,66 @@
 {
-  "base_images": [
+  "images": [
     {
-      "image": "python:3.13-slim",
+      "name": "python",
+      "approved_tags": [
+        "3.13-slim",
+        "3.12-slim",
+        "3.11-slim"
+      ],
       "use_case": "Python microservices (auth, control-medico, notifications, ai)"
     },
     {
-      "image": "node:22-bookworm-slim",
+      "name": "node",
+      "approved_tags": [
+        "22-bookworm-slim",
+        "20-bookworm-slim",
+        "18-bookworm-slim"
+      ],
       "use_case": "Node.js/Next.js frontend (alebrije-dashboard)"
     },
     {
-      "image": "postgres:16-alpine",
+      "name": "postgres",
+      "approved_tags": [
+        "16-alpine",
+        "15-alpine",
+        "14-alpine"
+      ],
       "use_case": "CI service container for integration tests"
     },
     {
-      "image": "redis:7-alpine",
+      "name": "redis",
+      "approved_tags": [
+        "7-alpine",
+        "6-alpine"
+      ],
       "use_case": "CI service container for integration tests"
+    },
+    {
+      "name": "golang",
+      "approved_tags": [
+        "1.24-bookworm",
+        "1.23-bookworm",
+        "1.22-bookworm"
+      ],
+      "use_case": "Go build CI"
+    },
+    {
+      "name": "elixir",
+      "approved_tags": [
+        "1.18-otp-27",
+        "1.18-otp-26",
+        "1.17-otp-26"
+      ],
+      "use_case": "Elixir CI"
+    },
+    {
+      "name": "alpine",
+      "approved_tags": [
+        "3.21",
+        "3.20",
+        "3.19"
+      ],
+      "use_case": "Minimal base layer"
     }
   ],
   "scanning_policy": {
