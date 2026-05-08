@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/proyectos.task.completed.v1.json",
+  "title": "proyectos.task.completed v1",
+  "description": "Emitted when a project task is marked completed. Source: alebrije-mod-proyectos-go (Go).",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "proyectos.task.completed" },
+        "data": {
+          "type": "object",
+          "required": ["task_id", "project_id", "completed_by", "completed_at"],
+          "properties": {
+            "task_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the completed task."
+            },
+            "project_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Parent project UUID."
+            },
+            "completed_by": {
+              "type": "string",
+              "format": "uuid",
+              "description": "User UUID who marked the task complete."
+            },
+            "completed_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Timestamp when task was marked complete."
+            },
+            "estimated_hours": {
+              "type": ["number", "null"],
+              "minimum": 0,
+              "description": "Original time estimate in hours."
+            },
+            "actual_hours": {
+              "type": ["number", "null"],
+              "minimum": 0,
+              "description": "Actual hours logged against the task."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

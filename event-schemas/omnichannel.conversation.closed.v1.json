@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/omnichannel.conversation.closed.v1.json",
+  "title": "omnichannel.conversation.closed v1",
+  "description": "Emitted when an omnichannel conversation reaches a terminal state. Source: alebrije-mod-omnichannel.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "omnichannel.conversation.closed" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id", "resolution", "duration_seconds"],
+          "properties": {
+            "conversation_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the closed conversation."
+            },
+            "resolution": {
+              "type": "string",
+              "enum": ["resolved", "abandoned", "escalated"],
+              "description": "How the conversation ended."
+            },
+            "duration_seconds": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Total conversation duration from open to close."
+            },
+            "agent_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Last agent who handled the conversation."
+            },
+            "satisfaction_score": {
+              "type": ["number", "null"],
+              "minimum": 1,
+              "maximum": 5,
+              "description": "CSAT score (1-5) if collected at close."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

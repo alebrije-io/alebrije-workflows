@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/campaigns.contact.opted_out.v1.json",
+  "title": "campaigns.contact.opted_out v1",
+  "description": "Emitted when a contact unsubscribes from campaign communications. Source: alebrije-mod-campaigns-ex (Elixir). external_ref required for correlation with the originating send.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "campaigns.contact.opted_out" },
+        "data": {
+          "type": "object",
+          "required": ["contact_id", "channel"],
+          "properties": {
+            "contact_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the contact who opted out."
+            },
+            "campaign_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Campaign that triggered the opt-out, if known."
+            },
+            "channel": {
+              "type": "string",
+              "description": "Channel through which opt-out was received (email/sms/whatsapp/...)."
+            },
+            "reason": {
+              "type": ["string", "null"],
+              "description": "User-provided or system-inferred reason for opt-out."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

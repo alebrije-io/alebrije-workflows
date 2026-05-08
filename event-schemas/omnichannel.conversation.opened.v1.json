@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/omnichannel.conversation.opened.v1.json",
+  "title": "omnichannel.conversation.opened v1",
+  "description": "Emitted when a new omnichannel conversation is created. Source: alebrije-mod-omnichannel.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "omnichannel.conversation.opened" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id", "channel", "contact_id"],
+          "properties": {
+            "conversation_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the newly opened conversation."
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["whatsapp", "sms", "email", "chat", "instagram", "messenger"],
+              "description": "Channel through which the conversation was initiated."
+            },
+            "contact_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Contact who initiated the conversation."
+            },
+            "assigned_agent_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Agent assigned at open time, if any."
+            },
+            "initial_message_preview": {
+              "type": ["string", "null"],
+              "maxLength": 140,
+              "description": "First 140 chars of the first message (no PII required here)."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

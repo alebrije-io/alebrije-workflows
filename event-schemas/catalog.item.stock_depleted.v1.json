@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/catalog.item.stock_depleted.v1.json",
+  "title": "catalog.item.stock_depleted v1",
+  "description": "Emitted when an item's stock reaches zero, triggering reorder alerts. Source: alebrije-mod-catalog-go (Go).",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "catalog.item.stock_depleted" },
+        "data": {
+          "type": "object",
+          "required": ["item_id", "sku", "last_known_stock", "depleted_at"],
+          "properties": {
+            "item_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the depleted catalog item."
+            },
+            "sku": {
+              "type": "string",
+              "description": "SKU for quick lookup without join."
+            },
+            "last_known_stock": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Stock value just before depletion transaction (audit trail)."
+            },
+            "depleted_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Timestamp when stock reached zero."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

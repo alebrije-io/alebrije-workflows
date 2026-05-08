@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/campaigns.email.bounced.v1.json",
+  "title": "campaigns.email.bounced v1",
+  "description": "Emitted by email provider webhook on permanent (hard) or temporary (soft) bounce. Source: alebrije-mod-campaigns-ex (Elixir).",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "campaigns.email.bounced" },
+        "data": {
+          "type": "object",
+          "required": ["campaign_id", "contact_id", "bounce_type"],
+          "properties": {
+            "campaign_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Campaign that sent the email."
+            },
+            "contact_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Contact whose email bounced."
+            },
+            "bounce_type": {
+              "type": "string",
+              "enum": ["hard", "soft"],
+              "description": "Hard = permanent delivery failure; soft = transient (full mailbox, etc.)."
+            },
+            "bounce_reason": {
+              "type": ["string", "null"],
+              "description": "Provider-reported bounce reason string."
+            },
+            "provider_code": {
+              "type": ["string", "null"],
+              "description": "SMTP or provider-specific error code (e.g. 550, 4.2.2)."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/campaigns.email.clicked.v1.json",
+  "title": "campaigns.email.clicked v1",
+  "description": "Emitted by email provider webhook when a tracked link is clicked. Source: alebrije-mod-campaigns-ex (Elixir) via provider webhook handler.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "campaigns.email.clicked" },
+        "data": {
+          "type": "object",
+          "required": ["campaign_id", "contact_id", "link_url", "clicked_at"],
+          "properties": {
+            "campaign_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Campaign that sent the email."
+            },
+            "contact_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Contact who clicked."
+            },
+            "link_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Original destination URL (after redirect unwrapping)."
+            },
+            "clicked_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Provider-reported click timestamp."
+            },
+            "user_agent": {
+              "type": ["string", "null"],
+              "description": "Client user-agent string (may be bot-filtered)."
+            },
+            "ip_hash": {
+              "type": ["string", "null"],
+              "description": "SHA-256 hash of client IP — never raw IP (GDPR)."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

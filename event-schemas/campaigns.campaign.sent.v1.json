@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/campaigns.campaign.sent.v1.json",
+  "title": "campaigns.campaign.sent v1",
+  "description": "Emitted when a campaign dispatch is initiated (messages are queued for delivery). Source: alebrije-mod-campaigns-ex (Elixir).",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "campaigns.campaign.sent" },
+        "data": {
+          "type": "object",
+          "required": ["campaign_id", "audience_count", "channel"],
+          "properties": {
+            "campaign_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the campaign being sent."
+            },
+            "audience_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of contacts targeted in this send."
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["email", "sms", "whatsapp", "push"],
+              "description": "Delivery channel."
+            },
+            "schedule_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Schedule entry that triggered this send, if scheduled."
+            },
+            "dry_run": {
+              "type": ["boolean", "null"],
+              "description": "If true, messages were simulated and not delivered."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

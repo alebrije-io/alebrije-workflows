@@ -67,6 +67,7 @@ jobs:
   pact-verify:
     name: Pact Contract Verification
     runs-on: arc-runner-set
+    timeout-minutes: 20
 
     services:
       postgres:

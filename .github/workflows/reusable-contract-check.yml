@@ -49,6 +49,7 @@ permissions:
 jobs:
   contracts:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout alebrije-workflows (scripts + audit helper)
         uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7

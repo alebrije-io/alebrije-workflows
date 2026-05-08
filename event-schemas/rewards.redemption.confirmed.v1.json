@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/rewards.redemption.confirmed.v1.json",
+  "title": "rewards.redemption.confirmed v1",
+  "description": "Emitted when a reward redemption request is confirmed and points are deducted. Source: alebrije-mod-rewards-go (Go). Delivery address is never included raw.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "rewards.redemption.confirmed" },
+        "data": {
+          "type": "object",
+          "required": ["redemption_id", "user_id", "reward_id", "points_spent", "confirmed_at"],
+          "properties": {
+            "redemption_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the redemption record."
+            },
+            "user_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "User who redeemed the reward."
+            },
+            "reward_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the reward catalog entry redeemed."
+            },
+            "points_spent": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Points deducted from user's balance."
+            },
+            "confirmed_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Timestamp when redemption was confirmed."
+            },
+            "fulfillment_ref": {
+              "type": ["string", "null"],
+              "description": "External fulfillment tracking reference (courier, gift code, etc.)."
+            },
+            "delivery_address_hash": {
+              "type": ["string", "null"],
+              "description": "SHA-256 of delivery address for dedup — never raw address (PII)."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

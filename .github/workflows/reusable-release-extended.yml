@@ -54,10 +54,15 @@ permissions:
   contents: write
   id-token: write
 
+concurrency:
+  group: release-extended-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   determine-version:
     name: Determine version bump
     runs-on: arc-runner-set
+    timeout-minutes: 15
     outputs:
       new-version: ${{ steps.bump.outputs.new-version }}
       bump-type: ${{ steps.bump.outputs.bump-type }}
@@ -156,6 +161,7 @@ jobs:
       needs.determine-version.outputs.bump-type != 'none' &&
       inputs.dry-run == false
     runs-on: arc-runner-set
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:
@@ -232,8 +238,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
+      - name: Release summary
+        if: always()
+        run: |
+          echo "## Extended Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Current Version | ${{ needs.determine-version.outputs.current-version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| New Version | ${{ needs.determine-version.outputs.new-version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Bump Type | ${{ needs.determine-version.outputs.bump-type }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Language | ${{ inputs.language }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dry Run | ${{ inputs.dry-run }} |" >> $GITHUB_STEP_SUMMARY
+
   publish-python:
     name: Publish to PyPI
+    timeout-minutes: 10
     needs: [determine-version, create-release]
     if: |
       inputs.publish-pypi &&
@@ -241,6 +261,7 @@ jobs:
       needs.determine-version.outputs.bump-type != 'none' &&
       inputs.dry-run == false
     runs-on: arc-runner-set
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:
@@ -269,8 +290,17 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ env.PYPI_TOKEN }}
 
+      - name: PyPI publish summary
+        if: always()
+        run: |
+          echo "## PyPI Publish" >> $GITHUB_STEP_SUMMARY
+          echo "- **Package**: Python service" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: v${{ needs.determine-version.outputs.new-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Registry**: PyPI" >> $GITHUB_STEP_SUMMARY
+
   publish-elixir:
     name: Publish to Hex.pm
+    timeout-minutes: 10
     needs: [determine-version, create-release]
     if: |
       inputs.publish-hex &&
@@ -278,6 +308,7 @@ jobs:
       needs.determine-version.outputs.bump-type != 'none' &&
       inputs.dry-run == false
     runs-on: arc-runner-set
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:
@@ -304,8 +335,17 @@ jobs:
         env:
           HEX_API_KEY: ${{ env.HEX_API_KEY }}
 
+      - name: Hex.pm publish summary
+        if: always()
+        run: |
+          echo "## Hex.pm Publish" >> $GITHUB_STEP_SUMMARY
+          echo "- **Package**: Elixir service" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: v${{ needs.determine-version.outputs.new-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Registry**: Hex.pm" >> $GITHUB_STEP_SUMMARY
+
   publish-npm:
     name: Publish to npm
+    timeout-minutes: 10
     needs: [determine-version, create-release]
     if: |
       inputs.publish-npm &&
@@ -313,6 +353,7 @@ jobs:
       needs.determine-version.outputs.bump-type != 'none' &&
       inputs.dry-run == false
     runs-on: arc-runner-set
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:
@@ -337,3 +378,11 @@ jobs:
           npm publish
         env:
           NPM_TOKEN: ${{ env.NPM_TOKEN }}
+
+      - name: npm publish summary
+        if: always()
+        run: |
+          echo "## npm Publish" >> $GITHUB_STEP_SUMMARY
+          echo "- **Package**: TypeScript service" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: v${{ needs.determine-version.outputs.new-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Registry**: npm" >> $GITHUB_STEP_SUMMARY

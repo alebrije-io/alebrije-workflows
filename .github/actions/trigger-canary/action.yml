@@ -8,18 +8,22 @@ inputs:
   namespace:
     description: "Kubernetes namespace"
     default: "platform"
+    required: false
   weight:
     description: "Target traffic weight for canary (0-100)"
     required: true
   method:
     description: "'istio' for Flagger CanaryCRD or 'manual' for Deployment label selector"
     default: "manual"
+    required: false
   max-retries:
     description: "Max kubectl patch retries on transient failure"
     default: "3"
+    required: false
   retry-delay-seconds:
     description: "Delay between retries (seconds)"
     default: "5"
+    required: false
 
 outputs:
   weight-applied:

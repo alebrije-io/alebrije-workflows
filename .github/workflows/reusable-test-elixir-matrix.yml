@@ -53,6 +53,7 @@ jobs:
   test:
     name: Test (Elixir ${{ matrix.elixir-version }}, OTP ${{ matrix.otp-version }})
     runs-on: arc-runner-set
+    timeout-minutes: 30
 
     strategy:
       matrix:

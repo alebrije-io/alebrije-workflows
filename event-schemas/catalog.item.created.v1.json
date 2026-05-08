@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/catalog.item.created.v1.json",
+  "title": "catalog.item.created v1",
+  "description": "Emitted when a new catalog item is persisted. Source: alebrije-mod-catalog-go (Go).",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "catalog.item.created" },
+        "data": {
+          "type": "object",
+          "required": ["item_id", "sku", "name"],
+          "properties": {
+            "item_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the created catalog item."
+            },
+            "sku": {
+              "type": "string",
+              "description": "Stock Keeping Unit code. Unique per tenant."
+            },
+            "name": {
+              "type": "string",
+              "description": "Item display name."
+            },
+            "category_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Category the item belongs to."
+            },
+            "price": {
+              "type": ["number", "null"],
+              "minimum": 0,
+              "description": "Listing price in the tenant's default currency."
+            },
+            "currency": {
+              "type": ["string", "null"],
+              "pattern": "^[A-Z]{3}$",
+              "description": "ISO 4217 currency code (e.g. MXN, USD)."
+            },
+            "stock": {
+              "type": ["integer", "null"],
+              "minimum": 0,
+              "description": "Initial stock quantity."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

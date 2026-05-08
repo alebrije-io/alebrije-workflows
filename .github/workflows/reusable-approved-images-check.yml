@@ -27,10 +27,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: approved-images-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check-images:
     name: Validate Dockerfile base images
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout target repo
         uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
@@ -110,3 +115,11 @@ jobs:
                   sys.exit(1)
           else:
               print("[approved-images] All Dockerfile base images are approved ✓")
+              # Write summary
+              with open(os.environ.get("GITHUB_STEP_SUMMARY", "/dev/null"), "a") as f:
+                  f.write("## Approved Base Images Check\n\n")
+                  f.write("| Check | Result |\n")
+                  f.write("|-------|--------|\n")
+                  f.write(f"| Dockerfiles found | {len(dockerfiles)} |\n")
+                  f.write(f"| Violations | 0 |\n")
+                  f.write("| Status | ✅ Passed |\n")

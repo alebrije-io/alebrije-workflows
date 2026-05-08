@@ -65,6 +65,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout target repo
         uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
@@ -186,6 +187,7 @@ jobs:
     name: Event schema breaking change detection
     if: ${{ inputs.check-breaking-changes }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout PR (current)
         uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
@@ -287,6 +289,7 @@ jobs:
     if: ${{ inputs.notify-schema-registry && always() }}
     needs: [check, schema-breaking-change]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:

@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/proyectos.project.created.v1.json",
+  "title": "proyectos.project.created v1",
+  "description": "Emitted when a new project is created. Source: alebrije-mod-proyectos-go (Go).",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "proyectos.project.created" },
+        "data": {
+          "type": "object",
+          "required": ["project_id", "name", "owner_id", "status"],
+          "properties": {
+            "project_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the newly created project."
+            },
+            "name": {
+              "type": "string",
+              "description": "Project display name."
+            },
+            "owner_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "User UUID of the project owner."
+            },
+            "status": {
+              "type": "string",
+              "enum": ["active", "draft", "archived"],
+              "description": "Initial status at creation time."
+            },
+            "due_date": {
+              "type": ["string", "null"],
+              "format": "date",
+              "description": "Target completion date (YYYY-MM-DD)."
+            },
+            "description": {
+              "type": ["string", "null"],
+              "description": "Short project description."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

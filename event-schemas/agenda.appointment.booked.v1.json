@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/agenda.appointment.booked.v1.json",
+  "title": "agenda.appointment.booked v1",
+  "description": "Emitted when an appointment is successfully booked. Source: alebrije-mod-agenda.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "agenda.appointment.booked" },
+        "data": {
+          "type": "object",
+          "required": ["appointment_id", "patient_id", "provider_id", "scheduled_at", "service_type"],
+          "properties": {
+            "appointment_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the booked appointment."
+            },
+            "patient_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Patient UUID."
+            },
+            "provider_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Provider (doctor/specialist) UUID."
+            },
+            "scheduled_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Appointment start time (provider timezone stored separately)."
+            },
+            "service_type": {
+              "type": "string",
+              "description": "Service code or name (e.g. consulta_general, laboratorio)."
+            },
+            "location_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Physical location UUID, if applicable."
+            },
+            "notes": {
+              "type": ["string", "null"],
+              "description": "Booking notes (no PHI — only logistics notes)."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -56,6 +56,7 @@ jobs:
   # ========================================================================
   python-property:
     name: Property Tests (Python Hypothesis)
+    timeout-minutes: 40
     if: ${{ inputs.language == 'python' }}
     runs-on: arc-runner-set
 
@@ -95,6 +96,7 @@ jobs:
   # ========================================================================
   elixir-property:
     name: Property Tests (Elixir StreamData)
+    timeout-minutes: 40
     if: ${{ inputs.language == 'elixir' }}
     runs-on: arc-runner-set
 
@@ -125,6 +127,7 @@ jobs:
   # ========================================================================
   go-property:
     name: Property Tests (Go gopter)
+    timeout-minutes: 40
     if: ${{ inputs.language == 'go' }}
     runs-on: arc-runner-set
 
@@ -155,6 +158,7 @@ jobs:
   # ========================================================================
   ts-property:
     name: Property Tests (TypeScript fast-check)
+    timeout-minutes: 40
     if: ${{ inputs.language == 'ts' }}
     runs-on: arc-runner-set
 

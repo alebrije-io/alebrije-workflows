@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/control_medico.consultation.completed.v1.json",
+  "title": "control_medico.consultation.completed v1",
+  "description": "Emitted when a medical consultation is finalized. Raw clinical notes are NOT included (HIPAA/NOM-024). Only aggregate metadata for analytics/billing. Source: alebrije-adapt-control-medico.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "control_medico.consultation.completed" },
+        "data": {
+          "type": "object",
+          "required": ["consultation_id", "patient_id", "provider_id", "completed_at", "lis_request_ids"],
+          "properties": {
+            "consultation_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the completed consultation."
+            },
+            "patient_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Patient UUID."
+            },
+            "provider_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Provider (physician) UUID."
+            },
+            "completed_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Timestamp when consultation was marked complete."
+            },
+            "lis_request_ids": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "LIS lab request IDs ordered during this consultation. Empty array if none."
+            },
+            "diagnosis_codes": {
+              "type": ["array", "null"],
+              "items": { "type": "string" },
+              "description": "ICD-10 codes assigned (not raw diagnosis text)."
+            },
+            "notes_word_count": {
+              "type": ["integer", "null"],
+              "minimum": 0,
+              "description": "Word count of clinical notes for analytics only — no raw notes (HIPAA)."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -89,6 +89,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────
   pre-canary-checks:
     name: Pre-Canary Checks
+    timeout-minutes: 5
     runs-on: arc-runner-set
     outputs:
       ready: ${{ steps.check.outputs.ready }}
@@ -161,6 +162,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────
   deploy-canary:
     name: Deploy Canary
+    timeout-minutes: 15
     runs-on: arc-runner-set
     needs: pre-canary-checks
     if: needs.pre-canary-checks.outputs.ready == 'true'
@@ -213,6 +215,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────
   wait-and-validate:
     name: Wait & Monitor Canary
+    timeout-minutes: 60
     runs-on: arc-runner-set
     needs: deploy-canary
     outputs:
@@ -240,6 +243,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────
   promote-traffic:
     name: Promote Traffic Through Steps
+    timeout-minutes: 20
     runs-on: arc-runner-set
     needs: [deploy-canary, wait-and-validate]
     if: needs.wait-and-validate.outputs.metrics-healthy == 'true'
@@ -305,6 +309,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────
   verify-stable:
     name: Verify Stable State
+    timeout-minutes: 10
     runs-on: arc-runner-set
     needs: promote-traffic
     steps:
@@ -349,6 +354,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────
   rollback-if-needed:
     name: Rollback If Unhealthy
+    timeout-minutes: 10
     runs-on: arc-runner-set
     needs: [wait-and-validate, deploy-canary]
     if: failure() || needs.wait-and-validate.outputs.metrics-healthy == 'false'

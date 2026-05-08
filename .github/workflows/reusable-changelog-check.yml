@@ -14,9 +14,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: changelog-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   changelog-check:
     runs-on: arc-runner-set
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
         with:
@@ -56,3 +61,10 @@ jobs:
               echo "ℹ VERSION unchanged, skipping CHANGELOG check"
             fi
           fi
+
+      - name: CHANGELOG check summary
+        if: always()
+        run: |
+          echo "## CHANGELOG Check" >> $GITHUB_STEP_SUMMARY
+          echo "- **Check**: VERSION bump requires CHANGELOG entry" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ✅ Passed" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/auth.user.created.v1.json",
+  "title": "auth.user.created v1",
+  "description": "Emitted when a new user account is provisioned. Source: alebrije-svc-auth (Python). NO password, token, or session data ever included.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "auth.user.created" },
+        "data": {
+          "type": "object",
+          "required": ["user_id", "email", "role"],
+          "properties": {
+            "user_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the created user (PK in auth DB)."
+            },
+            "email": {
+              "type": "string",
+              "format": "email",
+              "description": "User's email address."
+            },
+            "role": {
+              "type": "string",
+              "description": "Initial role assigned (e.g. member, admin, superadmin)."
+            },
+            "invited_by": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "UUID of the user who sent the invitation, if applicable."
+            },
+            "onboarding_flow": {
+              "type": ["string", "null"],
+              "description": "Onboarding flow identifier (e.g. magic_link, invite, sso)."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

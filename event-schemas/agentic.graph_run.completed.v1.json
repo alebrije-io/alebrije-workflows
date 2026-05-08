@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/agentic.graph_run.completed.v1.json",
+  "title": "agentic.graph_run.completed v1",
+  "description": "Emitted when an agent graph execution finishes (success or failure). Source: alebrije-mod-agentic (Python).",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "agentic.graph_run.completed" },
+        "data": {
+          "type": "object",
+          "required": ["graph_run_id", "graph_id", "status", "total_tokens", "latency_ms"],
+          "properties": {
+            "graph_run_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the graph run instance."
+            },
+            "graph_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the agent graph definition."
+            },
+            "agent_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Agent that owned the run, if applicable."
+            },
+            "status": {
+              "type": "string",
+              "enum": ["success", "failed", "timeout"],
+              "description": "Terminal status of the graph run."
+            },
+            "total_tokens": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Total LLM tokens consumed across all nodes."
+            },
+            "latency_ms": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Wall-clock duration of the entire graph run in milliseconds."
+            },
+            "error_message": {
+              "type": ["string", "null"],
+              "description": "Error details when status is 'failed'."
+            },
+            "output_summary": {
+              "type": ["string", "null"],
+              "maxLength": 500,
+              "description": "Short summary of the run output for observability (not raw output)."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

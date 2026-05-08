@@ -100,6 +100,7 @@ jobs:
     name: Trivy filesystem scan
     if: ${{ inputs.scan-type == 'fs' || inputs.scan-type == 'all' }}
     runs-on: arc-runner-set
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
@@ -129,6 +130,7 @@ jobs:
     name: Trivy image scan
     if: ${{ (inputs.scan-type == 'image' || inputs.scan-type == 'all') && inputs.image-ref != '' }}
     runs-on: arc-runner-set
+    timeout-minutes: 30
     steps:
       - name: Trivy image scan (blocking on ${{ inputs.fail-on }})
         uses: aquasecurity/trivy-action@6e7b7d1feac57900da086aab9910c4a723a29e20  # v0.24.0
@@ -158,6 +160,7 @@ jobs:
     name: Trivy config scan (advisory)
     if: ${{ inputs.scan-type == 'config' || inputs.scan-type == 'all' }}
     runs-on: arc-runner-set
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
@@ -208,6 +211,7 @@ jobs:
   sbom:
     name: SBOM (CycloneDX)
     runs-on: arc-runner-set
+    timeout-minutes: 30
     continue-on-error: true   # best-effort, no tumba el pipeline
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
@@ -235,6 +239,7 @@ jobs:
     name: detect-secrets baseline audit
     if: ${{ inputs.scan-secrets }}
     runs-on: arc-runner-set
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
@@ -269,6 +274,7 @@ jobs:
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main'
     runs-on: arc-runner-set
+    timeout-minutes: 30
     steps:
       - uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2ea8694d7cc6b2da6ac0d  # v3.5.0
 
@@ -288,6 +294,7 @@ jobs:
     name: Grype supply chain scan
     if: ${{ inputs.run-grype }}
     runs-on: arc-runner-set
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
@@ -315,6 +322,7 @@ jobs:
     name: OSV-Scanner dependency vulnerabilities
     if: ${{ inputs.run-osv }}
     runs-on: arc-runner-set
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
@@ -344,6 +352,7 @@ jobs:
     name: CodeQL SAST (advisory)
     if: ${{ inputs.run-codeql }}
     runs-on: arc-runner-set
+    timeout-minutes: 30
     permissions:
       security-events: write
       actions: read
@@ -376,6 +385,7 @@ jobs:
     if: always()
     needs: [trivy-fs-scan, trivy-image-scan, trivy-config-scan, sbom, detect-secrets, cosign-sign, grype-scan, osv-scan, codeql-analysis]
     runs-on: arc-runner-set
+    timeout-minutes: 30
     steps:
       - name: Print summary
         run: |

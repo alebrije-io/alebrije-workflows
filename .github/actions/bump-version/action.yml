@@ -5,9 +5,11 @@ inputs:
   version-file:
     description: Path to VERSION file
     default: VERSION
+    required: false
   dry-run:
     description: Calculate only, don't write
     default: "false"
+    required: false
 
 outputs:
   new-version:

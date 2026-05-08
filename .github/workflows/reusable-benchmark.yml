@@ -51,6 +51,7 @@ jobs:
   # ======================================================================
   benchmark-go:
     name: Benchmark Go
+    timeout-minutes: 30
     if: ${{ inputs.language == 'go' }}
     runs-on: arc-runner-set
     steps:
@@ -128,6 +129,7 @@ jobs:
   # ======================================================================
   benchmark-python:
     name: Benchmark Python
+    timeout-minutes: 30
     if: ${{ inputs.language == 'python' }}
     runs-on: arc-runner-set
     steps:
@@ -219,6 +221,7 @@ jobs:
   # ======================================================================
   benchmark-elixir:
     name: Benchmark Elixir
+    timeout-minutes: 30
     if: ${{ inputs.language == 'elixir' }}
     runs-on: arc-runner-set
     steps:

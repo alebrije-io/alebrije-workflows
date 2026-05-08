@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/agenda.appointment.cancelled.v1.json",
+  "title": "agenda.appointment.cancelled v1",
+  "description": "Emitted when an appointment is cancelled by patient, provider, or system. Source: alebrije-mod-agenda.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "agenda.appointment.cancelled" },
+        "data": {
+          "type": "object",
+          "required": ["appointment_id", "cancelled_by", "cancelled_at"],
+          "properties": {
+            "appointment_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the cancelled appointment."
+            },
+            "cancelled_by": {
+              "type": "string",
+              "enum": ["patient", "provider", "system"],
+              "description": "Actor who initiated the cancellation."
+            },
+            "cancellation_reason": {
+              "type": ["string", "null"],
+              "description": "Reason code or free text. May be null for system cancellations."
+            },
+            "cancelled_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Timestamp of cancellation."
+            },
+            "rescheduled_to": {
+              "type": ["string", "null"],
+              "format": "date-time",
+              "description": "If immediately rescheduled, the new appointment time."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

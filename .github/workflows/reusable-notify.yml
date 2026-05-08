@@ -79,6 +79,7 @@ jobs:
   prepare-notification:
     name: Prepare notification payload
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       notify-slack: ${{ steps.channels.outputs.notify-slack }}
       notify-email: ${{ steps.channels.outputs.notify-email }}
@@ -159,6 +160,7 @@ jobs:
     name: Send Slack notification
     needs: prepare-notification
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: needs.prepare-notification.outputs.notify-slack == 'true'
     continue-on-error: true
     steps:
@@ -277,6 +279,7 @@ jobs:
     name: Send Email notification
     needs: prepare-notification
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: needs.prepare-notification.outputs.notify-email == 'true'
     continue-on-error: true
     steps:
@@ -391,6 +394,7 @@ jobs:
     name: Send GitHub PR/Issue comment
     needs: prepare-notification
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: needs.prepare-notification.outputs.notify-github == 'true' && (inputs.github-pr-number != '' || inputs.github-issue-number != '')
     continue-on-error: true
     steps:
@@ -480,6 +484,7 @@ jobs:
     name: Log notification to audit trail
     needs: [prepare-notification, notify-slack, notify-email, notify-github]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: always()
     steps:
       - name: Create audit log entry

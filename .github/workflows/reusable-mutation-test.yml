@@ -55,6 +55,7 @@ jobs:
   # ========================================================================
   mutmut:
     name: Mutation Test (Python mutmut)
+    timeout-minutes: 45
     if: ${{ inputs.language == 'python' }}
     runs-on: arc-runner-set
 
@@ -117,6 +118,7 @@ jobs:
   # ========================================================================
   stryker:
     name: Mutation Test (Stryker)
+    timeout-minutes: 45
     if: ${{ inputs.language == 'ts' }}
     runs-on: arc-runner-set
 
@@ -172,6 +174,7 @@ jobs:
   # ========================================================================
   gremlins:
     name: Mutation Test (gremlins)
+    timeout-minutes: 45
     if: ${{ inputs.language == 'go' }}
     runs-on: arc-runner-set
 
@@ -235,6 +238,7 @@ jobs:
   # ========================================================================
   elixir-mutation:
     name: Mutation Test (Elixir muzak)
+    timeout-minutes: 45
     if: ${{ inputs.language == 'elixir' }}
     runs-on: arc-runner-set
 

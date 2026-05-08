@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/agentic.intent.escalated.v1.json",
+  "title": "agentic.intent.escalated v1",
+  "description": "Emitted when agent confidence falls below threshold and the conversation is escalated to a human agent. Source: alebrije-mod-agentic (Python).",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "agentic.intent.escalated" },
+        "data": {
+          "type": "object",
+          "required": ["session_id", "intent", "confidence_score", "escalation_reason"],
+          "properties": {
+            "session_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Conversation session that triggered escalation."
+            },
+            "intent": {
+              "type": "string",
+              "description": "Detected intent label that could not be handled with sufficient confidence."
+            },
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Classifier confidence at time of escalation."
+            },
+            "escalation_reason": {
+              "type": "string",
+              "description": "Categorical reason: low_confidence | ambiguous_intent | out_of_scope | user_requested."
+            },
+            "agent_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Agent instance that was handling the session."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

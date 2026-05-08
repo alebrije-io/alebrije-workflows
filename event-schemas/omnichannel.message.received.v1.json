@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/omnichannel.message.received.v1.json",
+  "title": "omnichannel.message.received v1",
+  "description": "Emitted when an inbound message arrives on any channel. Raw message content is NOT included (GDPR). Source: alebrije-mod-omnichannel.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "omnichannel.message.received" },
+        "data": {
+          "type": "object",
+          "required": ["conversation_id", "message_id", "channel", "content_type"],
+          "properties": {
+            "conversation_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Conversation this message belongs to."
+            },
+            "message_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Unique message identifier."
+            },
+            "channel": {
+              "type": "string",
+              "description": "Inbound channel (whatsapp/sms/email/chat/...)."
+            },
+            "content_type": {
+              "type": "string",
+              "enum": ["text", "image", "audio", "document", "video", "location", "sticker"],
+              "description": "MIME category of the message."
+            },
+            "text_preview": {
+              "type": ["string", "null"],
+              "maxLength": 200,
+              "description": "First 200 chars of text content for routing rules only — no full content."
+            },
+            "media_url_hash": {
+              "type": ["string", "null"],
+              "description": "SHA-256 of media URL for dedup — never the raw URL (may contain tokens)."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

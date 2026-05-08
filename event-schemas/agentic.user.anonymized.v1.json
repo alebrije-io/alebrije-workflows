@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/agentic.user.anonymized.v1.json",
+  "title": "agentic.user.anonymized v1",
+  "description": "Emitted by the GDPR right-to-forget pipeline when a user's data is anonymized in agentic module tables. Source: alebrije-mod-agentic (Python).",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "agentic.user.anonymized" },
+        "data": {
+          "type": "object",
+          "required": ["user_id", "anonymized_at", "tables_affected"],
+          "properties": {
+            "user_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "ID of the user whose data was anonymized."
+            },
+            "anonymized_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Timestamp when anonymization completed."
+            },
+            "tables_affected": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "List of database tables where PII was replaced."
+            },
+            "request_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Deletion request UUID for audit trail correlation."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

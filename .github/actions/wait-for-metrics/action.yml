@@ -8,21 +8,26 @@ inputs:
   check-interval-seconds:
     description: "Interval to check Prometheus (seconds)"
     default: "60"
+    required: false
   prometheus-url:
     description: "Prometheus URL (empty = skip metrics check)"
     default: ""
+    required: false
   service-name:
     description: "Service name for Prometheus job selector"
     required: true
   error-rate-threshold:
     description: "Max 5xx error rate % before rollback"
     default: "5"
+    required: false
   p99-latency-threshold:
     description: "Max p99 latency ms before rollback"
     default: "2000"
+    required: false
   soak-time-minutes:
     description: "Minimum soak time per weight step (minutes)"
     default: "5"
+    required: false
 
 outputs:
   metrics-healthy:

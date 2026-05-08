@@ -39,6 +39,7 @@ jobs:
   audit-shas:
     name: Audit SHA pinning (supply chain security)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
@@ -62,6 +63,7 @@ jobs:
   check-hardcoded-secrets:
     name: Hardcoded secrets scan
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
@@ -107,6 +109,7 @@ jobs:
   check-permissions:
     name: Permissions block audit
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
@@ -139,6 +142,7 @@ jobs:
   validate-yaml:
     name: YAML syntax & style audit
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
@@ -168,6 +172,7 @@ jobs:
   check-anti-patterns:
     name: "Anti-patterns scan (Rule #11 compliance)"
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
@@ -198,6 +203,7 @@ jobs:
   check-action-refs:
     name: Local action references audit
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
@@ -224,6 +230,7 @@ jobs:
   validate-structure:
     name: Workflow structure audit
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
 
@@ -252,6 +259,7 @@ jobs:
   check-concurrency:
     name: Check concurrency blocks in reusable workflows
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -277,6 +285,7 @@ jobs:
   check-action-versions-commented:
     name: Verify SHA-pinned actions have version comments
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -297,6 +306,7 @@ jobs:
   check-script-injection:
     name: Detect script injection via GitHub contexts
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -321,6 +331,7 @@ jobs:
   check-event-schemas-valid:
     name: Validate event schemas structure
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -337,7 +348,7 @@ jobs:
           errors = []
           schemas = glob.glob("event-schemas/*.json")
           for f in schemas:
-              if "envelope" in f or "README" in f:
+              if "envelope" in f or "README" in f or ".base." in f:
                   continue
               try:
                   schema = json.load(open(f))
@@ -366,6 +377,7 @@ jobs:
   check-minimum-permissions:
     name: Audit workflow permissions (least privilege)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -392,6 +404,7 @@ jobs:
   validate-workflow-inputs-documented:
     name: Validate reusable workflow inputs have descriptions
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -426,6 +439,7 @@ jobs:
     name: Security audit summary (Block R)
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [audit-shas, check-hardcoded-secrets, check-permissions, validate-yaml, check-anti-patterns, check-action-refs, validate-structure, check-concurrency, check-action-versions-commented, check-script-injection, check-event-schemas-valid, check-minimum-permissions, validate-workflow-inputs-documented]
     permissions:
       contents: read

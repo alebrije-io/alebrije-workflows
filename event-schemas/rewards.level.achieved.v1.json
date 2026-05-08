@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/rewards.level.achieved.v1.json",
+  "title": "rewards.level.achieved v1",
+  "description": "Emitted when a user's accumulated points cross a level threshold. Source: alebrije-mod-rewards-go (Go).",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "rewards.level.achieved" },
+        "data": {
+          "type": "object",
+          "required": ["user_id", "new_level", "previous_level", "achieved_at", "points_at_achievement"],
+          "properties": {
+            "user_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "User who achieved the new level."
+            },
+            "new_level": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Level number achieved."
+            },
+            "previous_level": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Level the user was at before this achievement."
+            },
+            "achieved_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Timestamp when the level was achieved."
+            },
+            "points_at_achievement": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Total points balance at the moment of level-up."
+            },
+            "level_name": {
+              "type": ["string", "null"],
+              "description": "Display name of the new level (e.g. Silver, Gold)."
+            },
+            "badge_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Badge awarded with this level, if configured."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}
