@@ -59,7 +59,10 @@ Todos los bloques A-R implementados. 28 workflows + 9 custom actions. Ver secci�
 15. ✅ **PR/issue templates** → `.github/PULL_REQUEST_TEMPLATE.md`, `.github/ISSUE_TEMPLATE/`, `.github/CONTRIBUTING.md`
 16. ✅ **Custom GH Actions** → `setup-vault-token`, `check-tenant-id-leak`, `post-coverage-comment`, `sign-with-cosign`, `generate-postmortem`
 17. ⏭ **Self-hosted runners management** → Out of scope (ARC-runner-set ya en uso, no requiere gestión adicional en este repo)
-18. ✅ **Hardening** → `validate-self.yml` refactored (SHA pins, permissions audit, anti-patterns, 7-job security audit)
+18. ✅ **Hardening** → `validate-self.yml` refactored (SHA pins, permissions audit, anti-patterns, 13-job security audit: +concurrency, +SHA version comments, +script injection, +event schema validation, +minimum permissions, +input documentation)
+19. ✅ **Timeout hardening** → All 28 workflows now have `timeout-minutes` on every job (Wave 2, 2026-05-07)
+20. ✅ **Event schema Phase 2** → 32 specific per-event-type schemas: agentic (graph_run.completed, intent.escalated, user.anonymized), campaigns (campaign.sent, contact.opted_out, email.clicked, email.bounced), catalog (item.created, item.stock_depleted), control_medico (consultation.completed — HIPAA-safe), omnichannel (conversation.opened/closed, message.received), proyectos (project.created, task.completed), agenda (appointment.booked/cancelled), auth (user.created, deletion_requested), rewards (level.achieved, redemption.confirmed)
+21. ⏭ **Frontend SDK** (TypeScript) → Requires implementation in `alebrije-frontend`: RBACChecker TS component, cursor pagination hook, OTel fetch wrapper, webhook registration UI. NOT in scope for this repo.
 
 ---
 
