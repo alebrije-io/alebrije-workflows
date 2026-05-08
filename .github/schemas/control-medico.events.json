@@ -1,0 +1,124 @@
+{
+  "allOf": [
+    {
+      "$id": "https://alebrije.io/schemas/control-medico.events/order_created.json",
+      "description": "Emitted when a medical test order is created",
+      "type": "object",
+      "event_type": "order_created",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "order_created" },
+        "data": {
+          "type": "object",
+          "required": ["order_id", "patient_id", "test_type"],
+          "properties": {
+            "order_id": { "type": "string", "format": "uuid" },
+            "patient_id": { "type": "string" },
+            "test_type": { "type": "string" },
+            "created_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "order_created",
+          "data": {
+            "order_id": "ord_12345",
+            "patient_id": "pat_xyz",
+            "test_type": "blood_panel",
+            "created_at": "2026-05-07T10:00:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/control-medico.events/sample_received.json",
+      "description": "Emitted when a sample is received at the lab",
+      "type": "object",
+      "event_type": "sample_received",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "sample_received" },
+        "data": {
+          "type": "object",
+          "required": ["order_id", "sample_id"],
+          "properties": {
+            "order_id": { "type": "string", "format": "uuid" },
+            "sample_id": { "type": "string" },
+            "received_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "sample_received",
+          "data": {
+            "order_id": "ord_12345",
+            "sample_id": "sample_abc123",
+            "received_at": "2026-05-07T14:00:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/control-medico.events/result_ready.json",
+      "description": "Emitted when test results are ready",
+      "type": "object",
+      "event_type": "result_ready",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "result_ready" },
+        "data": {
+          "type": "object",
+          "required": ["order_id", "patient_id"],
+          "properties": {
+            "order_id": { "type": "string", "format": "uuid" },
+            "patient_id": { "type": "string" },
+            "ready_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "result_ready",
+          "data": {
+            "order_id": "ord_12345",
+            "patient_id": "pat_xyz",
+            "ready_at": "2026-05-08T09:00:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "$id": "https://alebrije.io/schemas/control-medico.events/result_delivered.json",
+      "description": "Emitted when results are delivered to the patient",
+      "type": "object",
+      "event_type": "result_delivered",
+      "required": ["event_type", "data"],
+      "properties": {
+        "event_type": { "const": "result_delivered" },
+        "data": {
+          "type": "object",
+          "required": ["order_id", "patient_id"],
+          "properties": {
+            "order_id": { "type": "string", "format": "uuid" },
+            "patient_id": { "type": "string" },
+            "delivery_method": { "enum": ["email", "portal", "sms", "print"] },
+            "delivered_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "examples": [
+        {
+          "event_type": "result_delivered",
+          "data": {
+            "order_id": "ord_12345",
+            "patient_id": "pat_xyz",
+            "delivery_method": "portal",
+            "delivered_at": "2026-05-08T10:00:00Z"
+          }
+        }
+      ]
+    }
+  ]
+}
