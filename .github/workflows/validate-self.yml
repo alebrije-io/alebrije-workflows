@@ -518,6 +518,48 @@ jobs:
               print("PASS: No direct inputs.* usage in run blocks")
 
   # ======================================================================
+  # AUDIT 17: Forbid the disabled ::set-output worker command
+  #   GitHub disabled ::set-output on hosted runners in 2023; any remaining
+  #   emission is a silent no-op (empty step outputs). Steps must write to
+  #   $GITHUB_OUTPUT instead. FATAL — this is a prod-broken pattern.
+  # ======================================================================
+  check-no-deprecated-set-output:
+    name: Forbid disabled ::set-output worker command
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+        with:
+          python-version: "3.12"
+      - name: Scan for emitted set-output worker command
+        shell: python3 {0}
+        run: |
+          import glob
+          import sys
+          # Build the needle from parts so this guard never matches its own
+          # source line (avoids the self-reference deadlock).
+          needle = "::set" + "-output name="
+          offenders = []
+          for path in glob.glob(".github/workflows/*.yml"):
+              with open(path) as f:
+                  for i, line in enumerate(f, 1):
+                      stripped = line.strip()
+                      # Documentary comment lines are allowed.
+                      if stripped.startswith("#"):
+                          continue
+                      if needle in line:
+                          offenders.append(f"{path}:{i}: {stripped[:80]}")
+          if offenders:
+              for o in offenders:
+                  print(f"::error::Disabled worker command {needle!r} emitted "
+                        f"(write to $GITHUB_OUTPUT instead): {o}")
+              sys.exit(1)
+          print(f"PASS: No disabled {needle!r} worker command emitted")
+
+  # ======================================================================
   # SUMMARY: Aggregate all audit results
   # ======================================================================
   security-audit-summary:
@@ -525,7 +567,24 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [audit-shas, check-hardcoded-secrets, check-permissions, validate-yaml, check-anti-patterns, check-action-refs, validate-structure, check-concurrency, check-action-versions-commented, check-script-injection, check-event-schemas-valid, check-minimum-permissions, validate-workflow-inputs-documented, lint-workflows, check-timeouts, check-input-injection]
+    needs:
+      - audit-shas
+      - check-hardcoded-secrets
+      - check-permissions
+      - validate-yaml
+      - check-anti-patterns
+      - check-action-refs
+      - validate-structure
+      - check-concurrency
+      - check-action-versions-commented
+      - check-script-injection
+      - check-event-schemas-valid
+      - check-minimum-permissions
+      - validate-workflow-inputs-documented
+      - lint-workflows
+      - check-timeouts
+      - check-input-injection
+      - check-no-deprecated-set-output
     permissions:
       contents: read
       pull-requests: write
@@ -556,6 +615,7 @@ jobs:
           echo "| Workflow Linting (actionlint) | ${{ needs.lint-workflows.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Timeout-minutes Audit | ${{ needs.check-timeouts.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Script Injection (inputs.*) | ${{ needs.check-input-injection.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Disabled ::set-output (prod-broken) | ${{ needs.check-no-deprecated-set-output.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ needs.audit-shas.result }}" = "success" ] && \
              [ "${{ needs.check-hardcoded-secrets.result }}" = "success" ] && \
@@ -612,5 +672,6 @@ jobs:
           needs.check-permissions.result != 'success' ||
           needs.validate-yaml.result != 'success' ||
           needs.check-anti-patterns.result != 'success' ||
-          needs.check-event-schemas-valid.result != 'success'
+          needs.check-event-schemas-valid.result != 'success' ||
+          needs.check-no-deprecated-set-output.result != 'success'
         run: exit 1

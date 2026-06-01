@@ -129,10 +129,20 @@ jobs:
         run: |
           # StreamData property tests must be tagged with :property in ExUnit
           # Example: @tag :property
-          # Run: mix test --include property
-          mix test --include property --max-cases ${{ inputs.num-cases }} || {
+          #
+          # Gating (Rule #11 — no error suppression on quality steps):
+          #   - If @tag :property tests EXIST → run them FATALLY. A failing property
+          #     (invariant violation / shrunk counterexample) MUST fail the job.
+          #     Mirrors the ts-property step of this same workflow and
+          #     reusable-test-ts.yml:150 "Fail if below threshold (fatal, no || true)".
+          #   - If NO @tag :property tests exist → explicit conditional skip via ::notice::
+          #     (same advisory pattern as the python step at lines 88-92 of this workflow).
+          #     NOT a `|| { echo ...; }` no-op, which exits 0 even when the cmd fails.
+          if grep -rlq '@tag[[:space:]]*:property' --include='*.exs' --include='*.ex' . 2>/dev/null; then
+            mix test --include property --max-cases ${{ inputs.num-cases }}
+          else
             echo "::notice::No property tests tagged with @tag :property found (optional)"
-          }
+          fi
 
       - name: Upload property test results
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
@@ -169,13 +179,25 @@ jobs:
           GOPRIVATE: 'github.com/alebrije-io'
         run: |
           # Go property tests are identified by:
-          #   - Build tag +build property
+          #   - Build tag `//go:build property` (or legacy `// +build property`)
           #   - Test function named TestProperty*
-          # Run: go test -tags=property -run=TestProperty ./... -count=N
-          # count=N runs the test N times with different seeds
-          go test -tags=property -run=TestProperty ./... -count=${{ inputs.num-cases }} -v || {
+          #
+          # Gating (Rule #11 — no error suppression on quality steps):
+          #   - If property tests EXIST → run them FATALLY. A failing property MUST fail
+          #     the job. Existence detection is REQUIRED because
+          #     `go test -run=TestProperty` exits 0 with "no tests to run" when nothing
+          #     matches — indistinguishable from a real pass without the grep guard.
+          #     Mirrors the ts-property step of this same workflow and
+          #     reusable-test-ts.yml:150 "Fail if below threshold (fatal, no || true)".
+          #   - If NO property tests exist → explicit conditional skip via ::notice::
+          #     (same advisory pattern as the python step at lines 88-92 of this workflow).
+          #     NOT a `|| { echo ...; }` no-op, which exits 0 even when the cmd fails.
+          if grep -rlqE '(func[[:space:]]+TestProperty)|(//go:build[[:space:]]+property)|(\+build[[:space:]]+property)' --include='*_test.go' . 2>/dev/null; then
+            # count=N runs the test N times with different seeds
+            go test -tags=property -run=TestProperty ./... -count=${{ inputs.num-cases }} -v
+          else
             echo "::notice::No property tests found (build tag +property or TestProperty functions) — optional"
-          }
+          fi
 
       - name: Upload property test results
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
@@ -215,8 +237,16 @@ jobs:
           # Fast-check tests are convention-named *.property.test.ts or *.property.test.js
           # They use @fc.property() or fc.property() from fast-check library.
           # vitest automatically discovers .test.ts files.
+          #
+          # Gating (Rule #11 — no || true on quality steps):
+          #   - If property test files EXIST → run them FATALLY. A failing property
+          #     (invariant violation / shrunk counterexample) MUST fail the job.
+          #     Mirrors reusable-test-ts.yml:150 "Fail if below threshold (fatal, no || true)".
+          #   - If NO property test files exist → explicit conditional skip via ::notice::
+          #     (some repos may not have property tests yet — same advisory pattern as the
+          #     python step at lines 88-92 of this workflow). NOT a || true no-op.
           if find . -name "*.property.test.ts" -o -name "*.property.test.js" | grep -q .; then
-            npx vitest run --reporter=verbose "**/*.property.test.ts" --coverage=false || true
+            npx vitest run --reporter=verbose "**/*.property.test.ts" --coverage=false
           else
             echo "::notice::No *.property.test.ts files found (optional)"
           fi

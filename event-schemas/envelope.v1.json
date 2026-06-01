@@ -43,6 +43,16 @@
       "type": ["string", "null"],
       "description": "Correlation ID for callback events. Required in notifications.*.delivered and other callback events where the caller must echo the reference it sent on the original request."
     },
+    "sender_type": {
+      "type": ["string", "null"],
+      "enum": ["client", "employee", "tenant_admin", null],
+      "description": "Identity class of the party that originated the interaction (AQ-112). Resolved from the conversation in WhatsApp-origin producers (sender_type column on omnichannel.conversations). Nullable + optional for backward compatibility: events emitted before AQ-112, or where identity is not yet resolved, omit it."
+    },
+    "branch_id": {
+      "type": ["string", "null"],
+      "maxLength": 36,
+      "description": "Multi-context selector for the originating branch (AQ-112). Maps to context_id on omnichannel.conversations. Nullable + optional for backward compatibility; distinct from the envelope-level context_id which is the routing context."
+    },
     "timestamp": {
       "type": "string",
       "format": "date-time",

@@ -9,6 +9,16 @@
       "type": "object",
       "properties": {
         "event_type": { "const": "omnichannel.message.received" },
+        "sender_type": {
+          "type": ["string", "null"],
+          "enum": ["client", "employee", "tenant_admin", null],
+          "description": "AQ-112: identity class of the party that sent this inbound message. Resolved from the conversation's sender_type column in the WhatsApp-origin producer (alebrije-mod-omnichannel). Inherited from envelope.v1; surfaced here because this is the primary AQ-112 producer event. Nullable + optional for backward compatibility."
+        },
+        "branch_id": {
+          "type": ["string", "null"],
+          "maxLength": 36,
+          "description": "AQ-112: originating branch for the message, mapped from the conversation's context_id (alebrije-mod-omnichannel). Inherited from envelope.v1; surfaced here for consumer documentation. Distinct from the envelope-level context_id (routing context). Nullable + optional for backward compatibility."
+        },
         "data": {
           "type": "object",
           "required": ["conversation_id", "message_id", "channel", "content_type"],

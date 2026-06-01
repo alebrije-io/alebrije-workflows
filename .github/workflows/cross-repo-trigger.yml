@@ -91,8 +91,13 @@ jobs:
                   raise ValueError("custom-payload must be a JSON object")
               print(f"✓ Payload: {len(payload)} keys")
 
-              print(f"::set-output name=count::{len(repos)}")
-              print(f"::set-output name=has-timeout::${{ inputs.timeout-seconds > 0 }}")
+              # The set-output worker command was disabled on GitHub runners
+              # in 2023; write to $GITHUB_OUTPUT instead (same pattern as
+              # reusable-release-extended.yml).
+              has_timeout = "${{ inputs.timeout-seconds > 0 }}"
+              with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
+                  gh_out.write(f"count={len(repos)}\n")
+                  gh_out.write(f"has-timeout={has_timeout}\n")
           except json.JSONDecodeError as e:
               print(f"::error::Invalid JSON: {e}")
               sys.exit(1)
@@ -207,7 +212,11 @@ jobs:
               print(f"✓ Dispatched successfully")
               if run_id:
                   print(f"  Run ID: {run_id}")
-                  print(f"::set-output name=run-ids::{run_id}")
+                  # The set-output worker command was disabled on GitHub
+                  # runners in 2023; write to $GITHUB_OUTPUT (same pattern as
+                  # reusable-release-extended.yml).
+                  with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
+                      gh_out.write(f"run-ids={run_id}\n")
           else:
               err = result.stderr.strip()
               print(f"✗ Dispatch failed: {err}")
