@@ -1,0 +1,185 @@
+name: Reusable Event Contract Check
+
+# ADR-31 §7.2 — Producer↔consumer event contract enforcement.
+#
+# Esta es la capa de enforcement que ADR-31 (reapertura 2026-05-29 §640-646)
+# marcó como FALTANTE: `reusable-event-schema-check.yml` valida que un publisher
+# tenga schema registrado y detecta breaking changes en el schema, pero NADIE
+# valida que (a) el payload de ejemplo (golden sample) realmente conforma al
+# schema, ni (b) que cada consumidor declarado en `consumers.yaml` está suscrito
+# a un event_type que algún producer realmente publica (schema registrado).
+# Ese cross-check es exactamente lo que habría fallado CI ante los renames de
+# stream/event_type que hoy shippean en verde.
+#
+# Implementa la opción "Custom minimal" preferida en ADR-31 §7.2 item 4: un
+# runner que toma (schema, example) y corre validate(example, schema). Sin
+# acoplar un broker externo (Pact Message/Ruby), consistente con el stack.
+#
+# Diseño no-bloqueante por ausencia: el job solo valida los schemas que TIENEN
+# un golden `<event>.example.json`, y la sección de consumidores solo corre si
+# `event-schemas/consumers.yaml` existe. Mientras no haya fixtures/mapa el job
+# pasa (no rompe los ~10 repos consumidores), y se activa a medida que se
+# agregan ejemplos y entradas de consumidores — no es un stub: cuando el dato
+# existe, valida de verdad y bloquea el PR si el contrato no se cumple.
+
+on:
+  workflow_call:
+    inputs:
+      schemas-repo-ref:
+        description: "Git ref of alebrije-workflows to read schemas from"
+        required: false
+        type: string
+        default: "main"
+      fail-on-mismatch:
+        description: "Fail the PR when an example or a consumer entry violates the contract"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: event-contract-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  event-contract:
+    name: Event contract check (schema ↔ example ↔ consumers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout alebrije-workflows (schemas source)
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          repository: alebrije-io/alebrije-workflows
+          ref: ${{ inputs.schemas-repo-ref }}
+          path: workflows
+
+      - name: Set up Python
+        uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install jsonschema + PyYAML
+        run: |
+          python -m pip install --upgrade pip
+          pip install jsonschema PyYAML --quiet
+
+      - name: Validate event contracts (golden examples + consumers map)
+        id: contract
+        shell: bash
+        env:
+          SCHEMAS_DIR: workflows/event-schemas
+          FAIL_ON_MISMATCH: ${{ inputs.fail-on-mismatch }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          import yaml
+          from jsonschema import Draft7Validator
+          from jsonschema.exceptions import SchemaError
+
+          schemas_dir = Path(os.environ["SCHEMAS_DIR"])
+          fail_on_mismatch = os.environ.get("FAIL_ON_MISMATCH", "true").lower() == "true"
+
+          if not schemas_dir.exists():
+              print(f"::error::Schemas dir not found: {schemas_dir}")
+              sys.exit(1)
+
+          errors = []
+
+          # Index of registered schema files by their bare event name
+          # (e.g. "rewards.points.earned" -> rewards.points.earned.v1.json).
+          registered = {}
+          for p in sorted(schemas_dir.glob("*.v*.json")):
+              event_name = p.name.rsplit(".v", 1)[0]
+              registered.setdefault(event_name, []).append(p)
+          print(f"[contract] {len(registered)} event type(s) with a registered schema")
+
+          # ── 1. Golden example ↔ schema validation ─────────────────────
+          # Each <event>.example.json must conform to its <event>.vN.json.
+          examples = sorted(schemas_dir.glob("*.example.json"))
+          print(f"[contract] {len(examples)} golden example fixture(s) found")
+          for ex_path in examples:
+              event_name = ex_path.name[: -len(".example.json")]
+              schema_files = registered.get(event_name)
+              if not schema_files:
+                  errors.append(
+                      f"{ex_path.name}: golden example has NO registered schema "
+                      f"'{event_name}.vN.json' to validate against"
+                  )
+                  continue
+              # Validate against the highest version present.
+              schema_path = sorted(schema_files)[-1]
+              try:
+                  schema = json.loads(schema_path.read_text())
+              except json.JSONDecodeError as exc:
+                  errors.append(f"{schema_path.name}: invalid JSON schema: {exc}")
+                  continue
+              try:
+                  example = json.loads(ex_path.read_text())
+              except json.JSONDecodeError as exc:
+                  errors.append(f"{ex_path.name}: invalid JSON example: {exc}")
+                  continue
+              try:
+                  Draft7Validator.check_schema(schema)
+              except SchemaError as exc:
+                  errors.append(f"{schema_path.name}: not a valid JSON Schema: {exc.message}")
+                  continue
+              validator = Draft7Validator(schema)
+              violations = sorted(validator.iter_errors(example), key=lambda e: list(e.path))
+              if violations:
+                  for v in violations:
+                      loc = "/".join(str(x) for x in v.path) or "(root)"
+                      errors.append(f"{ex_path.name}: example violates schema at '{loc}': {v.message}")
+              else:
+                  print(f"[contract] OK: {ex_path.name} conforms to {schema_path.name}")
+
+          # ── 2. consumers.yaml ↔ registered producers cross-check ───────
+          # Every event_type a consumer subscribes to must have a producer
+          # schema registered. This catches a producer renaming a stream /
+          # event_type while a consumer keeps subscribing to the old name.
+          consumers_file = schemas_dir / "consumers.yaml"
+          if consumers_file.exists():
+              try:
+                  consumers = yaml.safe_load(consumers_file.read_text()) or {}
+              except yaml.YAMLError as exc:
+                  print(f"::error::consumers.yaml is not valid YAML: {exc}")
+                  sys.exit(1)
+              subs = consumers.get("subscriptions", [])
+              print(f"[contract] consumers.yaml: {len(subs)} subscription(s) declared")
+              for sub in subs:
+                  service = sub.get("service", "<unknown>")
+                  event_type = sub.get("event_type")
+                  if not event_type:
+                      errors.append(
+                          f"consumers.yaml: subscription for '{service}' is missing 'event_type'"
+                      )
+                      continue
+                  if event_type not in registered:
+                      errors.append(
+                          f"consumers.yaml: '{service}' subscribes to '{event_type}' "
+                          f"but NO producer schema is registered for it "
+                          f"(stream/event_type drift or typo)"
+                      )
+                  else:
+                      print(f"[contract] OK: consumer '{service}' ↔ producer schema '{event_type}'")
+          else:
+              print("[contract] consumers.yaml absent — consumer cross-check skipped (no-op)")
+
+          # ── Verdict ───────────────────────────────────────────────────
+          if errors:
+              print("\n::error::Event contract violations detected:")
+              for e in errors:
+                  print(f"  ❌ {e}")
+              if fail_on_mismatch:
+                  sys.exit(1)
+              print("\n[contract] fail-on-mismatch=false — reporting only, not blocking.")
+              sys.exit(0)
+
+          print("\n[contract] All event contracts satisfied ✓")
+          PY

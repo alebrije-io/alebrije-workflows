@@ -176,20 +176,59 @@ jobs:
       # ====================================================================
       # 5. SECURITY: TRIVY VULNERABILITY SCANNING (optimizado: 2 scans vs 4)
       # ====================================================================
-      # CRITICAL (table): bloquea el pipeline — exit-code: 1
-      #   continue-on-error: true para que errores de infra de Trivy no bloqueen
+      # CRITICAL (table + JSON): bloquea el pipeline — ADR-29 §6.2 Gate 1.
+      #   El scan corre con exit-code: 0 para NO confundir un fallo de infra de
+      #   Trivy (timeout de registry, rate-limit de DB de vulns, etc.) con un CVE
+      #   real. La salida JSON se inspecciona en un step dedicado que SOLO falla
+      #   cuando existe un CRITICAL con fix disponible (ignore-unfixed: true). Así
+      #   el gate sigue siendo bloqueante para CVEs reales sin bloquear por ruido
+      #   de infra — en lugar de `continue-on-error: true` que tragaba ambos.
       # CRITICAL+HIGH (SARIF): reporte unificado en GitHub Security tab — no bloquea
       # SBOM: eliminado aquí — 'sbom: true' en el build step ya genera SBOM como
       #   OCI attestation en DockerHub. Trivy CycloneDX era duplicado (+10-40min).
-      - name: Trivy scan — CRITICAL (table, blocking)
+      - name: Trivy scan — CRITICAL (table, display)
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
-        continue-on-error: true  # Trivy exits 1 on infra errors, not just real CVEs
+        continue-on-error: true  # solo display; el gate real es el step JSON + gate
         with:
           image-ref: ${{ inputs.image-name }}:${{ steps.version.outputs.tag }}
           format: table
           severity: CRITICAL
-          exit-code: 1
+          exit-code: 0
           ignore-unfixed: true
+
+      - name: Trivy scan — CRITICAL (JSON, for gate)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
+        continue-on-error: true  # fallo de infra de Trivy no debe enmascararse como CVE; lo evalúa el gate
+        with:
+          image-ref: ${{ inputs.image-name }}:${{ steps.version.outputs.tag }}
+          format: json
+          output: trivy-critical.json
+          severity: CRITICAL
+          exit-code: 0
+          ignore-unfixed: true
+
+      # Gate 1 bloqueante (ADR-29 §6.2): falla si hay ≥1 CRITICAL con fix.
+      # Distingue infra-error de CVE-found: si el JSON no existe → fallo de infra
+      # del step anterior → error explícito (no silenciamos). Si existe pero tiene
+      # CRITICALs fixables → exit 1. Si existe sin CRITICALs → pasa.
+      - name: Gate 1 — fail on CRITICAL vulnerabilities (ADR-29 §6.2)
+        run: |
+          if [ ! -f trivy-critical.json ]; then
+            echo "::error::Trivy CRITICAL scan no produjo trivy-critical.json — fallo de infra del scan, no se puede verificar el gate. Revisar logs del step anterior."
+            exit 1
+          fi
+          COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-critical.json)
+          if [ -z "$COUNT" ]; then
+            echo "::error::No se pudo parsear trivy-critical.json — el scan no entregó un reporte válido."
+            exit 1
+          fi
+          echo "CRITICAL (con fix disponible) encontrados: $COUNT"
+          if [ "$COUNT" -gt 0 ]; then
+            echo "::error::Gate 1 bloqueado — la imagen tiene $COUNT CVE(s) CRITICAL con fix disponible. Resolver antes de publicar (ADR-29 §6.2 Gate 1)."
+            jq -r '.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL") | "  - \(.VulnerabilityID) \(.PkgName) \(.InstalledVersion) → \(.FixedVersion)"' trivy-critical.json
+            exit 1
+          fi
+          echo "Gate 1 OK — sin CVEs CRITICAL fixables en la imagen."
 
       - name: Trivy scan — CRITICAL+HIGH (SARIF, non-blocking)
         if: always()
