@@ -36,6 +36,11 @@ on:
         required: false
         default: ""
         type: string
+      image-digest:
+        description: "Image digest (sha256:...) para firma Cosign inmutable. Si se omite, firma por tag (mutable, menos seguro)."
+        required: false
+        default: ""
+        type: string
       scan-type:
         description: "image | fs | config | all"
         required: false
@@ -312,12 +317,25 @@ jobs:
     steps:
       - uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2ea8694d7cc6b2da6ac0d  # v3.5.0
 
-      - name: Sign image with Cosign (keyless)
+      # Firma por DIGEST inmutable cuando el caller lo provee (ADR-29 §8.1).
+      # El tag es mutable: re-pushear el mismo tag con otro contenido deja la
+      # firma desincronizada. Firmar image-ref@sha256:... ata la firma al
+      # contenido exacto. Fallback a tag solo si no se pasa digest (compat).
+      # Mismo patrón que .github/actions/sign-with-cosign/action.yml:61-67.
+      - name: Sign image with Cosign (keyless, prefer digest)
         env:
           COSIGN_EXPERIMENTAL: "1"
+          IMAGE_REF: ${{ inputs.image-ref }}
+          IMAGE_DIGEST: ${{ inputs.image-digest }}
         run: |
-          echo "Signing image: ${{ inputs.image-ref }}"
-          cosign sign --yes "${{ inputs.image-ref }}"
+          if [ -n "$IMAGE_DIGEST" ]; then
+            REF="${IMAGE_REF}@${IMAGE_DIGEST}"
+          else
+            echo "::warning::image-digest no provisto — firmando por TAG mutable. Pasar image-digest para firma inmutable (ADR-29 §8.1)."
+            REF="$IMAGE_REF"
+          fi
+          echo "Signing image: ${REF}"
+          cosign sign --yes "${REF}"
           echo "Image signed via Sigstore transparency log"
 
   # ======================================================================

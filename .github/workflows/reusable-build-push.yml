@@ -72,7 +72,7 @@ jobs:
     timeout-minutes: 30
     outputs:
       image-tag: ${{ steps.build.outputs.image-tag }}
-      image-digest: ${{ steps.build.outputs.image-digest }}
+      image-digest: ${{ steps.build.outputs.digest }}
       version: ${{ steps.version.outputs.tag }}
 
     steps:
@@ -293,10 +293,24 @@ jobs:
         if: inputs.push == true
         uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2ea8694d7cc6b2da6ac0d  # v3.5.0
 
-      - name: Sign Docker image with Cosign (keyless)
+      # Firma por DIGEST inmutable, no por TAG mutable (ADR-29 §8.1).
+      # El tag (image-name:version e image-name:latest) puede sobreescribirse
+      # con otro contenido, dejando la firma desincronizada del binario que
+      # corre. Firmar image-name@sha256:... ata la firma al contenido exacto.
+      # Mismo patrón que .github/actions/sign-with-cosign/action.yml:61-67.
+      - name: Sign Docker image with Cosign (keyless, by digest)
         if: inputs.push == true
         env:
           COSIGN_EXPERIMENTAL: "1"
+          IMAGE_NAME: ${{ inputs.image-name }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_TAG: ${{ steps.version.outputs.tag }}
         run: |
-          cosign sign --yes \
-            ${{ inputs.image-name }}:${{ steps.version.outputs.tag }}
+          if [ -z "$IMAGE_DIGEST" ]; then
+            echo "::error::No image digest available del build step — no se puede firmar por digest inmutable. Revisar el output 'digest' de docker/build-push-action."
+            exit 1
+          fi
+          REF="${IMAGE_NAME}@${IMAGE_DIGEST}"
+          echo "Signing by digest: ${REF}"
+          cosign sign --yes "${REF}"
+          echo "Imagen firmada por digest via Sigstore transparency log"
