@@ -225,7 +225,9 @@ jobs:
           echo "CRITICAL (con fix disponible) encontrados: $COUNT"
           if [ "$COUNT" -gt 0 ]; then
             echo "::error::Gate 1 bloqueado — la imagen tiene $COUNT CVE(s) CRITICAL con fix disponible. Resolver antes de publicar (ADR-29 §6.2 Gate 1)."
-            jq -r '.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL") | "  - \(.VulnerabilityID) \(.PkgName) \(.InstalledVersion) → \(.FixedVersion)"' trivy-critical.json
+            JQ_LIST='.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")'
+            JQ_FMT='"  - \(.VulnerabilityID) \(.PkgName) \(.InstalledVersion) → \(.FixedVersion)"'
+            jq -r "$JQ_LIST | $JQ_FMT" trivy-critical.json
             exit 1
           fi
           echo "Gate 1 OK — sin CVEs CRITICAL fixables en la imagen."
