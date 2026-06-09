@@ -1,0 +1,256 @@
+# Alebrije EventBus — consumer subscription map
+#
+# ADR-31 §7.2 item 3: "Consumer compatibility check ... un archivo
+# event-schemas/consumers.yaml que mapea evento → servicios suscritos. Si alguno
+# rompe, PR bloqueado." Decisión técnica #10 del ADR: "Consumer map explícito en
+# repo / Explícito es más honesto. Un servicio no debería 'por accidente'
+# suscribirse a algo."
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# ⚠️  DERIVADO-DEL-CÓDIGO — REQUIERE REVISIÓN HUMANA DEL TOPOLOGY
+# ─────────────────────────────────────────────────────────────────────────────
+# Este mapa NO fue escrito a mano desde el diseño: fue derivado grepeando los
+# consumidores REALES en los repos (Broadway/Oban en *-ex, events_consumer /
+# eventfeeder en Go, EventConsumer/CrossModuleEventConsumer en Python) a fecha
+# 2026-06-09. Cada entrada cita el archivo:línea de donde se extrajo. Un humano
+# DEBE revisar que el topology refleje la intención de arquitectura antes de
+# tratarlo como contrato vinculante — especialmente la sección
+# `unverified_drift` de abajo.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# CONTRATO QUE VALIDA reusable-event-contract.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# El workflow lee SOLO la clave top-level `subscriptions:`. Cada entrada con
+# `event_type` cuyo nombre NO tenga un schema registrado en
+# `event-schemas/<event_type>.vN.json` hace FALLAR el PR — eso es deliberado:
+# es exactamente el "stream/event_type drift" que el ADR quiere atrapar.
+#
+# Por eso `subscriptions:` lista solo suscripciones cuyo `event_type` YA tiene
+# schema registrado (contrato válido y verificable hoy). Las suscripciones del
+# código a nombres legacy / no-canónicos (que el workflow rechazaría) viven en
+# `unverified_drift:` — el workflow IGNORA esa clave, pero el reviewer humano la
+# ve y decide si: (a) registrar un schema para ese event_type, o (b) migrar el
+# consumidor al nombre canónico (ADR-31 §4.2 deprecation window).
+
+version: 1
+derived_from_code: true
+derived_at: "2026-06-09"
+needs_human_review: true
+
+# ── Suscripciones con contrato válido (event_type tiene schema registrado) ────
+# El workflow valida cada una contra event-schemas/<event_type>.vN.json.
+subscriptions:
+  # rewards-go EventsConsumer — Phase 4 default subscriptions.
+  # alebrije-mod-rewards-go/internal/service/events_consumer.go:158-160
+  - service: alebrije-mod-rewards-go
+    event_type: payments.payment.completed
+    stream: "events:payments"
+    handler: EventsConsumer (DefaultSubscriptions)
+    source: alebrije-mod-rewards-go/internal/service/events_consumer.go:158
+
+  - service: alebrije-mod-rewards-go
+    event_type: field_ops.order.completed
+    stream: "events:field_ops"
+    handler: EventsConsumer (DefaultSubscriptions)
+    source: alebrije-mod-rewards-go/internal/service/events_consumer.go:159
+
+  - service: alebrije-mod-rewards-go
+    event_type: crm.contact.stage_changed
+    stream: "events:crm"
+    handler: EventsConsumer (DefaultSubscriptions)
+    source: alebrije-mod-rewards-go/internal/service/events_consumer.go:160
+
+  # cadences-ex EnrollmentConsumer — Broadway over events:crm, auto-enroll on
+  # the canonical crm.contact.stage_changed event_type.
+  # alebrije-mod-cadences-ex/lib/alebrije_cadences/workers/enrollment_consumer.ex:11
+  - service: alebrije-mod-cadences-ex
+    event_type: crm.contact.stage_changed
+    stream: "events:crm"
+    handler: EnrollmentConsumer (Broadway)
+    source: alebrije-mod-cadences-ex/lib/alebrije_cadences/workers/enrollment_consumer.ex:11
+
+  # agentic EventConsumer — reads the message.received stream; the canonical
+  # registered event_type is omnichannel.message.received (the code stream name
+  # "message.received" is legacy, see unverified_drift). The consumer routes on
+  # event_type which carries the canonical name in the envelope.
+  # alebrije-mod-agentic/app/workers/event_consumer.py:268 + config.py:38
+  - service: alebrije-mod-agentic
+    event_type: omnichannel.message.received
+    stream: "message.received"  # legacy stream name; canonical = events:omnichannel
+    handler: EventConsumer
+    source: alebrije-mod-agentic/app/workers/event_consumer.py:268
+
+  # mcp-go eventbridge — default automation trigger on payments.invoice.overdue.
+  # alebrije-mcp-go/internal/eventbridge/defaults.go:56
+  - service: alebrije-mcp-go
+    event_type: payments.invoice.overdue
+    stream: "events:payments"
+    handler: eventbridge (default trigger)
+    source: alebrije-mcp-go/internal/eventbridge/defaults.go:56
+
+  # omnichannel-ex campaigns pipeline — Broadway over events:campaigns, links a
+  # sent campaign to a conversation. Canonical event_type campaigns.campaign.sent.
+  # alebrije-svc-omnichannel-ex/lib/alebrije_omnichannel/integrations/campaigns/pipeline.ex:3
+  - service: alebrije-svc-omnichannel-ex
+    event_type: campaigns.campaign.sent
+    stream: "events:campaigns"
+    handler: Campaigns.Pipeline (Broadway)
+    source: alebrije-svc-omnichannel-ex/lib/alebrije_omnichannel/integrations/campaigns/pipeline.ex:3
+
+# ── Drift NO verificado contra el registry (el workflow IGNORA esta clave) ─────
+# Suscripciones reales del código cuyo event_type o stream NO coincide con un
+# schema registrado. Cada una es un candidato a: (a) registrar el schema, o
+# (b) migrar el consumidor al nombre canónico ADR-31. NO se ponen en
+# `subscriptions:` porque romperían el lint de contrato (que es el punto: el
+# drift existe y debe resolverse, no esconderse — Inquebrantable: no degradar
+# gates). Mover una entrada aquí a `subscriptions:` SIN registrar su schema
+# hará fallar CI a propósito.
+unverified_drift:
+  # GDPR DSR canonical fan-out — múltiples servicios consumen
+  # auth.dsr.erasure_approved del stream alebrije:events:auth. NO existe schema
+  # auth.dsr.erasure_approved.vN.json (el registry tiene auth.user.created y
+  # auth.user.deletion_requested). Candidato a registrar el schema canónico.
+  - service: alebrije-mod-rewards-go
+    event_type: auth.dsr.erasure_approved
+    stream: "alebrije:events:auth"
+    reason: no registered schema (registry has auth.user.deletion_requested)
+    source: alebrije-mod-rewards-go/internal/service/events_consumer.go:48
+  - service: alebrije-mod-crm-go
+    event_type: auth.dsr.erasure_approved
+    stream: "alebrije:events:auth"
+    reason: no registered schema; consumer also accepts legacy auth.user.deletion_requested
+    source: alebrije-mod-crm-go/internal/gdpr/dsr_consumer.go:27
+  - service: alebrije-mod-payments-go
+    event_type: auth.dsr.erasure_approved
+    stream: "alebrije:events:auth"
+    reason: no registered schema
+    source: alebrije-mod-payments-go/internal/gdpr/consumer.go:29  # also gdpr.erasure_requested
+  - service: alebrije-svc-omnichannel-ex
+    event_type: auth.dsr.erasure_approved
+    stream: "alebrije:events:auth"
+    reason: no registered schema
+    source: alebrije-svc-omnichannel-ex/lib/alebrije_omnichannel/gdpr/consumer.ex:54
+  - service: alebrije-svc-notifications-ex
+    event_type: auth.dsr.erasure_approved
+    stream: "alebrije:events:auth"
+    reason: no registered schema
+    source: alebrije-svc-notifications-ex/lib/alebrije_notifications/events.ex:22
+  - service: alebrije-mod-planificador-ex
+    event_type: auth.dsr.erasure_approved
+    stream: "alebrije:events:auth"
+    reason: no registered schema
+    source: alebrije-mod-planificador-ex/lib/alebrije_planificador/application.ex:82
+  - service: alebrije-mod-control-medico
+    event_type: auth.dsr.erasure_approved
+    stream: "alebrije:events:auth"
+    reason: no registered schema
+    source: alebrije-mod-control-medico/app/config.py:136
+
+  # control-medico syncs employee data from svc-auth on empleado.updated. The
+  # canonical name would be auth.employee.updated (ADR-31 Appendix A) — neither
+  # empleado.updated nor auth.employee.updated has a registered schema.
+  - service: alebrije-mod-control-medico
+    event_type: empleado.updated
+    stream: "empleado.updated"
+    reason: legacy name; no registered schema (canonical would be auth.employee.updated)
+    source: alebrije-mod-control-medico/app/main.py:119
+
+  # crm-go TimelineConsumer subscribes to legacy stream-per-event names that do
+  # not match canonical event_types nor registered schemas. Drift candidates:
+  # rewards.earned → rewards.points.earned, payments.completed →
+  # payments.payment.completed, omnichannel.message_received →
+  # omnichannel.message.received.
+  - service: alebrije-mod-crm-go
+    event_type: payments.completed
+    stream: "payments.completed"
+    reason: legacy stream/name; canonical = payments.payment.completed
+    source: alebrije-mod-crm-go/internal/service/timeline_consumer.go:46
+  - service: alebrije-mod-crm-go
+    event_type: rewards.earned
+    stream: "rewards.earned"
+    reason: legacy stream/name; canonical = rewards.points.earned
+    source: alebrije-mod-crm-go/internal/service/timeline_consumer.go:47
+  - service: alebrije-mod-crm-go
+    event_type: rewards.redeemed
+    stream: "rewards.redeemed"
+    reason: legacy stream/name; canonical = rewards.points.redeemed
+    source: alebrije-mod-crm-go/internal/service/timeline_consumer.go:48
+  - service: alebrije-mod-crm-go
+    event_type: omnichannel.message_received
+    stream: "omnichannel.message_received"
+    reason: legacy stream/name; canonical = omnichannel.message.received
+    source: alebrije-mod-crm-go/internal/service/timeline_consumer.go:44
+  - service: alebrije-mod-crm-go
+    event_type: cadences.outcome_recorded
+    stream: "cadences.outcome_recorded"
+    reason: legacy stream/name; no registered schema
+    source: alebrije-mod-crm-go/internal/service/timeline_consumer.go:49
+
+  # agentic CrossModuleEventConsumer subscribes to 6 cross-module streams; their
+  # configured stream names mostly are not registered event_types. Drift list:
+  - service: alebrije-mod-agentic
+    event_type: crm.lead.created
+    stream: "crm.lead.created"
+    reason: no registered schema (registry has crm.contact.created)
+    source: alebrije-mod-agentic/app/config.py:44
+  - service: alebrije-mod-agentic
+    event_type: agenda.appointment.no_show
+    stream: "agenda.appointment.no_show"
+    reason: no registered schema (registry has agenda.appointment.booked/cancelled)
+    source: alebrije-mod-agentic/app/config.py:45
+  - service: alebrije-mod-agentic
+    event_type: payments.payment.failed
+    stream: "payments.payment.failed"
+    reason: no registered schema (registry has payments.payment.completed)
+    source: alebrije-mod-agentic/app/config.py:46
+  - service: alebrije-mod-agentic
+    event_type: field_ops.sla.breach
+    stream: "field_ops.sla.breach"
+    reason: no registered schema (registry has field_ops.order.completed)
+    source: alebrije-mod-agentic/app/config.py:47
+  - service: alebrije-mod-agentic
+    event_type: control_medico.dictamen.created
+    stream: "control_medico.dictamen.created"
+    reason: no registered schema (registry has control_medico.consultation.completed)
+    source: alebrije-mod-agentic/app/config.py:48
+  - service: alebrije-mod-agentic
+    event_type: campaigns.send_failed
+    stream: "campaigns.send_failed"
+    reason: no registered schema
+    source: alebrije-mod-agentic/app/config.py:49
+
+  # mcp-go eventbridge other default triggers without registered schemas.
+  - service: alebrije-mcp-go
+    event_type: agenda.appointment.no_show
+    stream: "events:agenda"
+    reason: no registered schema
+    source: alebrije-mcp-go/internal/eventbridge/defaults.go:13
+  - service: alebrije-mcp-go
+    event_type: crm.lead.created
+    stream: "events:crm"
+    reason: no registered schema (registry has crm.contact.created)
+    source: alebrije-mcp-go/internal/eventbridge/defaults.go:27
+  - service: alebrije-mcp-go
+    event_type: field_ops.sla.breach
+    stream: "events:field_ops"
+    reason: no registered schema
+    source: alebrije-mcp-go/internal/eventbridge/defaults.go:41
+  - service: alebrije-mcp-go
+    event_type: toronja.lab.result_ready
+    stream: "events:toronja"
+    reason: no registered schema (adapt-toronja publishes toronja.result_validated)
+    source: alebrije-mcp-go/internal/eventbridge/defaults.go:70
+
+  # mcp-go eventfeeder also bridges the canonical GDPR erasure trigger.
+  - service: alebrije-mcp-go
+    event_type: auth.dsr.erasure_approved
+    stream: "alebrije:events:auth"
+    reason: no registered schema
+    source: alebrije-mcp-go/internal/eventfeeder/feeder.go:51
+
+  # cadences-ex OutcomeListener consumes its own outcomes stream (no schema yet).
+  - service: alebrije-mod-cadences-ex
+    event_type: cadences.outcome_recorded
+    stream: "events:cadences.outcomes"
+    reason: no registered schema for outcome events
+    source: alebrije-mod-cadences-ex/lib/alebrije_cadences/workers/outcome_listener.ex:3
