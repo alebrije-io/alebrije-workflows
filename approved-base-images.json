@@ -5,18 +5,72 @@
       "approved_tags": [
         "3.13-slim",
         "3.12-slim",
-        "3.11-slim"
+        "3.13-slim-bookworm",
+        "3.12-slim-bookworm",
+        "3.12-alpine"
       ],
-      "use_case": "Python microservices (auth, control-medico, notifications, ai)"
+      "use_case": "Python microservices (auth, control-medico, omnichannel, agentic, notifications)"
     },
     {
       "name": "node",
       "approved_tags": [
-        "22-bookworm-slim",
-        "20-bookworm-slim",
-        "18-bookworm-slim"
+        "22-bookworm-slim"
       ],
-      "use_case": "Node.js/Next.js frontend (alebrije-dashboard)"
+      "use_case": "Node.js/Next.js frontend (alebrije-frontend, alebrije-dashboard)"
+    },
+    {
+      "name": "golang",
+      "approved_tags": [
+        "1.26.3-alpine",
+        "1.26.3-bookworm"
+      ],
+      "use_case": "Go build stage CI (catalog, payments, crm, rewards, mcp, api-gateway, explosivos, proyectos, status)"
+    },
+    {
+      "name": "elixir",
+      "approved_tags": [
+        "1.19-alpine",
+        "1.19-slim"
+      ],
+      "use_case": "Elixir/Phoenix build stage (agenda, cadences, field-ops, omnichannel, planificador)"
+    },
+    {
+      "name": "alpine",
+      "approved_tags": [
+        "3.23",
+        "3.21",
+        "3.20"
+      ],
+      "use_case": "Minimal runtime / final-stage base layer"
+    },
+    {
+      "name": "debian",
+      "approved_tags": [
+        "bookworm-slim",
+        "trixie-slim"
+      ],
+      "use_case": "Elixir release runtime base (BEAM needs glibc) and slim runtime stages"
+    },
+    {
+      "name": "gcr.io/distroless/static",
+      "approved_tags": [
+        "nonroot"
+      ],
+      "use_case": "Hardened runtime stage for static Go binaries (payments, crm, catalog, status)"
+    },
+    {
+      "name": "gcr.io/distroless/static-debian12",
+      "approved_tags": [
+        "nonroot"
+      ],
+      "use_case": "Hardened runtime stage for static Go binaries on debian12 (proyectos, api-gateway, mcp, rewards, explosivos)"
+    },
+    {
+      "name": "nginx",
+      "approved_tags": [
+        "1.27-alpine"
+      ],
+      "use_case": "Static asset / landing-page runtime (alebrije-landingpage)"
     },
     {
       "name": "postgres",
@@ -34,33 +88,6 @@
         "6-alpine"
       ],
       "use_case": "CI service container for integration tests"
-    },
-    {
-      "name": "golang",
-      "approved_tags": [
-        "1.24-bookworm",
-        "1.23-bookworm",
-        "1.22-bookworm"
-      ],
-      "use_case": "Go build CI"
-    },
-    {
-      "name": "elixir",
-      "approved_tags": [
-        "1.18-otp-27",
-        "1.18-otp-26",
-        "1.17-otp-26"
-      ],
-      "use_case": "Elixir CI"
-    },
-    {
-      "name": "alpine",
-      "approved_tags": [
-        "3.21",
-        "3.20",
-        "3.19"
-      ],
-      "use_case": "Minimal base layer"
     }
   ],
   "scanning_policy": {
@@ -69,5 +96,5 @@
     "ignore_unfixed": true,
     "tool": "trivy"
   },
-  "notes": "Always use slim/bookworm-slim/alpine variants. Never use :latest in production Dockerfiles."
+  "notes": "Always use slim/bookworm-slim/alpine/distroless variants. Prefer distroless static for Go runtime stages. Never use :latest in production Dockerfiles. Tags are validated against the real fleet Dockerfiles; update both together when bumping a base image (see go-version.json / elixir-version.json for the canonical language versions)."
 }

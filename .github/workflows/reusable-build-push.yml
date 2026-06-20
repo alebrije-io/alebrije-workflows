@@ -93,6 +93,88 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@2c130e2300bda898b3c64bc8e9eaa1d00a27cbda  # v3.5.0
 
+      # ====================================================================
+      # 1b. SUPPLY-CHAIN GATE: APPROVED BASE IMAGES (pre-build)
+      # ====================================================================
+      # Valida que cada FROM del Dockerfile que vamos a construir esté en la
+      # whitelist canónica (approved-base-images.json de alebrije-workflows).
+      # Corre ANTES del build para fallar barato si el Dockerfile introduce una
+      # base no aprobada (DEBT-§43-SUPPLY-CHAIN-6: el gate existía como reusable
+      # workflow huérfano con 0 callers — aquí queda cableado para los ~33
+      # consumidores de build-push sin tocar 33 repos). El matcher ignora
+      # scratch, stages multi-stage (FROM <stage>) y FROMs templatizados
+      # (${BUILDER_IMAGE}, golang:${GO_VERSION}-alpine) — esos resuelven en
+      # build y no se pueden validar estáticamente.
+      - name: Fetch approved-base-images whitelist
+        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        with:
+          repository: alebrije-io/alebrije-workflows
+          ref: main
+          sparse-checkout: |
+            approved-base-images.json
+          sparse-checkout-cone-mode: false
+          path: .alebrije-workflows-whitelist
+
+      - name: Gate — validate Dockerfile base images against whitelist
+        shell: python3 {0}
+        env:
+          DOCKERFILE: ${{ inputs.context }}/${{ inputs.dockerfile }}
+          WHITELIST_FILE: .alebrije-workflows-whitelist/approved-base-images.json
+        run: |
+          import json
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          dockerfile = Path(os.environ["DOCKERFILE"])
+          whitelist_file = Path(os.environ["WHITELIST_FILE"])
+
+          if not dockerfile.is_file():
+              print(f"::error::Dockerfile not found at {dockerfile} — cannot validate base images.")
+              sys.exit(1)
+
+          approved = json.load(whitelist_file.open())
+          approved_images = set()
+          for entry in approved.get("images", []):
+              name = entry.get("name", "")
+              for tag in entry.get("approved_tags", [entry.get("tag", "")]):
+                  approved_images.add(f"{name}:{tag}")
+              approved_images.add(name)
+
+          print(f"[approved-images] Whitelist: {len(approved_images)} approved entries")
+
+          FROM_RE = re.compile(
+              r'^FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+(?:AS|as)\s+(\S+))?',
+              re.IGNORECASE | re.MULTILINE,
+          )
+
+          content = dockerfile.read_text(errors="replace")
+          stage_names = {m.group(2).lower() for m in FROM_RE.finditer(content) if m.group(2)}
+
+          violations = []
+          for match in FROM_RE.finditer(content):
+              image = match.group(1)
+              if image.lower() == "scratch":
+                  continue
+              if image.lower() in stage_names:
+                  continue  # intra-Dockerfile multi-stage reference
+              if image.startswith("${") or image.startswith("$"):
+                  continue  # fully-templated image ref — resolves at build time
+              check_image = image if ":" in image else f"{image}:latest"
+              base = image.split(":")[0]
+              if "${" in base or "$" in base:
+                  continue  # templated registry/name
+              if check_image not in approved_images and base not in approved_images and image not in approved_images:
+                  violations.append(f"  {dockerfile}: FROM {image}")
+
+          if violations:
+              print("::error::Non-approved base image(s) in Dockerfile — see alebrije-workflows/approved-base-images.json:")
+              for v in violations:
+                  print(v)
+              sys.exit(1)
+          print("[approved-images] All Dockerfile base images are approved ✓")
+
       # Autenticación a Vault via K8s auth (SA del runner pod)
       # Exporta DOCKERHUB_USERNAME, DOCKERHUB_TOKEN, GH_TOKEN como env vars
       - name: Get CI secrets from Vault

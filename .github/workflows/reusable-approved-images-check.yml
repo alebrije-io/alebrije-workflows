@@ -3,6 +3,13 @@ name: Reusable Approved Base Images Check
 # Valida que cada FROM en los Dockerfiles del repo esté en la whitelist
 # de approved-base-images.json de alebrije-workflows.
 #
+# ENFORCEMENT PATH: el mismo gate corre INLINE dentro de reusable-build-push.yml
+# (step "Gate — validate Dockerfile base images against whitelist"), que es el
+# camino real para los ~33 consumidores de build-push. Este workflow standalone
+# queda disponible como opt-in para repos que NO usan build-push (p.ej. quieren
+# el check en PRs sin construir imagen) o que tienen múltiples Dockerfiles que
+# build-push no construye. Ver DEBT-§43-SUPPLY-CHAIN-6.
+#
 # Design decision: ubuntu-latest es adecuado aquí porque:
 # - No necesita acceso a Vault ni al cluster K8s
 # - Es un check de linting que solo lee archivos
@@ -90,19 +97,42 @@ jobs:
 
           print(f"[approved-images] Found {len(dockerfiles)} Dockerfiles")
 
-          FROM_RE = re.compile(r'^FROM\s+(?:--platform=\S+\s+)?(\S+)', re.IGNORECASE | re.MULTILINE)
+          # Capture the FROM image and an optional `AS <stage>` alias so a later
+          # stage that does `FROM <prior-stage>` is not mistaken for a registry image.
+          FROM_RE = re.compile(
+              r'^FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+(?:AS|as)\s+(\S+))?',
+              re.IGNORECASE | re.MULTILINE,
+          )
 
           violations = []
           for df in dockerfiles:
               content = df.read_text(errors="replace")
+              # First pass: collect named build stages declared in THIS Dockerfile.
+              # `FROM golang:1.26-alpine AS builder` makes `builder` a valid base for
+              # a later `FROM builder` / `COPY --from=builder` — not a registry image.
+              stage_names = {
+                  m.group(2).lower()
+                  for m in FROM_RE.finditer(content)
+                  if m.group(2)
+              }
               for match in FROM_RE.finditer(content):
                   image = match.group(1)
                   if image.lower() == "scratch":
                       continue  # scratch is always allowed
+                  if image.lower() in stage_names:
+                      continue  # intra-Dockerfile multi-stage reference, not a base image
+                  # Build-arg / templated FROMs (`${BUILDER_IMAGE}`, `golang:${GO_VERSION}-alpine`)
+                  # resolve at build time; the literal tag isn't knowable here. Skip the
+                  # variable portion: if the whole ref is a bare variable, accept it; if the
+                  # name is literal but the tag is a variable, validate only the name.
+                  if image.startswith("${") or image.startswith("$"):
+                      continue  # fully-templated image ref — cannot validate statically
                   # Normalize: if no tag, add :latest for check
                   check_image = image if ":" in image else f"{image}:latest"
                   # Check if base name (without tag) is approved
                   base = image.split(":")[0]
+                  if "${" in base or "$" in base:
+                      continue  # templated registry/name — cannot validate statically
                   if check_image not in approved_images and base not in approved_images and image not in approved_images:
                       violations.append(f"  {df.relative_to(Path('target'))}: FROM {image}")
 

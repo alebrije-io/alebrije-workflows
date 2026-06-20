@@ -23,7 +23,7 @@ Centralized GitHub Actions reusable workflows and CI/CD utilities for all Alebri
 | reusable-release-extended.yml | Extended release workflow with additional validation |
 | reusable-contract-check.yml | FE/BE contract audit |
 | reusable-event-schema-check.yml | AsyncAPI / event-schemas validation |
-| reusable-approved-images-check.yml | Validate base images against approval list |
+| reusable-approved-images-check.yml | Standalone Dockerfile base-image whitelist check (opt-in; the same gate runs inline inside reusable-build-push.yml) |
 | reusable-mutation-test.yml | Mutation testing (Stryker/mutmut) |
 | reusable-notify.yml | Notification/alert dispatcher |
 | reusable-openapi-check.yml | OpenAPI specification validation |
@@ -141,6 +141,23 @@ en `push` a `main` con `sign-image: true` y un `image-ref` no vacío.
 
 | File | Purpose |
 |---|---|
-| approved-base-images.json | Allowed Docker base images |
+| approved-base-images.json | Allowed Docker base images (enforced inline by `reusable-build-push.yml` as a pre-build supply-chain gate) |
 | python-versions.json | Approved Python versions |
 | node-version.json | Approved Node.js version |
+
+### Approved base images gate
+
+`reusable-build-push.yml` validates every `FROM` in the Dockerfile it is about to
+build against `approved-base-images.json` **before** the build runs. A non-approved
+base image fails the job. This is the enforcement path for all build-push consumers —
+no extra `uses:` block is needed in your `ci.yml`.
+
+The matcher ignores `scratch`, intra-Dockerfile multi-stage references
+(`FROM builder` where `builder` was declared with `AS builder`), and templated
+refs that only resolve at build time (`${BUILDER_IMAGE}`, `golang:${GO_VERSION}-alpine`).
+
+When you bump a base image in a Dockerfile, add the new tag to
+`approved-base-images.json` in the same change so the gate stays green. The
+canonical language versions live in `go-version.json` / `elixir-version.json` /
+`python-versions.json` / `node-version.json`; keep the whitelist tags consistent
+with them.

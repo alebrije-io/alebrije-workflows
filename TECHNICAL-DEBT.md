@@ -253,3 +253,45 @@ A comprehensive audit of all 28 workflows, 9 custom actions, and meta-files was 
   per-repo artifacts or a JSON-array output keyed by repo). The `::set-output`→`$GITHUB_OUTPUT` fix
   (W14) was a prerequisite; this aggregation is the remaining functional improvement.
 - **Effort**: M — **Priority**: P3 — **Status**: OPEN
+
+---
+
+## §43 — Supply-chain audit (base-image whitelist)
+
+### DEBT-§43-SUPPLY-CHAIN-6: approved-images gate had 0 callers (FIXED)
+- **What**: `reusable-approved-images-check.yml` defined the base-image whitelist gate as a reusable
+  `workflow_call`, but **no repo in the fleet referenced it** (`grep` across all `.github/workflows`
+  returned 0 callers) — the gate never ran, so a Dockerfile could introduce an unapproved/unsafe base
+  image and no CI step would catch it.
+- **Root cause**: the gate was shipped as an opt-in reusable workflow that every consumer would have had
+  to wire individually. Asking 33 repos to each add a `uses:` block is fragile and was never done.
+- **Fix (robust)**: wired the same matcher **inline** into `reusable-build-push.yml` as a pre-build step
+  (`Gate — validate Dockerfile base images against whitelist`). It sparse-checks out
+  `approved-base-images.json` from `alebrije-workflows@main` and validates the exact Dockerfile being
+  built (`${context}/${dockerfile}`) **before** the Docker build, failing the job on a non-approved
+  `FROM`. All ~33 build-push consumers now get the gate for free — no change to their `ci.yml`. The
+  standalone `reusable-approved-images-check.yml` is retained as opt-in (PR-only checks / repos that
+  don't build images) and documents the enforcement path in its header comment.
+- **Matcher hardening (prerequisite for wiring)**: the original matcher would have produced
+  false-positive violations on multi-stage stage references (`FROM builder`) and templated FROMs
+  (`${BUILDER_IMAGE}`, `golang:${GO_VERSION}-alpine`) — 14 build-arg FROMs across the fleet. Fixed in
+  both the standalone workflow and the inline gate: collect `AS <stage>` aliases and skip them, and skip
+  any `FROM` whose name/ref is templated. Validated against all 107 fleet `FROM` lines → 2 residual
+  flags, both legitimate non-CI-built files (`arc/Dockerfile` ARC runner `:latest`; planificador
+  `Dockerfile.local` dev-only) that the gate does not build.
+- **Effort**: M — **Priority**: P2 — **Status**: **FIXED**
+
+### DEBT-§43-SUPPLY-CHAIN-7: approved-base-images.json drifted from real Dockerfiles (FIXED)
+- **What**: the whitelist tags no longer matched the fleet's real base images: golang listed
+  `1.24/1.23/1.22` (real: `1.26.3-alpine`/`1.26.3-bookworm`), elixir `1.18-otp-27` (real: `1.19-alpine`/
+  `1.19-slim`), alpine `3.21/3.20/3.19` (real: `3.23` dominant), and **distroless was entirely absent**
+  even though 10 Go services use `gcr.io/distroless/static[-debian12]:nonroot` as their hardened runtime
+  base — the gate would have flagged the fleet's *most secure* images as violations.
+- **Fix**: rebuilt `approved-base-images.json` strictly from verified disk evidence (aggregated every
+  `FROM` across the fleet). Now lists the real golang 1.26.3 / elixir 1.19 / alpine 3.23(+3.21,3.20)
+  tags, the real python slim/slim-bookworm/alpine variants, node `22-bookworm-slim`, and adds the
+  previously-missing production runtime bases: `gcr.io/distroless/static`,
+  `gcr.io/distroless/static-debian12`, `debian` (bookworm-slim/trixie-slim), `nginx` (1.27-alpine).
+  postgres/redis CI service-container tags retained. Validated: 0 false-positive violations against the
+  real fleet.
+- **Effort**: S — **Priority**: P2 — **Status**: **FIXED**
