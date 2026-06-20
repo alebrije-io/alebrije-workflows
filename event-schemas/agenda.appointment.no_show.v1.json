@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/agenda.appointment.no_show.v1.json",
+  "title": "agenda.appointment.no_show v1",
+  "description": "Emitted when an appointment transitions to no-show. Derived from the REAL producer alebrije-mod-agenda-ex EventPublisher.publish_appointment_noshow/1 (event_publisher.ex:50,65-73), invoked on the scheduled->noshow status change (appointments.ex:663). NOTE: the producer currently XADDs the legacy stream/event_type 'appointment.noshow' and emits a FLAT field map; on adoption it must wrap in this envelope (event_type const below) and move data fields under data.*. Source: alebrije-mod-agenda-ex (Elixir).",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "agenda.appointment.no_show" },
+        "data": {
+          "type": "object",
+          "required": ["appointment_id", "status"],
+          "properties": {
+            "appointment_id": {
+              "type": "string",
+              "description": "UUID of the appointment that went no-show. Producer stringifies appt.id (event_publisher.ex:67)."
+            },
+            "calendar_id": {
+              "type": ["string", "null"],
+              "description": "Calendar the appointment belongs to. Producer stringifies appt.calendar_id (event_publisher.ex:69)."
+            },
+            "contact_phone": {
+              "type": ["string", "null"],
+              "description": "E.164 contact phone on the appointment (event_publisher.ex:70)."
+            },
+            "status": {
+              "type": "string",
+              "description": "Appointment status at emit time; 'noshow' for this event (event_publisher.ex:71)."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/control_medico.dictamen.created.v1.json",
+  "title": "control_medico.dictamen.created v1",
+  "description": "Emitted when an occupational-health dictamen is created. Derived from the REAL producer alebrije-mod-control-medico dictamenes.py:98-115 (emit_event/outbox, ADR-57). PHI-SAFE BY DESIGN: the producer currently includes raw 'diagnostico'/'observaciones'/'resultado' (dictamenes.py:105-107) which MUST be stripped on adoption — only identifiers + non-clinical metadata travel the bus (HIPAA/NOM-024), mirroring control_medico.consultation.completed.v1.json. Producer also currently emits the legacy short event_type 'dictamen.created' (events.py:96) and must migrate to this canonical name. Source: alebrije-mod-control-medico (Python).",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "control_medico.dictamen.created" },
+        "data": {
+          "type": "object",
+          "required": ["dictamen_id"],
+          "properties": {
+            "dictamen_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the created dictamen (dictamenes.py:102)."
+            },
+            "paciente_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Patient/worker UUID the dictamen is about (dictamenes.py:103). Nullable per producer."
+            },
+            "tipo": {
+              "type": ["string", "null"],
+              "description": "Dictamen type/category code (dictamenes.py:104). Non-PHI classifier."
+            },
+            "fecha": {
+              "type": ["string", "null"],
+              "format": "date-time",
+              "description": "ISO 8601 dictamen date (dictamenes.py:108, dictamen.fecha_dictamen.isoformat())."
+            },
+            "context_id": {
+              "type": ["string", "null"],
+              "maxLength": 36,
+              "description": "Multi-context selector resolved from request.state.context_id (dictamenes.py:85-87,111)."
+            }
+          },
+          "additionalProperties": false,
+          "description": "PHI-SAFE subset ONLY. The producer's raw 'diagnostico'/'observaciones'/'resultado' fields (dictamenes.py:105-107) are deliberately EXCLUDED and must not be emitted on the bus (HIPAA/NOM-024). additionalProperties:false enforces no PHI leakage."
+        }
+      }
+    }
+  ]
+}

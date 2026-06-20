@@ -97,6 +97,85 @@ subscriptions:
     handler: Campaigns.Pipeline (Broadway)
     source: alebrije-svc-omnichannel-ex/lib/alebrije_omnichannel/integrations/campaigns/pipeline.ex:3
 
+  # GDPR DSR canonical fan-out — auth.dsr.erasure_approved now has a registered
+  # schema (auth.dsr.erasure_approved.v1.json, FLAT payload matching svc-auth
+  # GDPRService.approve_dsr). Every module consumes it from stream
+  # alebrije:events:auth to purge the data-subject. Moved out of
+  # unverified_drift now that the canonical schema exists.
+  - service: alebrije-mod-rewards-go
+    event_type: auth.dsr.erasure_approved
+    stream: "alebrije:events:auth"
+    handler: EventsConsumer
+    source: alebrije-mod-rewards-go/internal/service/events_consumer.go:48
+  - service: alebrije-mod-crm-go
+    event_type: auth.dsr.erasure_approved
+    stream: "alebrije:events:auth"
+    handler: dsr_consumer (also accepts legacy auth.user.deletion_requested)
+    source: alebrije-mod-crm-go/internal/gdpr/dsr_consumer.go:27
+  - service: alebrije-mod-payments-go
+    event_type: auth.dsr.erasure_approved
+    stream: "alebrije:events:auth"
+    handler: gdpr consumer
+    source: alebrije-mod-payments-go/internal/gdpr/consumer.go:29
+  - service: alebrije-svc-omnichannel-ex
+    event_type: auth.dsr.erasure_approved
+    stream: "alebrije:events:auth"
+    handler: gdpr consumer
+    source: alebrije-svc-omnichannel-ex/lib/alebrije_omnichannel/gdpr/consumer.ex:54
+  - service: alebrije-svc-notifications-ex
+    event_type: auth.dsr.erasure_approved
+    stream: "alebrije:events:auth"
+    handler: events consumer
+    source: alebrije-svc-notifications-ex/lib/alebrije_notifications/events.ex:22
+  - service: alebrije-mod-planificador-ex
+    event_type: auth.dsr.erasure_approved
+    stream: "alebrije:events:auth"
+    handler: application gdpr consumer
+    source: alebrije-mod-planificador-ex/lib/alebrije_planificador/application.ex:82
+  - service: alebrije-mod-control-medico
+    event_type: auth.dsr.erasure_approved
+    stream: "alebrije:events:auth"
+    handler: gdpr consumer
+    source: alebrije-mod-control-medico/app/config.py:136
+  - service: alebrije-mcp-go
+    event_type: auth.dsr.erasure_approved
+    stream: "alebrije:events:auth"
+    handler: eventfeeder bridge
+    source: alebrije-mcp-go/internal/eventfeeder/feeder.go:51
+
+  # agenda.appointment.no_show now has a registered schema
+  # (agenda.appointment.no_show.v1.json). Producer = alebrije-mod-agenda-ex
+  # publish_appointment_noshow/1. Consumers: agentic CrossModuleEventConsumer +
+  # mcp-go eventbridge default trigger.
+  - service: alebrije-mod-agentic
+    event_type: agenda.appointment.no_show
+    stream: "agenda.appointment.no_show"
+    handler: CrossModuleEventConsumer
+    source: alebrije-mod-agentic/app/config.py:45
+  - service: alebrije-mcp-go
+    event_type: agenda.appointment.no_show
+    stream: "events:agenda"
+    handler: eventbridge (default trigger)
+    source: alebrije-mcp-go/internal/eventbridge/defaults.go:13
+
+  # payments.payment.failed now has a registered schema
+  # (payments.payment.failed.v1.json). Producer = alebrije-mod-payments-go
+  # PublishPaymentFailed. Consumer: agentic CrossModuleEventConsumer.
+  - service: alebrije-mod-agentic
+    event_type: payments.payment.failed
+    stream: "payments.payment.failed"
+    handler: CrossModuleEventConsumer
+    source: alebrije-mod-agentic/app/config.py:46
+
+  # control_medico.dictamen.created now has a registered (PHI-safe) schema
+  # (control_medico.dictamen.created.v1.json). Producer = alebrije-mod-control-medico
+  # dictamenes.py. Consumer: agentic CrossModuleEventConsumer.
+  - service: alebrije-mod-agentic
+    event_type: control_medico.dictamen.created
+    stream: "control_medico.dictamen.created"
+    handler: CrossModuleEventConsumer
+    source: alebrije-mod-agentic/app/config.py:48
+
 # ── Drift NO verificado contra el registry (el workflow IGNORA esta clave) ─────
 # Suscripciones reales del código cuyo event_type o stream NO coincide con un
 # schema registrado. Cada una es un candidato a: (a) registrar el schema, o
@@ -106,45 +185,9 @@ subscriptions:
 # gates). Mover una entrada aquí a `subscriptions:` SIN registrar su schema
 # hará fallar CI a propósito.
 unverified_drift:
-  # GDPR DSR canonical fan-out — múltiples servicios consumen
-  # auth.dsr.erasure_approved del stream alebrije:events:auth. NO existe schema
-  # auth.dsr.erasure_approved.vN.json (el registry tiene auth.user.created y
-  # auth.user.deletion_requested). Candidato a registrar el schema canónico.
-  - service: alebrije-mod-rewards-go
-    event_type: auth.dsr.erasure_approved
-    stream: "alebrije:events:auth"
-    reason: no registered schema (registry has auth.user.deletion_requested)
-    source: alebrije-mod-rewards-go/internal/service/events_consumer.go:48
-  - service: alebrije-mod-crm-go
-    event_type: auth.dsr.erasure_approved
-    stream: "alebrije:events:auth"
-    reason: no registered schema; consumer also accepts legacy auth.user.deletion_requested
-    source: alebrije-mod-crm-go/internal/gdpr/dsr_consumer.go:27
-  - service: alebrije-mod-payments-go
-    event_type: auth.dsr.erasure_approved
-    stream: "alebrije:events:auth"
-    reason: no registered schema
-    source: alebrije-mod-payments-go/internal/gdpr/consumer.go:29  # also gdpr.erasure_requested
-  - service: alebrije-svc-omnichannel-ex
-    event_type: auth.dsr.erasure_approved
-    stream: "alebrije:events:auth"
-    reason: no registered schema
-    source: alebrije-svc-omnichannel-ex/lib/alebrije_omnichannel/gdpr/consumer.ex:54
-  - service: alebrije-svc-notifications-ex
-    event_type: auth.dsr.erasure_approved
-    stream: "alebrije:events:auth"
-    reason: no registered schema
-    source: alebrije-svc-notifications-ex/lib/alebrije_notifications/events.ex:22
-  - service: alebrije-mod-planificador-ex
-    event_type: auth.dsr.erasure_approved
-    stream: "alebrije:events:auth"
-    reason: no registered schema
-    source: alebrije-mod-planificador-ex/lib/alebrije_planificador/application.ex:82
-  - service: alebrije-mod-control-medico
-    event_type: auth.dsr.erasure_approved
-    stream: "alebrije:events:auth"
-    reason: no registered schema
-    source: alebrije-mod-control-medico/app/config.py:136
+  # NOTE: the GDPR DSR canonical fan-out (auth.dsr.erasure_approved, 8 consumers
+  # incl. mcp-go eventfeeder) was MOVED to subscriptions: now that
+  # auth.dsr.erasure_approved.v1.json is registered.
 
   # control-medico syncs employee data from svc-auth on empleado.updated. The
   # canonical name would be auth.employee.updated (ADR-31 Appendix A) — neither
@@ -193,26 +236,14 @@ unverified_drift:
     stream: "crm.lead.created"
     reason: no registered schema (registry has crm.contact.created)
     source: alebrije-mod-agentic/app/config.py:44
-  - service: alebrije-mod-agentic
-    event_type: agenda.appointment.no_show
-    stream: "agenda.appointment.no_show"
-    reason: no registered schema (registry has agenda.appointment.booked/cancelled)
-    source: alebrije-mod-agentic/app/config.py:45
-  - service: alebrije-mod-agentic
-    event_type: payments.payment.failed
-    stream: "payments.payment.failed"
-    reason: no registered schema (registry has payments.payment.completed)
-    source: alebrije-mod-agentic/app/config.py:46
+  # NOTE: agenda.appointment.no_show, payments.payment.failed and
+  # control_medico.dictamen.created (agentic CrossModuleEventConsumer config.py:45,46,48)
+  # were MOVED to subscriptions: now that their canonical schemas are registered.
   - service: alebrije-mod-agentic
     event_type: field_ops.sla.breach
     stream: "field_ops.sla.breach"
     reason: no registered schema (registry has field_ops.order.completed)
     source: alebrije-mod-agentic/app/config.py:47
-  - service: alebrije-mod-agentic
-    event_type: control_medico.dictamen.created
-    stream: "control_medico.dictamen.created"
-    reason: no registered schema (registry has control_medico.consultation.completed)
-    source: alebrije-mod-agentic/app/config.py:48
   - service: alebrije-mod-agentic
     event_type: campaigns.send_failed
     stream: "campaigns.send_failed"
@@ -220,11 +251,9 @@ unverified_drift:
     source: alebrije-mod-agentic/app/config.py:49
 
   # mcp-go eventbridge other default triggers without registered schemas.
-  - service: alebrije-mcp-go
-    event_type: agenda.appointment.no_show
-    stream: "events:agenda"
-    reason: no registered schema
-    source: alebrije-mcp-go/internal/eventbridge/defaults.go:13
+  # NOTE: agenda.appointment.no_show (mcp-go eventbridge defaults.go:13) and the
+  # mcp-go eventfeeder auth.dsr.erasure_approved bridge were MOVED to
+  # subscriptions: now that their schemas are registered.
   - service: alebrije-mcp-go
     event_type: crm.lead.created
     stream: "events:crm"
@@ -240,13 +269,6 @@ unverified_drift:
     stream: "events:toronja"
     reason: no registered schema (adapt-toronja publishes toronja.result_validated)
     source: alebrije-mcp-go/internal/eventbridge/defaults.go:70
-
-  # mcp-go eventfeeder also bridges the canonical GDPR erasure trigger.
-  - service: alebrije-mcp-go
-    event_type: auth.dsr.erasure_approved
-    stream: "alebrije:events:auth"
-    reason: no registered schema
-    source: alebrije-mcp-go/internal/eventfeeder/feeder.go:51
 
   # cadences-ex OutcomeListener consumes its own outcomes stream (no schema yet).
   - service: alebrije-mod-cadences-ex

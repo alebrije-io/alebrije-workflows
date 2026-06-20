@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/payments.payment.failed.v1.json",
+  "title": "payments.payment.failed v1",
+  "description": "Emitted when a payment attempt fails. Derived from the REAL producer alebrije-mod-payments-go PublishPaymentFailed (outbox_publisher.go:117,122-126 and event_publisher.go:183,184-188). NOTE: the producer currently emits the LEGACY event_type 'payment.failed' as a FLAT field map (config.go:180); on adoption it must use this canonical name and wrap the fields under data.*, matching the sibling payments.payment.completed migration (ADR-31 §4.2). Source: alebrije-mod-payments-go (Go).",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "payments.payment.failed" },
+        "data": {
+          "type": "object",
+          "required": ["link_id", "reason"],
+          "properties": {
+            "link_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Payment link UUID that originated the failed attempt (outbox_publisher.go:123). Used as the outbox idempotency key (linkID.String())."
+            },
+            "reason": {
+              "type": "string",
+              "description": "Provider/processor failure reason string passed into PublishPaymentFailed (outbox_publisher.go:125, event_publisher.go:187)."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/auth.dsr.erasure_approved.v1.json",
+  "title": "auth.dsr.erasure_approved v1",
+  "description": "Canonical USER/SUBJECT-level GDPR/LFPDPPP erasure fan-out trigger. Emitted DURABLY by svc-auth GDPRService.approve_dsr via the transactional outbox (ADR-117 §13) when a data-subject ERASURE request is approved. Published as {\"message\": json.dumps(payload)} on stream alebrije:events:auth and consumed by every module to purge the subject's data. FLAT payload (does NOT use the envelope.v1 data-nested shape) — fields are top-level, matching the real producer at gdpr_service.py:191-218 and the consumer parse paths. Supersedes the legacy auth.user.deletion_requested event (no longer produced; consumers accept it only for backward compatibility). DISTINCT from the tenant-offboarding Temporal saga (TENANT granularity).",
+  "type": "object",
+  "required": ["event_id", "event_type", "schema_version", "tenant_id", "user_id", "dsr_id", "audit"],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID4 uniquely identifying this event (uuid4() in producer). Used for consumer-side dedup (processed_events). Flat legacy producers may omit it; canonical producer always sets it."
+    },
+    "event_type": {
+      "const": "auth.dsr.erasure_approved",
+      "description": "Canonical event type. Consumers route on this exact value."
+    },
+    "schema_version": {
+      "type": "string",
+      "description": "Producer-emitted schema version. Currently '1'. Note: flat payload uses schema_version (not the envelope's event_version)."
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Tenant that owns the data subject. The event carries its own tenant_id so each consumer scopes its purge (ADR-25)."
+    },
+    "user_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID of the data subject (User) whose data must be purged across all modules."
+    },
+    "dsr_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "ID of the originating DataSubjectRequest. Used as the idempotency/audit anchor by consumers."
+    },
+    "data_subject": {
+      "type": "object",
+      "description": "Resolved data-subject identity for cross-module audit. Email resolved from the User record (falls back to dsr.email).",
+      "required": ["email"],
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Data-subject email at approval time, for the erasure audit trail."
+        }
+      },
+      "additionalProperties": true
+    },
+    "audit": {
+      "type": "object",
+      "description": "Approval/legal-deadline audit metadata set by svc-auth at approval time.",
+      "required": ["approved_at", "legal_deadline_at", "regulation"],
+      "properties": {
+        "approved_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 UTC timestamp of DSR approval. Consumers map this to their effective erasure-request time."
+        },
+        "approved_by_dpo": {
+          "type": ["string", "null"],
+          "description": "User ID of the DPO who approved the DSR; null if unassigned."
+        },
+        "legal_deadline_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 UTC legal deadline (dsr.legal_deadline_at or requested_at + LEGAL_DEADLINE_DAYS)."
+        },
+        "regulation": {
+          "type": "string",
+          "description": "Applicable regulation. Producer currently emits 'LFPDPPP'."
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
