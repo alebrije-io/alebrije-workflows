@@ -203,6 +203,17 @@ subscriptions:
     handler: eventbridge (sla-breach-notify trigger)
     source: alebrije-mcp-go/internal/eventbridge/defaults.go:41
 
+  # mcp-go eventbridge crm-contact-created-cadence trigger migrated from the legacy
+  # crm.lead.created name to the canonical crm.contact.created event_type
+  # (crm.contact.created.v1.json is registered). Producer = alebrije-mod-crm-go
+  # ContactCreated (redis_publisher.go:218). Moved out of unverified_drift now that
+  # the trigger subscribes to the canonical name.
+  - service: alebrije-mcp-go
+    event_type: crm.contact.created
+    stream: "events:crm"
+    handler: eventbridge (crm-contact-created-cadence trigger)
+    source: alebrije-mcp-go/internal/eventbridge/defaults.go:25
+
 # ── Drift NO verificado contra el registry (el workflow IGNORA esta clave) ─────
 # Suscripciones reales del código cuyo event_type o stream NO coincide con un
 # schema registrado. Cada una es un candidato a: (a) registrar el schema, o
@@ -271,11 +282,10 @@ unverified_drift:
   # subscriptions: now that their schemas are registered.
   # NOTE: field_ops.sla.breach (mcp-go eventbridge defaults.go:41) was MOVED to
   # subscriptions: now that field_ops.sla.breach.v1.json is registered (EN-USO name).
-  - service: alebrije-mcp-go
-    event_type: crm.lead.created
-    stream: "events:crm"
-    reason: blocked-producer-mismatch; consumer trigger on legacy name, canonical = crm.contact.created (producer emits canonical)
-    source: alebrije-mcp-go/internal/eventbridge/defaults.go:27
+  # NOTE: crm.lead.created (mcp-go eventbridge crm-contact-created-cadence trigger,
+  # defaults.go) was MIGRATED to the canonical crm.contact.created and MOVED to
+  # subscriptions: now that the trigger subscribes to the canonical name the
+  # producer (alebrije-mod-crm-go ContactCreated, redis_publisher.go:218) emits.
   - service: alebrije-mcp-go
     event_type: toronja.lab.result_ready
     stream: "events:toronja"
