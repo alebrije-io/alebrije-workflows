@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/field_ops.sla.breach.v1.json",
+  "title": "field_ops.sla.breach v1",
+  "description": "Emitted when a field order crosses its SLA target (elapsed_minutes >= target_minutes) and a SlaBreachLog row is inserted. Source publisher: alebrije-mod-field-ops-ex EventPublisher (workers/event_publisher.ex relay/1 -> build_envelope/3) from the [:alebrije_field_ops, :sla, :breached] telemetry event (slas.ex:332). FLAT payload (does NOT use the envelope.v1 data-nested shape) — fields are top-level, matching the real producer: build_envelope/3 merges the telemetry metadata (stringified) with the m_-prefixed measurements and stamps event_type. The on-the-wire event_type EN-USO is 'field_ops.sla.breach' (NOT field_ops.sla.breached): this is the name the consumers subscribe to — agentic CrossModuleEventConsumer (config.py:54) and mcp-go eventbridge sla-breach-notify trigger (defaults.go:41). Atoms and DateTimes are normalised to strings by to_envelope_value/1; numeric measurements (elapsed_minutes) and target_minutes pass through as integers.",
+  "type": "object",
+  "required": ["event_type", "tenant_id", "order_id", "sla_id"],
+  "properties": {
+    "event_type": {
+      "const": "field_ops.sla.breach",
+      "description": "Canonical event_type EN-USO stamped by build_envelope/3. Consumers route on this exact value."
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Tenant that owns the breached order. Stringified from the telemetry metadata tenant_id (ADR-25)."
+    },
+    "context_id": {
+      "type": ["string", "null"],
+      "description": "Optional multi-context selector (ADR-25). Stringified from telemetry metadata; may be null when the order has no context."
+    },
+    "order_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "ID of the field_orders row that breached its SLA."
+    },
+    "sla_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "ID of the Sla definition that was breached."
+    },
+    "sla_name": {
+      "type": "string",
+      "description": "Human-readable name of the breached SLA (sla.name)."
+    },
+    "target_minutes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Configured SLA target in minutes (sla.target_minutes). Passes through as an integer."
+    },
+    "event": {
+      "type": "string",
+      "description": "Source telemetry event label carried in the metadata. For this stream record it is 'breached'."
+    },
+    "m_elapsed_minutes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Elapsed minutes from order creation to breach detection. The m_ prefix mirrors how build_envelope/3 namespaces telemetry measurements (measurements -> m_<key>)."
+    }
+  },
+  "additionalProperties": true
+}
