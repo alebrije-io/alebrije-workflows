@@ -64,7 +64,10 @@ jobs:
       - name: Install jsonschema + PyYAML
         run: |
           python -m pip install --upgrade pip
-          pip install jsonschema PyYAML --quiet
+          # 'referencing' ships with jsonschema>=4.18 and resolves the local
+          # envelope.v1.json $ref offline; pin it explicitly so the registry
+          # build below is deterministic regardless of jsonschema's pin.
+          pip install jsonschema PyYAML referencing --quiet
 
       - name: Validate event contracts (golden examples + consumers map)
         id: contract
@@ -82,6 +85,8 @@ jobs:
           import yaml
           from jsonschema import Draft7Validator
           from jsonschema.exceptions import SchemaError
+          from referencing import Registry, Resource
+          from referencing.jsonschema import DRAFT7
 
           schemas_dir = Path(os.environ["SCHEMAS_DIR"])
           fail_on_mismatch = os.environ.get("FAIL_ON_MISMATCH", "true").lower() == "true"
@@ -99,6 +104,29 @@ jobs:
               event_name = p.name.rsplit(".v", 1)[0]
               registered.setdefault(event_name, []).append(p)
           print(f"[contract] {len(registered)} event type(s) with a registered schema")
+
+          # ── Registry so per-event schemas can resolve the shared envelope ─
+          # Per-event schemas use allOf + $ref to the canonical
+          # "https://alebrije.io/schemas/envelope.v1.json". Without a registry,
+          # Draft7Validator tries to FETCH that URL over the network and raises
+          # Unresolvable — which would crash this step the moment any
+          # <event>.example.json exists (turning a no-op into a hard error
+          # instead of real validation). Register every local schema by its
+          # $id so the envelope (and any future shared $ref) resolves offline.
+          resources = []
+          for p in sorted(schemas_dir.glob("*.json")):
+              try:
+                  doc = json.loads(p.read_text())
+              except json.JSONDecodeError as exc:
+                  errors.append(f"{p.name}: invalid JSON: {exc}")
+                  continue
+              sid = doc.get("$id")
+              if sid:
+                  resources.append(
+                      (sid, Resource.from_contents(doc, default_specification=DRAFT7))
+                  )
+          registry = Registry().with_resources(resources)
+          print(f"[contract] schema registry built with {len(resources)} $id-keyed resource(s)")
 
           # ── 1. Golden example ↔ schema validation ─────────────────────
           # Each <event>.example.json must conform to its <event>.vN.json.
@@ -130,7 +158,7 @@ jobs:
               except SchemaError as exc:
                   errors.append(f"{schema_path.name}: not a valid JSON Schema: {exc.message}")
                   continue
-              validator = Draft7Validator(schema)
+              validator = Draft7Validator(schema, registry=registry)
               violations = sorted(validator.iter_errors(example), key=lambda e: list(e.path))
               if violations:
                   for v in violations:

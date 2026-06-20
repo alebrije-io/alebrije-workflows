@@ -1,0 +1,30 @@
+{
+  "event_id": "018f3a2b-7c4d-7e90-a1b2-c3d4e5f60718",
+  "event_type": "payments.payment.completed",
+  "event_version": "1.0",
+  "tenant_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "context_id": "main",
+  "timestamp": "2026-06-18T15:42:07Z",
+  "producer": {
+    "service": "alebrije-mod-payments-go",
+    "version": "0.5.12"
+  },
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "data": {
+    "payment_id": "2f1c4e88-3a6b-4d52-9c10-7e5a9b6f2d31",
+    "link_id": "a3d9c1f0-8e2b-4a77-bf45-6c0d2e3f4a5b",
+    "invoice_id": "b81c0e4d-5f6a-4c2e-9d18-3a7b1c9e0f44",
+    "contact_id": "9d8c7b6a-5e4f-4d3c-8b2a-1f0e9d8c7b6a",
+    "contact_phone": "+5215512345678",
+    "amount": "1499.00",
+    "currency": "MXN",
+    "method": "card",
+    "provider": "mercadopago",
+    "provider_transaction_id": "MP-8847123901",
+    "settled_at": "2026-06-18T15:42:05Z",
+    "metadata": {
+      "installments": 1,
+      "checkout_session": "cs_live_b1a2c3d4"
+    }
+  }
+}

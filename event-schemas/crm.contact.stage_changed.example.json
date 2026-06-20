@@ -1,0 +1,27 @@
+{
+  "event_id": "018f3a2d-2e3f-7012-c4d5-e6f708192a3b",
+  "event_type": "crm.contact.stage_changed",
+  "event_version": "1.0",
+  "tenant_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "context_id": "main",
+  "timestamp": "2026-06-18T17:25:14Z",
+  "producer": {
+    "service": "alebrije-mod-crm-go",
+    "version": "0.1.50"
+  },
+  "trace_id": "1f2e3d4c5b6a79880716253443526170",
+  "data": {
+    "contact_id": "d5e6f708-1920-4a3b-9c4d-5e6f70819203",
+    "old_stage": "lead",
+    "new_stage": "qualified",
+    "old_stage_id": "0a1b2c3d-4e5f-4607-8819-2a3b4c5d6e7f",
+    "new_stage_id": "1b2c3d4e-5f60-4718-9920-3b4c5d6e7f80",
+    "phone": "+5215587654321",
+    "changed_by": "2c3d4e5f-6071-4829-9031-4c5d6e7f8091",
+    "reason": "Demo agendada, presupuesto confirmado",
+    "metadata": {
+      "pipeline_id": "sales-default",
+      "source": "manual"
+    }
+  }
+}

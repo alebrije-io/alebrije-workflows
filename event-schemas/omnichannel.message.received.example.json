@@ -1,0 +1,23 @@
+{
+  "event_id": "018f3a2e-3f40-7013-d5e6-f708192a3b4c",
+  "event_type": "omnichannel.message.received",
+  "event_version": "1.0",
+  "tenant_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "context_id": "main",
+  "sender_type": "client",
+  "branch_id": "sucursal-centro",
+  "timestamp": "2026-06-18T18:03:42Z",
+  "producer": {
+    "service": "alebrije-svc-omnichannel-ex",
+    "version": "0.1.46"
+  },
+  "trace_id": "abcdef0123456789abcdef0123456789",
+  "data": {
+    "conversation_id": "e6f70819-2a3b-4c4d-9e5f-60718293a4b5",
+    "message_id": "f7081920-3b4c-4d5e-9f60-718293a4b5c6",
+    "channel": "whatsapp",
+    "content_type": "text",
+    "text_preview": "Hola, quisiera agendar una cita para mañana por la tarde",
+    "media_url_hash": null
+  }
+}

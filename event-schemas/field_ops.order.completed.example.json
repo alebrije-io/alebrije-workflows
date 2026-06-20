@@ -1,0 +1,27 @@
+{
+  "event_id": "018f3a2c-1d2e-7f01-b3c4-d5e6f7081920",
+  "event_type": "field_ops.order.completed",
+  "event_version": "1.0",
+  "tenant_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "context_id": "main",
+  "timestamp": "2026-06-18T16:10:33Z",
+  "producer": {
+    "service": "alebrije-mod-field-ops-ex",
+    "version": "0.3.7"
+  },
+  "trace_id": "8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d",
+  "data": {
+    "order_id": "c4f2a1b8-9d3e-4c7a-8b16-2e5f0a9c3d71",
+    "kind": "pickup_sample",
+    "assigned_technician_id": "1a2b3c4d-5e6f-4071-8293-a4b5c6d7e8f9",
+    "customer_id": "9f8e7d6c-5b4a-4039-8271-6e5d4c3b2a1f",
+    "external_ref": "TKT-2026-04821",
+    "completed_at": "2026-06-18T16:08:51Z",
+    "duration_seconds": 5340,
+    "outcome": "success",
+    "metadata": {
+      "geo_verified": true,
+      "samples_collected": 3
+    }
+  }
+}

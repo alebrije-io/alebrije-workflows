@@ -1,0 +1,20 @@
+{
+  "event_id": "018f3a30-4142-7015-f708-192a3b4c5d6e",
+  "event_type": "campaigns.campaign.sent",
+  "event_version": "1.0",
+  "tenant_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "context_id": "main",
+  "timestamp": "2026-06-18T12:30:00Z",
+  "producer": {
+    "service": "alebrije-mod-campaigns-ex",
+    "version": "0.1.28"
+  },
+  "trace_id": "ffeeddccbbaa99887766554433221100",
+  "data": {
+    "campaign_id": "192a3b4c-5d6e-4f70-8819-2a3b4c5d6e7f",
+    "audience_count": 1840,
+    "channel": "whatsapp",
+    "schedule_id": "2a3b4c5d-6e7f-4081-9920-3b4c5d6e7f80",
+    "dry_run": false
+  }
+}

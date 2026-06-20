@@ -1,0 +1,27 @@
+{
+  "event_id": "018f3a2f-4041-7014-e6f7-08192a3b4c5d",
+  "event_type": "payments.invoice.overdue",
+  "event_version": "1.0",
+  "tenant_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "context_id": "main",
+  "timestamp": "2026-06-18T09:00:00Z",
+  "producer": {
+    "service": "alebrije-mod-payments-go",
+    "version": "0.5.12"
+  },
+  "trace_id": "0011223344556677889900aabbccddee",
+  "data": {
+    "invoice_id": "081920a3-b4c5-4d6e-9f70-8192a3b4c5d6",
+    "contact_id": "1920a3b4-c5d6-4e7f-9081-92a3b4c5d6e7",
+    "contact_phone": "+5215511223344",
+    "amount_due": "3200.50",
+    "currency": "MXN",
+    "due_date": "2026-06-11",
+    "days_overdue": 7,
+    "invoice_number": "FAC-2026-001182",
+    "metadata": {
+      "dunning_stage": 2,
+      "last_reminder_at": "2026-06-15T09:00:00Z"
+    }
+  }
+}
