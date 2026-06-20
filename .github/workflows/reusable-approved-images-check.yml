@@ -73,17 +73,20 @@ jobs:
           whitelist_file = Path(os.environ.get("WHITELIST_FILE", "workflows/approved-base-images.json"))
           fail_on_violation = os.environ.get("FAIL_ON_VIOLATION", "true").lower() == "true"
 
-          # Load whitelist
+          # Load whitelist as TAG-EXACT name:tag pairs. We do NOT add the bare
+          # `name` to the allow-set — that would let any tag of an approved
+          # registry name pass (golang:9.9-evil, python:2.7-eol, ...), defeating
+          # the tag-drift gate (DEBT-§43-SUPPLY-CHAIN-7). A tagless FROM <name>
+          # is normalized to <name>:latest below and must be explicitly listed.
           approved = json.load(whitelist_file.open())
           approved_images = set()
           for entry in approved.get("images", []):
               name = entry.get("name", "")
-              for tag in entry.get("approved_tags", [entry.get("tag", "")]):
+              tags = entry.get("approved_tags") or ([entry["tag"]] if entry.get("tag") else [])
+              for tag in tags:
                   approved_images.add(f"{name}:{tag}")
-              # Also allow the name without tag (latest)
-              approved_images.add(name)
 
-          print(f"[approved-images] Whitelist: {len(approved_images)} approved images")
+          print(f"[approved-images] Whitelist: {len(approved_images)} approved name:tag entries")
 
           # Find all Dockerfiles
           dockerfiles = []
@@ -125,15 +128,16 @@ jobs:
                   # resolve at build time; the literal tag isn't knowable here. Skip the
                   # variable portion: if the whole ref is a bare variable, accept it; if the
                   # name is literal but the tag is a variable, validate only the name.
-                  if image.startswith("${") or image.startswith("$"):
-                      continue  # fully-templated image ref — cannot validate statically
-                  # Normalize: if no tag, add :latest for check
+                  # Any build-arg substitution in the ref (registry name OR
+                  # tag, e.g. ${BUILDER_IMAGE}, golang:${GO_VERSION}-alpine)
+                  # resolves at build time — the literal tag isn't knowable
+                  # statically, so we cannot enforce it here. Skip only these.
+                  if "$" in image:
+                      continue
+                  # Tagless FROM <name> implies :latest; require the exact
+                  # name:tag pair in the whitelist (tag enforcement, not just name).
                   check_image = image if ":" in image else f"{image}:latest"
-                  # Check if base name (without tag) is approved
-                  base = image.split(":")[0]
-                  if "${" in base or "$" in base:
-                      continue  # templated registry/name — cannot validate statically
-                  if check_image not in approved_images and base not in approved_images and image not in approved_images:
+                  if check_image not in approved_images:
                       violations.append(f"  {df.relative_to(Path('target'))}: FROM {image}")
 
           if violations:

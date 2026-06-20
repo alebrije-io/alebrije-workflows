@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""Behavior tests for the approved-base-images supply-chain gate.
+
+These cover the two functional gaps closed under DEBT-§43 (see TECHNICAL-DEBT.md):
+
+  * DEBT-§43-SUPPLY-CHAIN-6 — the base-image whitelist gate must actually run in
+    the canonical build chain. The enforcement lives INLINE in
+    ``reusable-build-push.yml`` (step "Gate — validate Dockerfile base images
+    against whitelist"), which every fleet ``ci.yml`` calls. These tests assert
+    the gate step is present and wired before the build.
+  * DEBT-§43-SUPPLY-CHAIN-7 — ``approved-base-images.json`` must track the real
+    fleet Dockerfiles (Go 1.26.3, Elixir 1.19, Alpine 3.23, distroless, ...).
+    These tests reconcile the catalog against every real ``FROM`` in the fleet
+    AND lock in tag-exact enforcement so the gate can't be silently weakened to
+    name-only (which would let golang:9.9-evil / python:2.7-eol slip through).
+
+The matcher under test is the exact algorithm embedded in
+``reusable-build-push.yml`` / ``reusable-approved-images-check.yml``. It is
+re-implemented here (the workflows run it via ``shell: python3 {0}``) so the
+behavior is asserted without spinning up GitHub Actions.
+
+Run with:
+    python3 -m pytest tests/test_approved_base_images.py -v
+or stand-alone (no pytest needed):
+    python3 tests/test_approved_base_images.py
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WHITELIST_FILE = os.path.join(REPO_ROOT, "approved-base-images.json")
+BUILD_PUSH_WF = os.path.join(
+    REPO_ROOT, ".github", "workflows", "reusable-build-push.yml"
+)
+STANDALONE_WF = os.path.join(
+    REPO_ROOT, ".github", "workflows", "reusable-approved-images-check.yml"
+)
+# Where the real fleet Dockerfiles live (sibling repos checked out next to this one).
+FLEET_ROOT = os.path.dirname(REPO_ROOT)
+
+# Multi-stage / scratch / template directives that the gate intentionally skips.
+FROM_RE = re.compile(
+    r"^FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+(?:AS|as)\s+(\S+))?",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def load_approved():
+    with open(WHITELIST_FILE) as fh:
+        data = json.load(fh)
+    approved = set()
+    for entry in data["images"]:
+        name = entry.get("name", "")
+        tags = entry.get("approved_tags") or (
+            [entry["tag"]] if entry.get("tag") else []
+        )
+        for tag in tags:
+            approved.add(f"{name}:{tag}")
+    return data, approved
+
+
+def violations_in(content, approved):
+    """Exact re-implementation of the workflow matcher (tag-exact)."""
+    stage_names = {
+        m.group(2).lower() for m in FROM_RE.finditer(content) if m.group(2)
+    }
+    out = []
+    for match in FROM_RE.finditer(content):
+        image = match.group(1)
+        if image.lower() == "scratch":
+            continue
+        if image.lower() in stage_names:
+            continue
+        if "$" in image:  # build-arg substitution — resolves at build time
+            continue
+        check_image = image if ":" in image else f"{image}:latest"
+        if check_image not in approved:
+            out.append(image)
+    return out
+
+
+def iter_canonical_dockerfiles():
+    """The single ``./Dockerfile`` per fleet repo — what build-push gates."""
+    if not os.path.isdir(FLEET_ROOT):
+        return
+    for name in sorted(os.listdir(FLEET_ROOT)):
+        if not name.startswith("alebrije-"):
+            continue
+        df = os.path.join(FLEET_ROOT, name, "Dockerfile")
+        if os.path.isfile(df):
+            yield df
+
+
+# --------------------------------------------------------------------------
+# DEBT-§43-SUPPLY-CHAIN-6 — gate is wired into the canonical build chain.
+# --------------------------------------------------------------------------
+def test_build_push_invokes_gate_before_build():
+    with open(BUILD_PUSH_WF) as fh:
+        wf = fh.read()
+    assert "Gate — validate Dockerfile base images against whitelist" in wf, (
+        "build-push must contain the inline base-image gate step "
+        "(DEBT-§43-SUPPLY-CHAIN-6)"
+    )
+    assert "approved-base-images.json" in wf, (
+        "build-push gate must read the approved-base-images whitelist"
+    )
+    gate_pos = wf.index("validate Dockerfile base images against whitelist")
+    build_pos = wf.index("Build and push Docker image")
+    assert gate_pos < build_pos, (
+        "the whitelist gate must run BEFORE the build step (fail cheap)"
+    )
+    # The gate must be fatal: a violation calls sys.exit(1), never a warning.
+    gate_block = wf[gate_pos:build_pos]
+    assert "sys.exit(1)" in gate_block, "gate must be fatal on violation"
+
+
+# --------------------------------------------------------------------------
+# DEBT-§43-SUPPLY-CHAIN-7 — catalog tracks reality + tag-exact enforcement.
+# --------------------------------------------------------------------------
+def test_catalog_covers_every_real_fleet_base_image():
+    _, approved = load_approved()
+    offenders = {}
+    for df in iter_canonical_dockerfiles():
+        with open(df, errors="replace") as fh:
+            v = violations_in(fh.read(), approved)
+        if v:
+            offenders[df] = v
+    assert not offenders, (
+        "canonical fleet Dockerfiles use base images missing from the "
+        f"whitelist (drift): {offenders}"
+    )
+
+
+def test_catalog_includes_known_real_tags():
+    _, approved = load_approved()
+    for required in (
+        "golang:1.26.3-alpine",
+        "golang:1.26.3-bookworm",
+        "elixir:1.19-alpine",
+        "alpine:3.23",
+        "gcr.io/distroless/static:nonroot",
+        "gcr.io/distroless/static-debian12:nonroot",
+        "node:22-bookworm-slim",
+        "python:3.13-slim",
+    ):
+        assert required in approved, f"{required} (real fleet tag) not approved"
+
+
+def test_tag_enforcement_blocks_unapproved_tags_of_approved_names():
+    """The gate must reject a bad tag of an APPROVED registry name — the
+    name-only allow-list bug that DEBT-§43-SUPPLY-CHAIN-7 depends on."""
+    _, approved = load_approved()
+    for evil in (
+        "FROM golang:9.9-evil",
+        "FROM python:2.7-eol",
+        "FROM alpine:9.99",
+        "FROM elixir:1.0-ancient",
+    ):
+        assert violations_in(evil, approved), (
+            f"gate must BLOCK {evil!r}; name-only matching would let it pass"
+        )
+
+
+def test_templated_and_scratch_and_stage_refs_are_skipped():
+    _, approved = load_approved()
+    for skipped in (
+        "FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS builder",
+        "FROM ${BUILDER_IMAGE}",
+        "FROM scratch",
+    ):
+        assert not violations_in(skipped, approved), (
+            f"{skipped!r} must be skipped (build-time / scratch), not flagged"
+        )
+    multistage = "FROM golang:1.26.3-alpine AS builder\nFROM builder AS final"
+    assert not violations_in(multistage, approved), (
+        "intra-Dockerfile stage reference must not be treated as a base image"
+    )
+
+
+def test_json_parses_and_blocks_critical():
+    data, _ = load_approved()
+    assert data["scanning_policy"]["block_on_critical"] is True
+
+
+def test_standalone_workflow_uses_tag_exact_matcher():
+    """The opt-in standalone gate must use the same tag-exact logic — never
+    re-introduce the bare-name allowance that defeats tag enforcement."""
+    with open(STANDALONE_WF) as fh:
+        wf = fh.read()
+    assert "approved_images.add(name)" not in wf, (
+        "standalone gate must NOT add the bare registry name to the allow-set "
+        "(would let any tag pass — DEBT-§43-SUPPLY-CHAIN-7)"
+    )
+
+
+if __name__ == "__main__":
+    failures = 0
+    for fn_name, fn in sorted(globals().items()):
+        if fn_name.startswith("test_") and callable(fn):
+            try:
+                fn()
+                print(f"PASS {fn_name}")
+            except AssertionError as exc:
+                failures += 1
+                print(f"FAIL {fn_name}: {exc}")
+    print(f"\n{failures} failure(s)")
+    sys.exit(1 if failures else 0)

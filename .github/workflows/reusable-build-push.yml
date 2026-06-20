@@ -134,15 +134,22 @@ jobs:
               print(f"::error::Dockerfile not found at {dockerfile} — cannot validate base images.")
               sys.exit(1)
 
+          # Build a TAG-EXACT whitelist. The catalog enumerates approved
+          # `name:tag` pairs precisely so the gate catches *tag* drift (the
+          # whole point of DEBT-§43-SUPPLY-CHAIN-7). We deliberately do NOT add
+          # the bare `name` to the allow-set: doing so would let ANY tag of an
+          # approved registry name pass (e.g. golang:9.9-evil, python:2.7-eol),
+          # silently defeating tag enforcement. A tagless `FROM <name>` is
+          # normalized to `<name>:latest` below and must be explicitly listed.
           approved = json.load(whitelist_file.open())
           approved_images = set()
           for entry in approved.get("images", []):
               name = entry.get("name", "")
-              for tag in entry.get("approved_tags", [entry.get("tag", "")]):
+              tags = entry.get("approved_tags") or ([entry["tag"]] if entry.get("tag") else [])
+              for tag in tags:
                   approved_images.add(f"{name}:{tag}")
-              approved_images.add(name)
 
-          print(f"[approved-images] Whitelist: {len(approved_images)} approved entries")
+          print(f"[approved-images] Whitelist: {len(approved_images)} approved name:tag entries")
 
           FROM_RE = re.compile(
               r'^FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+(?:AS|as)\s+(\S+))?',
@@ -159,13 +166,17 @@ jobs:
                   continue
               if image.lower() in stage_names:
                   continue  # intra-Dockerfile multi-stage reference
-              if image.startswith("${") or image.startswith("$"):
-                  continue  # fully-templated image ref — resolves at build time
+              # Any build-arg substitution in the ref (registry name OR tag,
+              # e.g. ${BUILDER_IMAGE}, golang:${GO_VERSION}-alpine) resolves at
+              # build time — the literal tag isn't knowable statically, so we
+              # cannot enforce it here. Skip only these; everything else must
+              # match an exact name:tag pair.
+              if "$" in image:
+                  continue
+              # Tagless FROM <name> implies :latest; require the exact pair to be
+              # whitelisted (we don't approve floating :latest tags by default).
               check_image = image if ":" in image else f"{image}:latest"
-              base = image.split(":")[0]
-              if "${" in base or "$" in base:
-                  continue  # templated registry/name
-              if check_image not in approved_images and base not in approved_images and image not in approved_images:
+              if check_image not in approved_images:
                   violations.append(f"  {dockerfile}: FROM {image}")
 
           if violations:
