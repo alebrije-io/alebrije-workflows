@@ -149,6 +149,16 @@ jobs:
           fi
           go test $RACE_FLAG $TAGS_FLAG -coverprofile=coverage.out -covermode=atomic ./...
 
+      # govulncheck = único scanner Go que analiza el call graph para decidir si una
+      # CVE Go-native es REACHABLE (vs Trivy/OSV/Grype que solo cruzan go.sum contra
+      # advisories sin reachability). Gate FATAL: sin || true, sin continue-on-error.
+      # Si hay un FP inevitable, documentarlo explícito (CVE concreto) — nunca bypass global.
+      - name: Govulncheck (reachable CVE gate, fatal)
+        run: |
+          cd ${{ inputs.module-path }}
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
       - name: Check coverage gate (90% immutable, Rule G)
         env:
           COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
@@ -249,6 +259,16 @@ jobs:
             TAGS_FLAG="-tags $TEST_TAGS"
           fi
           go test $RACE_FLAG $TAGS_FLAG -coverprofile=coverage.out -covermode=atomic ./...
+
+      # govulncheck = único scanner Go que analiza el call graph para decidir si una
+      # CVE Go-native es REACHABLE (vs Trivy/OSV/Grype que solo cruzan go.sum contra
+      # advisories sin reachability). Gate FATAL: sin || true, sin continue-on-error.
+      # Si hay un FP inevitable, documentarlo explícito (CVE concreto) — nunca bypass global.
+      - name: Govulncheck (reachable CVE gate, fatal)
+        run: |
+          cd ${{ inputs.module-path }}
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
 
       - name: Check coverage gate (90% immutable, Rule G)
         env:
