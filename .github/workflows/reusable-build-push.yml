@@ -48,6 +48,20 @@ on:
         required: false
         default: "linux/amd64,linux/arm64"
         type: string
+      push-mutable-latest:
+        description: >-
+          Whether to ALSO publish the mutable :latest tag alongside the
+          immutable :VERSION tag. Default false (DEBT-§43 SC-11): a floating
+          :latest silently defeats SHA/version-pinned deploys and lets a stale
+          image be pulled by any consumer that resolves `:latest`. The whole
+          fleet deploys by :VERSION / @digest (redeploy-prod.sh + deploy-repo.sh
+          do `kubectl set image ...=<image>:<VERSION-file>`; consumer k8s
+          manifests pin `:__VERSION__` / explicit semver — never `:latest`), so
+          nothing depends on it. Leave false unless a specific consumer is later
+          proven to require a floating tag, and document why.
+        required: false
+        default: false
+        type: boolean
     outputs:
       image-tag:
         description: "Full image tag pushed (image-name:VERSION)"
@@ -260,9 +274,14 @@ jobs:
           platforms: ${{ inputs.platforms }}
           secrets: |
             "gh_token=${{ env.GH_TOKEN }}"
+          # Immutable :VERSION tag always. The mutable :latest is opt-in only
+          # (push-mutable-latest, default false — DEBT-§43 SC-11): publishing a
+          # floating :latest undermines version/digest-pinned deploys. When the
+          # input is false the expression resolves to the empty string and the
+          # multi-line tags list contains only the :VERSION entry.
           tags: |
             ${{ inputs.image-name }}:${{ steps.version.outputs.tag }}
-            ${{ inputs.image-name }}:latest
+            ${{ inputs.push-mutable-latest && format('{0}:latest', inputs.image-name) || '' }}
           cache-from: type=registry,ref=${{ inputs.image-name }}:buildcache
           cache-to: type=registry,ref=${{ inputs.image-name }}:buildcache,mode=max
 
