@@ -143,20 +143,24 @@ subscriptions:
     handler: eventfeeder bridge
     source: alebrije-mcp-go/internal/eventfeeder/feeder.go:51
 
-  # agenda.appointment.no_show now has a registered schema
-  # (agenda.appointment.no_show.v1.json). Producer = alebrije-mod-agenda-ex
-  # publish_appointment_noshow/1. Consumers: agentic CrossModuleEventConsumer +
-  # mcp-go eventbridge default trigger.
-  - service: alebrije-mod-agentic
-    event_type: agenda.appointment.no_show
-    stream: "agenda.appointment.no_show"
-    handler: CrossModuleEventConsumer
-    source: alebrije-mod-agentic/app/config.py:45
-  - service: alebrije-mcp-go
-    event_type: agenda.appointment.no_show
-    stream: "events:agenda"
-    handler: eventbridge (default trigger)
-    source: alebrije-mcp-go/internal/eventbridge/defaults.go:13
+  # appointment.noshow (canonicalised 2026-06-26, #177): the agenda producer emits
+  # event_type 'appointment.noshow' — the @noshow_stream literal stamped by
+  # alebrije-mod-agenda-ex EventPublisher.publish_appointment_noshow/1 -> publish/2
+  # (event_publisher.ex:23,50-51,97), confirmed by lifecycle_event_type("noshow")
+  # (appointments.ex:768). The schema is registered as appointment.noshow.v1.json.
+  # It was PREVIOUSLY mis-registered as 'agenda.appointment.no_show' (an aspirational
+  # ADR-31 name no producer ever XADDs), with two subscribers that were both dead-wires
+  # on an empty/phantom stream and have since been REMOVED in code:
+  #   - agentic CrossModuleEventConsumer dropped it ("product decision: delete the
+  #     dead-wire", app/workers/event_consumer.py) — its streams list no longer
+  #     includes the no-show stream.
+  #   - mcp-go eventbridge dropped its default trigger (no agenda no_show EventPattern
+  #     remains in internal/eventbridge/defaults.go).
+  # No live consumer subscribes to appointment.noshow today, so there is no subscription
+  # entry (same as agenda.appointment.booked / agenda.appointment.cancelled). The
+  # producer's own comment (appointments.ex maybe_publish_status/3) names
+  # rewards-go / crm-go / notifications-ex as the intended cross-module consumers; add a
+  # subscription here when one actually wires up to the canonical name.
 
   # payments.payment.failed now has a registered schema
   # (payments.payment.failed.v1.json). Producer = alebrije-mod-payments-go
@@ -272,14 +276,18 @@ unverified_drift:
   # field_ops.sla.breach.v1.json is registered (event_type EN-USO).
   # NOTE: campaigns.send_failed (config.py:49) was DEPRECATED-REMOVED in agentic
   # and is no longer subscribed — dropped from this list.
-  # NOTE: agenda.appointment.no_show, payments.payment.failed and
-  # control_medico.dictamen.created (agentic CrossModuleEventConsumer config.py:45,46,48)
-  # were MOVED to subscriptions: now that their canonical schemas are registered.
+  # NOTE: payments.payment.failed and control_medico.dictamen.created (agentic
+  # CrossModuleEventConsumer config.py) were MOVED to subscriptions: now that their
+  # canonical schemas are registered. agenda.appointment.no_show was canonicalised to
+  # appointment.noshow (#177, 2026-06-26 — the name the producer actually emits) and its
+  # dead agentic subscription was REMOVED in code (app/workers/event_consumer.py); no
+  # subscription remains for it.
 
   # mcp-go eventbridge other default triggers without registered schemas.
-  # NOTE: agenda.appointment.no_show (mcp-go eventbridge defaults.go:13) and the
-  # mcp-go eventfeeder auth.dsr.erasure_approved bridge were MOVED to
-  # subscriptions: now that their schemas are registered.
+  # NOTE: the mcp-go eventfeeder auth.dsr.erasure_approved bridge was MOVED to
+  # subscriptions: now that its schema is registered. The mcp-go eventbridge agenda
+  # no_show default trigger was REMOVED from internal/eventbridge/defaults.go (#177);
+  # the event was canonicalised to appointment.noshow — no subscription remains for it.
   # NOTE: field_ops.sla.breach (mcp-go eventbridge defaults.go:41) was MOVED to
   # subscriptions: now that field_ops.sla.breach.v1.json is registered (EN-USO name).
   # NOTE: crm.lead.created (mcp-go eventbridge crm-contact-created-cadence trigger,

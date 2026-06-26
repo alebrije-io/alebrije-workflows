@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/appointment.noshow.v1.json",
+  "title": "appointment.noshow v1",
+  "description": "Emitted when an appointment transitions to no-show (scheduled->noshow; appointments.ex maybe_publish_status/3 -> publisher.publish_appointment_noshow/1, appointments.ex:786). Source publisher: alebrije-mod-agenda-ex EventPublisher.publish_appointment_noshow/1 -> publish/2 (event_publisher.ex:23,50-51,65-73,97). FLAT payload (does NOT use the envelope.v1 data-nested shape) — fields are top-level, matching the real producer: publish/2 stamps event_type onto the flat field map (envelope = Map.put(payload, \"event_type\", stream)) and the shared AlebrijeCommon.EventBus.Producer XADDs it. The on-the-wire event_type EN-USO is 'appointment.noshow' — the @noshow_stream literal (event_publisher.ex:23), confirmed by lifecycle_event_type(\"noshow\") (appointments.ex:768) — NOT 'agenda.appointment.no_show'. Canonicalised 2026-06-26 (#177) to the name the producer actually publishes: the prior 'agenda.appointment.no_show' registration was an aspirational ADR-31 name no producer ever XADDs, and its only subscribers (agentic CrossModuleEventConsumer + mcp-go eventbridge) were dead-wires on an empty/phantom stream, both since removed in code. The producer stringifies every field via to_string(value || \"\"), so optional fields arrive as empty strings, never null. The producer's own comment (appointments.ex maybe_publish_status/3) names rewards-go / crm-go / notifications-ex as the intended cross-module consumers — none subscribe yet (no consumers.yaml entry).",
+  "type": "object",
+  "required": ["event_type", "appointment_id", "tenant_id", "status"],
+  "properties": {
+    "event_type": {
+      "const": "appointment.noshow",
+      "description": "Canonical event_type EN-USO stamped by EventPublisher.publish/2 (envelope = Map.put(payload, \"event_type\", @noshow_stream)). Consumers route on this exact value."
+    },
+    "appointment_id": {
+      "type": "string",
+      "description": "UUID of the appointment that went no-show. Producer stringifies appt.id (event_publisher.ex:67); empty string when absent."
+    },
+    "tenant_id": {
+      "type": "string",
+      "description": "Tenant that owns the appointment (ADR-25). Producer stringifies appt.tenant_id (event_publisher.ex:68); empty string when absent."
+    },
+    "calendar_id": {
+      "type": "string",
+      "description": "Calendar the appointment belongs to. Producer stringifies appt.calendar_id (event_publisher.ex:69); empty string when absent."
+    },
+    "contact_phone": {
+      "type": "string",
+      "description": "E.164 contact phone on the appointment. Producer stringifies appt.contact_phone (event_publisher.ex:70); empty string when absent."
+    },
+    "status": {
+      "type": "string",
+      "description": "Appointment status at emit time; 'noshow' for this event (event_publisher.ex:71)."
+    }
+  },
+  "additionalProperties": true
+}
