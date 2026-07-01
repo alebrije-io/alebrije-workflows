@@ -35,6 +35,10 @@
 version: 1
 derived_from_code: true
 derived_at: "2026-06-09"
+last_reconciled_at: "2026-07-01"  # re-grepped fleet for event_bus/Broadway/EventConsumer;
+                                   # added 2 real consumers that were entirely absent from
+                                   # this map (campaigns-ex EventConsumer, notifications-ex
+                                   # ResultConsumer) — see subscriptions/unverified_drift below.
 needs_human_review: true
 
 # ── Suscripciones con contrato válido (event_type tiene schema registrado) ────
@@ -218,6 +222,19 @@ subscriptions:
     handler: eventbridge (crm-contact-created-cadence trigger)
     source: alebrije-mcp-go/internal/eventbridge/defaults.go:25
 
+  # campaigns-ex EventConsumer (Broadway over events:crm) — validates the
+  # PREFIXED producer envelope BEFORE stripping the `crm.` namespace to route
+  # on the bare lifecycle name (canonicalize_event_type/1). Of its 5 handled
+  # event types (contact.opted_out/opted_in/created/updated, appointment.completed),
+  # only crm.contact.created has a registered schema today; the rest are listed
+  # under unverified_drift below (added 2026-07-01, was previously absent from
+  # this map entirely — found via fleet grep for event_bus/EventConsumer).
+  - service: alebrije-mod-campaigns-ex
+    event_type: crm.contact.created
+    stream: "events:crm"
+    handler: AlebrijeCampaigns.Workers.EventConsumer (Broadway)
+    source: alebrije-mod-campaigns-ex/lib/alebrije_campaigns/workers/event_consumer.ex:290
+
 # ── Drift NO verificado contra el registry (el workflow IGNORA esta clave) ─────
 # Suscripciones reales del código cuyo event_type o stream NO coincide con un
 # schema registrado. Cada una es un candidato a: (a) registrar el schema, o
@@ -306,3 +323,42 @@ unverified_drift:
     stream: "events:cadences.outcomes"
     reason: no registered schema for outcome events
     source: alebrije-mod-cadences-ex/lib/alebrije_cadences/workers/outcome_listener.ex:3
+
+  # notifications-ex ResultConsumer (Broadway) — REAL prod consumer gated by
+  # TORONJA_CONSUMER_ENABLED=true (config/runtime.exs:329-348), delivers
+  # validated lab results to patients (DEBT-TORONJA-DELIVERY-001 Etapa 3).
+  # Producer = adapt-toronja EventPublisher.publish_result_validated. No
+  # schema is registered for toronja.result_validated today — the only
+  # toronja-related entry in this file before 2026-07-01 was mcp-go's
+  # (mismatched) toronja.lab.result_ready below; this consumer was entirely
+  # absent from the map. Found via fleet grep for event_bus/Broadway consumers.
+  - service: alebrije-svc-notifications-ex
+    event_type: toronja.result_validated
+    stream: "toronja.result_validated"
+    reason: no registered schema for toronja.result_validated (real prod consumer, group notifications-ex-toronja)
+    source: alebrije-svc-notifications-ex/lib/alebrije_notifications/toronja/result_consumer.ex:9
+
+  # campaigns-ex EventConsumer (Broadway over events:crm) — the 4 handled event
+  # types with NO registered producer schema yet (crm.contact.created IS
+  # registered and lives in subscriptions: above). Moving any of these to
+  # subscriptions: without registering a schema first would break CI on purpose.
+  - service: alebrije-mod-campaigns-ex
+    event_type: crm.contact.opted_out
+    stream: "events:crm"
+    reason: no registered schema for crm.contact.opted_out
+    source: alebrije-mod-campaigns-ex/lib/alebrije_campaigns/workers/event_consumer.ex:224
+  - service: alebrije-mod-campaigns-ex
+    event_type: crm.contact.opted_in
+    stream: "events:crm"
+    reason: no registered schema for crm.contact.opted_in
+    source: alebrije-mod-campaigns-ex/lib/alebrije_campaigns/workers/event_consumer.ex:247
+  - service: alebrije-mod-campaigns-ex
+    event_type: crm.contact.updated
+    stream: "events:crm"
+    reason: no registered schema for crm.contact.updated
+    source: alebrije-mod-campaigns-ex/lib/alebrije_campaigns/workers/event_consumer.ex:307
+  - service: alebrije-mod-campaigns-ex
+    event_type: appointment.completed
+    stream: "events:crm"
+    reason: no registered schema for appointment.completed (agenda producer, bare event_type, unaffected by the crm. prefix strip)
+    source: alebrije-mod-campaigns-ex/lib/alebrije_campaigns/workers/event_consumer.ex:264

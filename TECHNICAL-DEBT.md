@@ -295,3 +295,44 @@ A comprehensive audit of all 28 workflows, 9 custom actions, and meta-files was 
   postgres/redis CI service-container tags retained. Validated: 0 false-positive violations against the
   real fleet.
 - **Effort**: S — **Priority**: P2 — **Status**: **FIXED**
+
+---
+
+## §44 — DEBT-FN-ADR-79-EVENT-BUS-SCHEMA-REGISTRY (infra-CI portion) reconciliation
+
+### DEBT-§44-CONTRACT-GAP-RECONCILE: consumers.yaml missing 2 real live consumers (FIXED); false premise that files "don't exist" corrected
+- **Premise received (INCORRECT)**: assigned task stated `event-schemas/consumers.yaml` and
+  `.github/workflows/reusable-event-contract.yml` "no existen." Verified on disk: **both already
+  existed** before this session — `consumers.yaml` created `fd1c248` (2026-06-09) and iterated through
+  `445b8c7` (2026-06-26); `reusable-event-contract.yml` created 2026-06-20, `uses:`-wired into 10
+  consumer repos' `ci.yml`/`elixir-ci.yml` (crm-go, rewards-go, payments-go, mcp-go, agentic,
+  control-medico, cadences-ex, notifications-ex, omnichannel-ex, planificador-ex). This corresponds to
+  the already-**CLOSED** `DEBT-§34-EVT-CONTRACT-TEST-GAP` in the central `alebrije/TECHNICAL-DEBT.md`
+  (§39, 2026-06-17). The task premise conflated that closed ticket with the still-**OPEN**
+  `DEBT-FN-ADR-79-EVENT-BUS-SCHEMA-REGISTRY`, whose real remaining scope is deploying an actual schema
+  registry TOOL (e.g. EventCatalog UI) on top of Redis Streams — a separate, undecided item (do-now: no;
+  see `AQ-001` above). No files were recreated from scratch; recreating them would have discarded ~3
+  weeks of accumulated, source-cited fleet reconciliation work.
+- **Real gap found by re-grepping the fleet (2026-07-01)**: `consumers.yaml`'s own
+  `derived_at: 2026-06-09` snapshot missed 2 live consumers that existed in the repos at grep time:
+  1. `alebrije-mod-campaigns-ex` `AlebrijeCampaigns.Workers.EventConsumer` (Broadway over
+     `events:crm`) — handles `crm.contact.opted_out`, `crm.contact.opted_in`, `crm.contact.created`,
+     `crm.contact.updated`, `appointment.completed`. Was entirely absent from the map.
+  2. `alebrije-svc-notifications-ex` `AlebrijeNotifications.Toronja.ResultConsumer` (Broadway,
+     `toronja.result_validated` stream, group `notifications-ex-toronja`) — a REAL prod consumer gated
+     by `TORONJA_CONSUMER_ENABLED=true` (`config/runtime.exs:329-348`). Was entirely absent; the only
+     toronja entry in the map was mcp-go's (mismatched) `toronja.lab.result_ready`.
+- **Fix**: added `alebrije-mod-campaigns-ex` / `crm.contact.created` to `subscriptions:` (schema IS
+  registered, `crm.contact.created.v1.json`); added the other 4 campaigns-ex event types + the
+  notifications-ex `toronja.result_validated` consumer to `unverified_drift:` (no schema registered for
+  any of them yet — moving them to `subscriptions:` without a schema would break CI by design). Bumped
+  `last_reconciled_at: 2026-07-01` in the file header.
+- **Verified**: `python3 -c "import yaml; yaml.safe_load(open('event-schemas/consumers.yaml'))"` parses
+  clean (22 subscriptions, 12 unverified_drift entries); replayed the exact
+  `reusable-event-contract.yml` consumer-cross-check logic locally against the updated file — all 22
+  `subscriptions:` entries resolve to a registered schema, contract check would PASS.
+  `yamllint -d "{extends: default, rules: {line-length: disable, comments: {min-spaces-from-content: 1}, comments-indentation: disable, truthy: disable}}"` on both `consumers.yaml` and
+  `reusable-event-contract.yml` → only the pre-existing `missing document start "---"` warning (no
+  errors, no new warnings introduced).
+- **Effort**: S — **Priority**: P2 — **Status**: **FIXED** (infra-CI portion reconciled; EventCatalog
+  tool deployment remains separately OPEN per central `TECHNICAL-DEBT.md`, do-now: no)
