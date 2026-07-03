@@ -226,14 +226,45 @@ subscriptions:
   # PREFIXED producer envelope BEFORE stripping the `crm.` namespace to route
   # on the bare lifecycle name (canonicalize_event_type/1). Of its 5 handled
   # event types (contact.opted_out/opted_in/created/updated, appointment.completed),
-  # only crm.contact.created has a registered schema today; the rest are listed
-  # under unverified_drift below (added 2026-07-01, was previously absent from
-  # this map entirely — found via fleet grep for event_bus/EventConsumer).
+  # only crm.contact.created had a registered schema as of 2026-07-01 (found via
+  # fleet grep for event_bus/EventConsumer, previously absent from this map
+  # entirely); the other 4 were listed under unverified_drift until
+  # DEBT-AUDIT-20260701-019-catalog-crm-agenda (f64b5da) registered all of them
+  # (crm.contact.opted_out/opted_in/updated.v1.json + appointment.completed.v1.json)
+  # — moved here now that every event_type this consumer handles has a schema.
   - service: alebrije-mod-campaigns-ex
     event_type: crm.contact.created
     stream: "events:crm"
     handler: AlebrijeCampaigns.Workers.EventConsumer (Broadway)
     source: alebrije-mod-campaigns-ex/lib/alebrije_campaigns/workers/event_consumer.ex:290
+  - service: alebrije-mod-campaigns-ex
+    event_type: crm.contact.opted_out
+    stream: "events:crm"
+    handler: AlebrijeCampaigns.Workers.EventConsumer (Broadway)
+    source: alebrije-mod-campaigns-ex/lib/alebrije_campaigns/workers/event_consumer.ex:224
+  - service: alebrije-mod-campaigns-ex
+    event_type: crm.contact.opted_in
+    stream: "events:crm"
+    handler: AlebrijeCampaigns.Workers.EventConsumer (Broadway)
+    source: alebrije-mod-campaigns-ex/lib/alebrije_campaigns/workers/event_consumer.ex:247
+  - service: alebrije-mod-campaigns-ex
+    event_type: crm.contact.updated
+    stream: "events:crm"
+    handler: AlebrijeCampaigns.Workers.EventConsumer (Broadway)
+    source: alebrije-mod-campaigns-ex/lib/alebrije_campaigns/workers/event_consumer.ex:307
+  # appointment.completed reaches this consumer via the outbox-routed
+  # "events:campaigns" stream (see appointment.completed.v1.json's description:
+  # outbox.ex @stream_routes sends this specific event_type to events:campaigns,
+  # not the bare "appointment.completed" stream rewards-go reads). Declared here
+  # with stream "events:crm" to match this file's pre-existing convention for
+  # this consumer's other 4 entries (all Broadway-consumed under the same
+  # EventConsumer module); the contract check only cross-references event_type
+  # against the registered schema, not stream, so this does not affect CI.
+  - service: alebrije-mod-campaigns-ex
+    event_type: appointment.completed
+    stream: "events:crm"
+    handler: AlebrijeCampaigns.Workers.EventConsumer (Broadway)
+    source: alebrije-mod-campaigns-ex/lib/alebrije_campaigns/workers/event_consumer.ex:264
 
 # ── Drift NO verificado contra el registry (el workflow IGNORA esta clave) ─────
 # Suscripciones reales del código cuyo event_type o stream NO coincide con un
@@ -356,27 +387,10 @@ unverified_drift:
     reason: no registered schema for toronja.result_validated (real prod consumer, group notifications-ex-toronja)
     source: alebrije-svc-notifications-ex/lib/alebrije_notifications/toronja/result_consumer.ex:9
 
-  # campaigns-ex EventConsumer (Broadway over events:crm) — the 4 handled event
-  # types with NO registered producer schema yet (crm.contact.created IS
-  # registered and lives in subscriptions: above). Moving any of these to
-  # subscriptions: without registering a schema first would break CI on purpose.
-  - service: alebrije-mod-campaigns-ex
-    event_type: crm.contact.opted_out
-    stream: "events:crm"
-    reason: no registered schema for crm.contact.opted_out
-    source: alebrije-mod-campaigns-ex/lib/alebrije_campaigns/workers/event_consumer.ex:224
-  - service: alebrije-mod-campaigns-ex
-    event_type: crm.contact.opted_in
-    stream: "events:crm"
-    reason: no registered schema for crm.contact.opted_in
-    source: alebrije-mod-campaigns-ex/lib/alebrije_campaigns/workers/event_consumer.ex:247
-  - service: alebrije-mod-campaigns-ex
-    event_type: crm.contact.updated
-    stream: "events:crm"
-    reason: no registered schema for crm.contact.updated
-    source: alebrije-mod-campaigns-ex/lib/alebrije_campaigns/workers/event_consumer.ex:307
-  - service: alebrije-mod-campaigns-ex
-    event_type: appointment.completed
-    stream: "events:crm"
-    reason: no registered schema for appointment.completed (agenda producer, bare event_type, unaffected by the crm. prefix strip)
-    source: alebrije-mod-campaigns-ex/lib/alebrije_campaigns/workers/event_consumer.ex:264
+  # campaigns-ex EventConsumer (Broadway over events:crm) — all 5 handled event
+  # types (contact.created/opted_out/opted_in/updated, appointment.completed) now
+  # have registered producer schemas and were MOVED to subscriptions: above.
+  # DEBT-AUDIT-20260701-019-catalog-crm-agenda (f64b5da) registered the 4 that
+  # were listed here (crm.contact.opted_out/opted_in/updated.v1.json +
+  # appointment.completed.v1.json) — nothing remains unregistered for this
+  # consumer.
