@@ -21,8 +21,8 @@
     },
     "event_type": {
       "type": "string",
-      "pattern": "^[a-z_]+\\.[a-z_]+\\.[a-z_]+$",
-      "description": "Canonical <domain>.<entity>.<action> identifier (past-tense verb)."
+      "pattern": "^[a-z_]+\\.[a-z_]+(\\.[a-z_]+)?$",
+      "description": "Canonical <domain>.<entity>.<action> identifier (past-tense verb). The 3-segment shape is the ADR-31 default for NEW event types. A 2-segment <domain>.<action> shape is also accepted: some real producers (see rewards.earned.v1.json / rewards.redeemed.v1.json, DEBT-AUDIT-20260701-019-rewards) stamp a literal 2-segment event_type onto events that DO travel through the enveloped outbox pipeline (alebrije-common-go outbox.Poller.buildEnvelope stamps row.EventType verbatim, with no reformatting), so the envelope regex must admit that real wire value rather than reject every event of that type. Relaxing an existing constraint is additive per README.md section 6 (no version bump)."
     },
     "event_version": {
       "type": "string",
@@ -60,7 +60,7 @@
     },
     "producer": {
       "type": "object",
-      "required": ["service", "version"],
+      "required": ["service"],
       "properties": {
         "service": {
           "type": "string",
@@ -68,7 +68,7 @@
         },
         "version": {
           "type": "string",
-          "description": "Image tag / app version of the emitting service."
+          "description": "Image tag / app version of the emitting service. Optional: alebrije-common-go's outbox.Poller.buildEnvelope() relays outbox rows on behalf of the original producer and structurally cannot know the producer's build version (poller.go's own comment: 'Fields the poller cannot know (producer.version, context_id, trace_id) are intentionally omitted'), so it stamps only {\"service\": \"outbox-poller\"}. Making version required made every outbox-relayed event (e.g. rewards.earned, rewards.redeemed, rewards.fraud.flagged) unsatisfiable-by-construction, DEBT-AUDIT-20260701-019-rewards. Relaxing an existing constraint is additive per README.md section 6 (no version bump)."
         }
       }
     },

@@ -348,21 +348,31 @@ jobs:
           errors = []
           schemas = glob.glob("event-schemas/*.json")
           for f in schemas:
-              if "envelope" in f or "README" in f or ".base." in f:
+              if "envelope" in f or "README" in f or ".base." in f or ".example." in f:
                   continue
               try:
                   schema = json.load(open(f))
-                  if "allOf" not in schema:
-                      errors.append(f"{f}: missing allOf (not extending envelope)")
-                      continue
-                  last_allof = schema["allOf"][-1]
-                  props = last_allof.get("properties", {})
-                  if "event_type" not in props:
-                      errors.append(f"{f}: missing event_type const in properties")
-                  if "data" not in props:
-                      errors.append(f"{f}: missing data object in properties")
                   if "$id" not in schema:
                       errors.append(f"{f}: missing $id field")
+                  if "allOf" in schema:
+                      # Enveloped shape: event_type/data live in the last allOf branch.
+                      last_allof = schema["allOf"][-1]
+                      props = last_allof.get("properties", {})
+                      if "event_type" not in props:
+                          errors.append(f"{f}: missing event_type const in properties")
+                      if "data" not in props:
+                          errors.append(f"{f}: missing data object in properties")
+                  else:
+                      # FLAT-payload exception (README.md section 2): producer's real
+                      # wire shape has no envelope nesting, so no allOf/$ref is
+                      # expected. Requires the documented marker so a schema can't
+                      # silently skip the allOf/envelope check.
+                      desc = schema.get("description", "")
+                      if "FLAT payload (does NOT use the envelope.v1 data-nested shape)" not in desc:
+                          errors.append(f"{f}: missing allOf (not extending envelope) and missing FLAT payload marker in description")
+                      props = schema.get("properties", {})
+                      if "const" not in props.get("event_type", {}):
+                          errors.append(f"{f}: missing top-level event_type const (flat schema)")
               except json.JSONDecodeError as e:
                   errors.append(f"{f}: invalid JSON: {e}")
           if errors:

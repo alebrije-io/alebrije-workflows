@@ -18,7 +18,7 @@ envelope. Validators live in the three common libraries:
 ## 1. Naming convention
 
 Every event file is named `<event_type>.v<major>.json` where `<event_type>`
-follows the strict ADR-31 pattern:
+follows the ADR-31 pattern:
 
 ```
 <domain>.<entity>.<action>
@@ -28,12 +28,23 @@ follows the strict ADR-31 pattern:
 * `<entity>` — noun (`points`, `contact`, `invoice`, ...)
 * `<action>` — past-tense verb (`earned`, `stage_changed`, `completed`, ...)
 
-All three segments are `snake_case`, lowercase, letters + underscores only.
-The regex in `envelope.v1.json` enforces it at runtime:
+All segments are `snake_case`, lowercase, letters + underscores only. The
+3-segment shape is the default for every NEW event type. The regex in
+`envelope.v1.json` also admits a 2-segment `<domain>.<action>` shape for
+existing producers whose real, unrenameable `event_type` string is only 2
+segments (see `rewards.earned.v1.json` / `rewards.redeemed.v1.json`,
+DEBT-AUDIT-20260701-019-rewards — those events route through the
+transactional outbox, so `event_type` is real envelope-shaped traffic, not a
+flat producer payload, and the schema must accept the literal string the
+producer stamps):
 
 ```regex
-^[a-z_]+\.[a-z_]+\.[a-z_]+$
+^[a-z_]+\.[a-z_]+(\.[a-z_]+)?$
 ```
+
+Do not use the 2-segment carve-out for new events — pick a proper
+`<domain>.<entity>.<action>` name per section 4 unless you are documenting an
+existing producer's real, already-shipped event_type string.
 
 The filename (minus the `.vN.json` suffix) MUST equal the `event_type`
 string — validators rely on this mapping to locate the schema.
@@ -59,6 +70,23 @@ this envelope via:
 Callback events that MUST echo a correlation id (for example
 `notifications.email.delivered`) override `required` to include
 `external_ref` on top of the envelope's base requirements.
+
+**FLAT-payload exception:** when a producer genuinely does not build the
+nested envelope shape above — fields land top-level on the wire, with no
+`data` object and often no `producer`/`event_version` (e.g. a raw Redis
+`XADD` of a language-native struct, or a legacy flat publisher) — the schema
+must describe that real shape instead of the enveloped one: `type: object`
+at the top level, `event_type` as a top-level `const` property (not inside
+`allOf`), and no `allOf`/`$ref` to `envelope.v1.json` (that would assert a
+shape the wire never has). Every such schema's `description` MUST start with
+`FLAT payload (does NOT use the envelope.v1 data-nested shape)` followed by
+the exact producer call site that proves it — `check-event-schemas-valid`
+(`.github/workflows/validate-self.yml`) and
+`tests/test_event_schemas.py::test_all_event_schemas_still_structurally_valid`
+both parse for that marker to accept a schema without `allOf`. Precedent:
+`field_ops.sla.breach.v1.json`, `auth.dsr.erasure_approved.v1.json`,
+`appointment.noshow.v1.json`, and the 6 flat `rewards.*` schemas added in
+DEBT-AUDIT-20260701-019-rewards.
 
 ---
 

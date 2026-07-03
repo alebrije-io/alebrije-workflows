@@ -217,25 +217,91 @@ def test_envelope_still_defines_aq112_fields():
     assert "branch_id" not in env["required"]
 
 
+# ===========================================================================
+# Gap 3 (DEBT-AUDIT-20260701-019-rewards) — envelope regex must admit the
+# real 2-segment event_type strings rewards.earned/rewards.redeemed stamp,
+# reproducing the exact wire shape alebrije-common-go's
+# outbox.Poller.buildEnvelope() produces (event_id/event_type/event_version/
+# tenant_id/timestamp/producer/data, event_type = row.EventType verbatim,
+# i.e. the literal 2-segment string -- no reformatting happens in the
+# poller). Before this fix envelope.v1.json's event_type pattern required
+# exactly 3 dotted segments, so no real rewards.earned/redeemed event could
+# ever validate (const:"rewards.earned" vs pattern requiring a 3rd segment
+# are mutually unsatisfiable).
+# ===========================================================================
+def _outbox_envelope(event_type: str, data: dict) -> dict:
+    """Mirrors alebrije-common-go outbox.Poller.buildEnvelope() (poller.go)."""
+    return {
+        "event_id": "0190b8c0-2222-7a4b-9c2d-3e4f5a6b7c8d",
+        "event_type": event_type,
+        "event_version": "1.0",
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
+        "timestamp": "2026-07-03T12:00:00Z",
+        "producer": {"service": "outbox-poller"},
+        "data": data,
+    }
+
+
+def test_envelope_event_type_pattern_admits_2_and_3_segment_names():
+    env = json.load(open(os.path.join(SCHEMA_DIR, "envelope.v1.json")))
+    pattern = re.compile(env["properties"]["event_type"]["pattern"])
+    assert pattern.match("rewards.earned"), "2-segment producer literal must match"
+    assert pattern.match("rewards.points.earned"), "3-segment default must still match"
+    assert not pattern.match("rewards"), "single segment must still be rejected"
+    assert not pattern.match("rewards."), "trailing dot must still be rejected"
+
+
+def test_rewards_earned_validates_against_real_outbox_envelope_shape():
+    v = _validator_for("rewards.earned.v1.json")
+    event = _outbox_envelope(
+        "rewards.earned", {"user_id": "22222222-2222-2222-2222-222222222222", "amount": 10}
+    )
+    errors = [e.message for e in v.iter_errors(event)]
+    assert errors == [], f"real rewards.earned outbox event rejected: {errors}"
+
+
+def test_rewards_redeemed_validates_against_real_outbox_envelope_shape():
+    v = _validator_for("rewards.redeemed.v1.json")
+    event = _outbox_envelope(
+        "rewards.redeemed", {"user_id": "22222222-2222-2222-2222-222222222222", "amount": 5}
+    )
+    errors = [e.message for e in v.iter_errors(event)]
+    assert errors == [], f"real rewards.redeemed outbox event rejected: {errors}"
+
+
 def test_all_event_schemas_still_structurally_valid():
-    """Regression of validate-self.yml AUDIT 11 (no schema broken by the edit)."""
+    """Regression of validate-self.yml AUDIT 11 (no schema broken by the edit).
+
+    Mirrors the check-event-schemas-valid step in
+    .github/workflows/validate-self.yml: `.example.json` fixtures are sample
+    event instances (not schemas) and are excluded, and a schema without
+    `allOf` is accepted only under the documented FLAT-payload exception
+    (README.md section 2) -- a real producer whose wire shape has no envelope
+    nesting, marked by the literal "FLAT payload (does NOT use the
+    envelope.v1 data-nested shape)" string in its description.
+    """
     errors = []
     for f in glob.glob(os.path.join(SCHEMA_DIR, "*.json")):
         name = os.path.basename(f)
-        if "envelope" in name or ".base." in name:
+        if "envelope" in name or ".base." in name or ".example." in name:
             continue
         schema = json.load(open(f))
-        if "allOf" not in schema:
-            errors.append(f"{name}: missing allOf")
-            continue
-        last = schema["allOf"][-1]
-        props = last.get("properties", {})
-        if "event_type" not in props:
-            errors.append(f"{name}: missing event_type const")
-        if "data" not in props:
-            errors.append(f"{name}: missing data object")
         if "$id" not in schema:
             errors.append(f"{name}: missing $id")
+        if "allOf" in schema:
+            last = schema["allOf"][-1]
+            props = last.get("properties", {})
+            if "event_type" not in props:
+                errors.append(f"{name}: missing event_type const")
+            if "data" not in props:
+                errors.append(f"{name}: missing data object")
+        else:
+            desc = schema.get("description", "")
+            if "FLAT payload (does NOT use the envelope.v1 data-nested shape)" not in desc:
+                errors.append(f"{name}: missing allOf and missing FLAT payload marker")
+            props = schema.get("properties", {})
+            if "const" not in props.get("event_type", {}):
+                errors.append(f"{name}: missing top-level event_type const (flat schema)")
     assert errors == [], errors
 
 
