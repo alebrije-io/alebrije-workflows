@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/crm.contact.updated.v1.json",
+  "title": "crm.contact.updated v1",
+  "description": "Emitted when an existing CRM contact row is updated. Source publisher: alebrije-mod-crm-go, staged via OutboxContactPublisher.ContactUpdated (internal/service/outbox_publisher.go:62-89) inside the contact-write transaction (HybridPublisher.ContactUpdated routes tx!=nil calls to the outbox, internal/service/hybrid_publisher.go:56-62; ADR-117 §9.B — the CRM contact lifecycle events MUST go through the outbox to close the dual-write gap). The flat payload staged at insert time (contact_id/tenant_id/phone/name, outbox_publisher.go:74-79) is later wrapped by alebrije-common-go's outbox.Poller.buildEnvelope (poller.go:414-436) into the canonical envelope this schema describes: event_id = outbox row id, event_type = 'crm.contact.updated' (row.EventType verbatim), data = the staged flat payload verbatim (so 'tenant_id' also appears, redundantly, inside data — tolerated via data.additionalProperties). No schema previously existed for this event type at all (ErrNoSchema fail-open at the outbox_publisher.go:82 preValidate call site, itself only reachable once the validator is wired up — currently inert, no schemas dir mounted in any deployed pod). DEBT-AUDIT-20260701-019-catalog-crm-agenda.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "crm.contact.updated" },
+        "data": {
+          "type": "object",
+          "required": ["contact_id", "phone"],
+          "properties": {
+            "contact_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the updated contact (c.ID.String(), outbox_publisher.go:75)."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Owning tenant (c.TenantID.String(), outbox_publisher.go:76; ADR-25). Redundant with the envelope-level tenant_id — present because the staged flat payload becomes 'data' verbatim."
+            },
+            "phone": {
+              "type": "string",
+              "description": "E.164 phone number (c.Phone, outbox_publisher.go:77)."
+            },
+            "name": {
+              "type": "string",
+              "description": "Display name after update (derefOr(c.Name, \"\"), outbox_publisher.go:78) — always a string on the wire (empty string when the contact has no name), never null."
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

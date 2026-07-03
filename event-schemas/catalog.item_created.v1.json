@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/catalog.item_created.v1.json",
+  "title": "catalog.item_created v1",
+  "description": "FLAT payload (does NOT use the envelope.v1 data-nested shape) — fields are top-level, matching the real producer. Emitted when a new catalog item is persisted. Source publisher: alebrije-mod-catalog-go RedisPublisher.PublishItemCreated (internal/service/redis_publisher.go:223-225), which XADDs itemPayload(it) (redis_publisher.go:212-220) verbatim to the configured stream (default 'catalog.item_created', config.go:188, env EVENTBUS_STREAM_CATALOG_ITEM_CREATED). Registered here under the producer's real event_type key ('catalog.item_created', underscore, NOT the previously-registered 'catalog.item.created' with a dot) — the eventType string passed to the schema validator (redis_publisher.go:224) IS the stream/schema key, but this literal string is NEVER embedded as a field inside the payload map itself: itemPayload only sets item_id/tenant_id/sku/name/item_type (redis_publisher.go:212-219), so 'event_type' is defined below purely to satisfy the repo's flat-schema structural lint (tests/test_event_schemas.py::test_all_event_schemas_still_structurally_valid requires every flat schema to expose a top-level event_type const) and to document the canonical type for tooling — it is intentionally excluded from 'required' because the real wire entry never carries it; consumers must infer the event kind from which stream they read (catalog.item_created vs catalog.item_updated vs catalog.item_deactivated all share this exact 5-field shape via the same itemPayload helper). DEBT-AUDIT-20260701-019-catalog-crm-agenda.",
+  "type": "object",
+  "required": ["item_id", "tenant_id", "sku", "name", "item_type"],
+  "properties": {
+    "event_type": {
+      "const": "catalog.item_created",
+      "description": "Documentary only — see top-level description. Never present on the real wire payload; itemPayload (redis_publisher.go:212-220) does not set this key."
+    },
+    "item_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID of the created catalog item (it.ID.String(), redis_publisher.go:214)."
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Owning tenant (it.TenantID.String(), redis_publisher.go:215; ADR-25)."
+    },
+    "sku": {
+      "type": "string",
+      "description": "Stock Keeping Unit code, unique per tenant (it.SKU, redis_publisher.go:216)."
+    },
+    "name": {
+      "type": "string",
+      "description": "Item display name (it.Name, redis_publisher.go:217)."
+    },
+    "item_type": {
+      "type": "string",
+      "description": "Catalog entry kind (it.ItemType, redis_publisher.go:218; models.go:78 discriminates product | analyte | profile | package). Left as a plain string rather than an enum: models.go's comment and ingestion.go's IngestType* constants list overlapping-but-not-identical value sets, so constraining here risks a future valid value being fail-closed rejected once validation activates (008)."
+    }
+  },
+  "additionalProperties": true
+}

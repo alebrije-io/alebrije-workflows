@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/appointment.completed.v1.json",
+  "title": "appointment.completed v1",
+  "description": "FLAT payload (does NOT use the envelope.v1 data-nested shape) — fields are top-level, matching the real producer. Emitted when an appointment transitions to completed. TWO real producer paths fire for the same transition (appointments.ex:519-527's comment 'Best-effort immediate fan-out ... the durable delivery already happened'): (1) durable outbox — Appointments.update_with_outbox/2 (appointments.ex:771-786) stages the transition via stage_lifecycle_event/2 -> AlebrijeAgenda.Outbox.emit(\"appointment.completed\", appt) in the SAME transaction as the status update; envelope_for/2 (outbox.ex:96-109) builds this exact flat shape, but for THIS event_type specifically it is routed by @stream_routes to \"events:campaigns\" (outbox.ex:73,32-40 — the campaigns NPS post-service journey is the live consumer, mod-campaigns-ex event_consumer.ex:183/244, which requires the top-level contact_id this envelope guarantees to include when non-blank); (2) best-effort direct XADD — EventPublisher.publish_appointment_completed/1 (event_publisher.ex:53-56) called right after the transaction commits (appointments.ex:527, via maybe_publish_status/3 -> case \"completed\" at appointments.ex:840-847), stamping event_type onto the SAME payload/1 shape (event_publisher.ex:65-73) but WITHOUT contact_id, XADD'd to the literal stream \"appointment.completed\" (@completed_stream, event_publisher.ex:24) — rewards-go's appointment.completed consumer and this direct stream are the ones referenced in appointments.ex:815-816's comment. Both converge through the shared AlebrijeCommon.EventBus.Producer.publish/2 (producer.ex:25) — no second envelope layer. Registered here under the producer's real event_type ('appointment.completed', 2-segment) — no schema previously existed for this event type at all (ErrNoSchema / {:error,{:no_schema,...}} fail-open, producer.ex:52-56). Precedent for the flat/optional-field pattern: appointment.noshow.v1.json (DEBT #177). DEBT-AUDIT-20260701-019-catalog-crm-agenda.",
+  "type": "object",
+  "required": ["event_type", "appointment_id", "tenant_id", "status"],
+  "properties": {
+    "event_type": {
+      "const": "appointment.completed",
+      "description": "Canonical event_type EN-USO. Always present: outbox.ex's envelope_for/2 sets it directly (outbox.ex:97), and the direct path stamps it via Map.put (event_publisher.ex:97)."
+    },
+    "appointment_id": {
+      "type": "string",
+      "description": "UUID of the completed appointment. Stringified (to_string(id || \"\")) by both producers; empty string when absent."
+    },
+    "tenant_id": {
+      "type": "string",
+      "description": "Tenant that owns the appointment (ADR-25). Stringified by both producers; empty string when absent."
+    },
+    "calendar_id": {
+      "type": "string",
+      "description": "Calendar the appointment belongs to. Stringified by both producers; empty string when absent."
+    },
+    "contact_id": {
+      "type": "string",
+      "description": "UUID of the CRM contact tied to the appointment. REQUIRED by the live 'events:campaigns' NPS consumer (mod-campaigns-ex event_consumer.ex:244, guarded 'when is_binary(contact_id)') and present via the outbox path when non-blank (outbox.ex:96-105 drops it entirely when blank rather than emitting an empty string). The direct EventPublisher path never sets it at all. Not in 'required' here because the direct-XADD path genuinely omits it — consumers that need it (campaigns) already only subscribe to the outbox-routed 'events:campaigns' stream, not the bare 'appointment.completed' stream this field-optional union also covers."
+    },
+    "contact_phone": {
+      "type": "string",
+      "description": "E.164 contact phone on the appointment. Stringified by both producers; empty string when absent."
+    },
+    "status": {
+      "type": "string",
+      "description": "Appointment status at emit time; 'completed' for this event."
+    }
+  },
+  "additionalProperties": true
+}

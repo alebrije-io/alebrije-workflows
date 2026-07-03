@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/crm.contact.opted_out.v1.json",
+  "title": "crm.contact.opted_out v1",
+  "description": "Emitted when a CRM contact opts out of communications. Source publisher: alebrije-mod-crm-go, staged via OutboxContactPublisher.OptedOut (internal/service/outbox_publisher.go:151-177) inside the contact-write transaction (HybridPublisher.OptedOut routes tx!=nil calls to the outbox, internal/service/hybrid_publisher.go:80-86; ADR-117 §9.B). The flat payload staged at insert time (contact_id/tenant_id/phone, outbox_publisher.go:163-167) is later wrapped by alebrije-common-go's outbox.Poller.buildEnvelope (poller.go:414-436) into the canonical envelope this schema describes: event_id = outbox row id, event_type = 'crm.contact.opted_out' (row.EventType verbatim), data = the staged flat payload verbatim. Note: this is a DISTINCT event from 'campaigns.contact.opted_out' (removed as an orphan in AUDIT-015, 974b5cb) — this one is the CRM-domain contact preference signal, not a campaigns-domain event. No schema previously existed for this event type at all (ErrNoSchema fail-open; validator currently inert fleet-wide). DEBT-AUDIT-20260701-019-catalog-crm-agenda.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "crm.contact.opted_out" },
+        "data": {
+          "type": "object",
+          "required": ["contact_id", "phone"],
+          "properties": {
+            "contact_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the contact that opted out (c.ID.String(), outbox_publisher.go:164)."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Owning tenant (c.TenantID.String(), outbox_publisher.go:165; ADR-25). Redundant with the envelope-level tenant_id — present because the staged flat payload becomes 'data' verbatim."
+            },
+            "phone": {
+              "type": "string",
+              "description": "E.164 phone number of the opted-out contact (c.Phone, outbox_publisher.go:166)."
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/appointment.confirmed.v1.json",
+  "title": "appointment.confirmed v1",
+  "description": "FLAT payload (does NOT use the envelope.v1 data-nested shape) — fields are top-level, matching the real producer. Emitted when an appointment transitions scheduled -> confirmed. TWO real producer paths fire for the same transition (appointments.ex:519-527's comment 'Best-effort immediate fan-out ... the durable delivery already happened'): (1) durable outbox — Appointments.update_with_outbox/2 (appointments.ex:771-786) stages the transition via stage_lifecycle_event/2 -> AlebrijeAgenda.Outbox.emit(\"appointment.confirmed\", appt) in the SAME transaction as the status update; envelope_for/2 (outbox.ex:96-109) builds this exact flat shape (including the optional contact_id), routed by @stream_routes to \"events:agenda\" (outbox.ex:73-80 — no live Redis consumer today, kept observable/replayable); (2) best-effort direct XADD — EventPublisher.publish_appointment_confirmed/1 (event_publisher.ex:43-46) called right after the transaction commits (appointments.ex:527, via maybe_publish_status/3 -> case \"confirmed\" at appointments.ex:822-829), stamping event_type onto the SAME payload/1 shape (event_publisher.ex:65-73) but WITHOUT contact_id, XADD'd to the literal stream \"appointment.confirmed\" (@confirmed_stream, event_publisher.ex:22). Both converge through the shared AlebrijeCommon.EventBus.Producer.publish/2 (producer.ex:25) — no second envelope layer. Registered here under the producer's real event_type ('appointment.confirmed', 2-segment) — no schema previously existed for this event type at all (ErrNoSchema / {:error,{:no_schema,...}} fail-open, producer.ex:52-56). Precedent for the flat/optional-field pattern: appointment.noshow.v1.json (DEBT #177), which is the sibling transition schema already registered. DEBT-AUDIT-20260701-019-catalog-crm-agenda.",
+  "type": "object",
+  "required": ["event_type", "appointment_id", "tenant_id", "status"],
+  "properties": {
+    "event_type": {
+      "const": "appointment.confirmed",
+      "description": "Canonical event_type EN-USO. Always present: outbox.ex's envelope_for/2 sets it directly (outbox.ex:97), and the direct path stamps it via Map.put (event_publisher.ex:97)."
+    },
+    "appointment_id": {
+      "type": "string",
+      "description": "UUID of the confirmed appointment. Stringified (to_string(id || \"\")) by both producers; empty string when absent."
+    },
+    "tenant_id": {
+      "type": "string",
+      "description": "Tenant that owns the appointment (ADR-25). Stringified by both producers; empty string when absent."
+    },
+    "calendar_id": {
+      "type": "string",
+      "description": "Calendar the appointment belongs to. Stringified by both producers; empty string when absent."
+    },
+    "contact_id": {
+      "type": "string",
+      "description": "UUID of the CRM contact tied to the appointment. ONLY present via the outbox path (outbox.ex:96-105) — envelope_for/2 drops this key entirely when blank rather than emitting an empty string, and the direct EventPublisher path never sets it at all. Consumers must treat it as optional."
+    },
+    "contact_phone": {
+      "type": "string",
+      "description": "E.164 contact phone on the appointment. Stringified by both producers; empty string when absent."
+    },
+    "status": {
+      "type": "string",
+      "description": "Appointment status at emit time; 'confirmed' for this event."
+    }
+  },
+  "additionalProperties": true
+}

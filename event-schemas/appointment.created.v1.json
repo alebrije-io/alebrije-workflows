@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/appointment.created.v1.json",
+  "title": "appointment.created v1",
+  "description": "FLAT payload (does NOT use the envelope.v1 data-nested shape) — fields are top-level, matching the real producer. Emitted when a new appointment is scheduled. TWO real producer paths land on this exact stream/shape (both fire for the same creation, per appointments.ex:259-274's comment 'Best-effort immediate fan-out ... the durable delivery already happened'): (1) durable outbox — Appointments.insert_with_outbox/insert_or_rollback (appointments.ex:651-676) calls AlebrijeAgenda.Outbox.emit(\"appointment.created\", appt), whose envelope_for/2 (outbox.ex:96-109) builds this exact flat shape (including the optional contact_id) inside the SAME transaction as the appointment insert, relayed at-least-once by OutboxRelayWorker to the literal stream \"appointment.created\" (outbox.ex:75, @stream_routes — payments-go's EVENTBUS_STREAM_APPOINTMENT_CREATED reads this bare stream); (2) best-effort direct XADD — EventPublisher.publish_appointment_created/1 (event_publisher.ex:38-41) -> publish/2 (event_publisher.ex:65-104), called right after the transaction commits (appointments.ex:266-268), which stamps event_type via Map.put(payload, \"event_type\", @created_stream) onto the SAME payload/1 shape (event_publisher.ex:65-73) but WITHOUT contact_id (that field only exists in outbox.ex's envelope_for/2). Both converge through the shared AlebrijeCommon.EventBus.Producer.publish/2 (producer.ex:25 — JSON-encodes the flat map directly, no second envelope layer). Registered here under the producer's real event_type ('appointment.created', 2-segment) — no schema previously existed for this event type at all (ErrNoSchema / {:error,{:no_schema,...}} fail-open at Producer.publish/2's validate/1, producer.ex:52-56). Precedent for the flat/optional-field pattern: appointment.noshow.v1.json (DEBT #177). DEBT-AUDIT-20260701-019-catalog-crm-agenda.",
+  "type": "object",
+  "required": ["event_type", "appointment_id", "tenant_id", "status"],
+  "properties": {
+    "event_type": {
+      "const": "appointment.created",
+      "description": "Canonical event_type EN-USO. Always present: outbox.ex's envelope_for/2 sets it directly (outbox.ex:97), and the direct path stamps it via Map.put (event_publisher.ex:97)."
+    },
+    "appointment_id": {
+      "type": "string",
+      "description": "UUID of the created appointment. Stringified (to_string(id || \"\")) by both producers; empty string when absent."
+    },
+    "tenant_id": {
+      "type": "string",
+      "description": "Tenant that owns the appointment (ADR-25). Stringified by both producers; empty string when absent."
+    },
+    "calendar_id": {
+      "type": "string",
+      "description": "Calendar the appointment belongs to. Stringified by both producers; empty string when absent."
+    },
+    "contact_id": {
+      "type": "string",
+      "description": "UUID of the CRM contact tied to the appointment. ONLY present via the outbox path (outbox.ex:96-105) — envelope_for/2 drops this key entirely when blank (drop_blank/2) rather than emitting an empty string, and the direct EventPublisher path (event_publisher.ex:65-73) never sets it at all. Consumers must treat it as optional."
+    },
+    "contact_phone": {
+      "type": "string",
+      "description": "E.164 contact phone on the appointment. Stringified by both producers; empty string when absent."
+    },
+    "status": {
+      "type": "string",
+      "description": "Appointment status at emit time; 'scheduled' for this event."
+    }
+  },
+  "additionalProperties": true
+}

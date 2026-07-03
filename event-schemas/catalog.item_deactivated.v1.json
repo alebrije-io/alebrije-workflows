@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/catalog.item_deactivated.v1.json",
+  "title": "catalog.item_deactivated v1",
+  "description": "FLAT payload (does NOT use the envelope.v1 data-nested shape) — fields are top-level, matching the real producer. Emitted when a catalog item is deactivated (soft-disabled). Source publisher: alebrije-mod-catalog-go RedisPublisher.PublishItemDeactivated (internal/service/redis_publisher.go:233-235), which XADDs the SAME itemPayload(it) helper (redis_publisher.go:212-220) used by PublishItemCreated/PublishItemUpdated to the configured stream (default 'catalog.item_deactivated', config.go:190, env EVENTBUS_STREAM_CATALOG_ITEM_DEACTIVATED). Registered under the producer's real event_type key ('catalog.item_deactivated', underscore) — no schema previously existed for this event type at all (ErrNoSchema fail-open); the pre-existing 'catalog.item.stock_depleted.v1.json' schema is a different, orphaned name with zero producers found in this service (out of scope here — additive-only task). 'event_type' is documentary only per catalog.item_created.v1.json's precedent — itemPayload never embeds it. DEBT-AUDIT-20260701-019-catalog-crm-agenda.",
+  "type": "object",
+  "required": ["item_id", "tenant_id", "sku", "name", "item_type"],
+  "properties": {
+    "event_type": {
+      "const": "catalog.item_deactivated",
+      "description": "Documentary only — never present on the real wire payload; itemPayload (redis_publisher.go:212-220) does not set this key."
+    },
+    "item_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID of the deactivated catalog item (it.ID.String(), redis_publisher.go:214)."
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Owning tenant (it.TenantID.String(), redis_publisher.go:215; ADR-25)."
+    },
+    "sku": {
+      "type": "string",
+      "description": "Stock Keeping Unit code, unique per tenant (it.SKU, redis_publisher.go:216)."
+    },
+    "name": {
+      "type": "string",
+      "description": "Item display name at deactivation time (it.Name, redis_publisher.go:217)."
+    },
+    "item_type": {
+      "type": "string",
+      "description": "Catalog entry kind (it.ItemType, redis_publisher.go:218). Left unconstrained — see catalog.item_created.v1.json for the enum-ambiguity rationale."
+    }
+  },
+  "additionalProperties": true
+}
