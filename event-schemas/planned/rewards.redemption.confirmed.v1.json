@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://alebrije.io/schemas/rewards.redemption.confirmed.v1.json",
   "title": "rewards.redemption.confirmed v1",
-  "description": "Emitted when a reward redemption request is confirmed and points are deducted. Source: alebrije-mod-rewards-go (Go). Delivery address is never included raw.",
+  "description": "Emitted when a reward redemption request is confirmed and points are deducted. Source: alebrije-mod-rewards-go (Go). Delivery address is never included raw. STATUS 2026-07-03 (DEBT-AUDIT-20260701-019-rewards): NOT IMPLEMENTED. grep of the whole alebrije monorepo found zero producers of event_type rewards.redemption.confirmed; the real publisher (internal/service/events_publisher.go) confirms redemptions via rewards.redeemed instead (see rewards.redeemed.v1.json), with no separate fulfillment_ref / delivery_address_hash concept. Moved out of event-schemas/ into planned/ so the Go/Python/Elixir validators (which only scan the top-level schemas dir) stop registering a schema with no producer. Kept (not deleted) in case a future fulfillment-tracking flow is built on this contract; do not restore to the top-level dir until a real producer exists.",
   "allOf": [
     { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
     {

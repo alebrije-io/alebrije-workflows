@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/rewards.fraud.flagged.v1.json",
+  "title": "rewards.fraud.flagged v1",
+  "description": "Emitted when the AI fraud detector places an earn into pending_review. Source publisher: alebrije-mod-rewards-go, EventPublisher.PublishFraudFlagged (internal/service/events_publisher.go:249, event_type stamped at line 250). Added 2026-07-03 (DEBT-AUDIT-20260701-019-rewards, option A2) -- this event type had no registered schema before, so it always fell into ErrNoSchema fail-open. In production (real DB pool) this event is routed through OutboxEventPublisher.PublishFraudFlagged (internal/service/outbox_event_publisher.go:105, called from rewards.go:499) which relays via the alebrije-common-go outbox poller onto the enveloped events:rewards SSOT stream -- the shape this schema describes. NOTE: the pool-less fallback path (rewards.go:538, tests only) instead XADDs the Event struct FLAT (no envelope, no data-nesting) onto the bare rewards.fraud.flagged stream via events_publisher.go -- that shape is out of scope for this schema and is not expected in prod traffic.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "rewards.fraud.flagged" },
+        "data": {
+          "type": "object",
+          "required": ["user_id", "amount"],
+          "properties": {
+            "user_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Rewards member whose earn was flagged for review."
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Points amount of the earn attempt that triggered the fraud flag (rewards.go req.Amount)."
+            },
+            "reason": {
+              "type": ["string", "null"],
+              "maxLength": 256,
+              "description": "Original earn reason (req.Reason), unrelated to the fraud verdict itself -- the verdict rides in metadata.status."
+            },
+            "account_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Rewards account the pending-review earn is attached to (tx.AccountID)."
+            },
+            "transaction_id": {
+              "type": ["string", "null"],
+              "description": "Ledger transaction id of the pending_review row (tx.ID)."
+            },
+            "balance_after": {
+              "type": ["integer", "null"],
+              "minimum": 0,
+              "description": "Account balance after this transaction (unaffected while pending review, but carried for audit)."
+            },
+            "reference": {
+              "type": ["string", "null"],
+              "description": "Free-form reference to the originating entity (req.Reference)."
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "risk_score": {
+                  "description": "Fraud detector score that triggered the flag (fraudScore). Type varies with the detector implementation."
+                },
+                "status": {
+                  "type": "string",
+                  "description": "Ledger transaction status at flag time (e.g. pending_review)."
+                }
+              },
+              "description": "Merges the caller-supplied earn metadata (req.Metadata) with risk_score + status (rewards.go mergeMetadata). Unknown keys pass through -- forward compatible."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

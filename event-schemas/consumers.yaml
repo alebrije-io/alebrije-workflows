@@ -270,15 +270,33 @@ unverified_drift:
     stream: "payments.completed"
     reason: blocked-producer-mismatch; consumer on legacy name, canonical = payments.payment.completed (producer emits canonical)
     source: alebrije-mod-crm-go/internal/service/timeline_consumer.go:46
+  # CORRECTED 2026-07-03 (DEBT-AUDIT-20260701-019-rewards): the "canonical =
+  # rewards.points.earned/redeemed" claim below was WRONG — verified directly
+  # against alebrije-mod-rewards-go/internal/service/events_publisher.go:226,233,
+  # the producer literally sets EventType = "rewards.earned" / "rewards.redeemed"
+  # (no "rewards.points.*" string exists anywhere in that repo's Go source). The
+  # event-schemas registry was renamed to match (rewards.earned.v1.json /
+  # rewards.redeemed.v1.json) in the same change. So event_type here IS canonical
+  # and now has a registered schema. Still NOT moved to subscriptions: though —
+  # a deeper, separate risk was found while fixing this: the composition root
+  # (alebrije-mod-rewards-go/cmd/server/main.go:162) routes earn/redeem through
+  # OutboxEventPublisher, which for the tx-present (real pool, i.e. prod) path
+  # writes ONLY to the `outbox` table -> poller -> the enveloped domain stream
+  # "events:rewards"; it never XADDs the bare "rewards.earned"/"rewards.redeemed"
+  # stream this consumer reads (that bare-stream write only happens on the
+  # pool-less/test fallback). If that reading is correct, this crm-go consumer is
+  # silently starved in production regardless of the event_type name being right.
+  # Fixing the consumer's subscription is a alebrije-mod-crm-go change — out of
+  # scope for this lane (event-schemas only); flagged for a follow-up DEBT item.
   - service: alebrije-mod-crm-go
     event_type: rewards.earned
     stream: "rewards.earned"
-    reason: blocked-producer-mismatch; consumer on legacy name, canonical = rewards.points.earned (producer emits canonical)
+    reason: possible-dead-consumer (see comment above) — event_type IS canonical and now has a registered schema (rewards.earned.v1.json), but the bare stream it reads may never receive prod traffic (prod earn path writes only to the outbox -> events:rewards domain stream)
     source: alebrije-mod-crm-go/internal/service/timeline_consumer.go:47
   - service: alebrije-mod-crm-go
     event_type: rewards.redeemed
     stream: "rewards.redeemed"
-    reason: blocked-producer-mismatch; consumer on legacy name, canonical = rewards.points.redeemed (producer emits canonical)
+    reason: possible-dead-consumer (see comment above) — event_type IS canonical and now has a registered schema (rewards.redeemed.v1.json), but the bare stream it reads may never receive prod traffic (prod redeem path writes only to the outbox -> events:rewards domain stream)
     source: alebrije-mod-crm-go/internal/service/timeline_consumer.go:48
   - service: alebrije-mod-crm-go
     event_type: omnichannel.message_received

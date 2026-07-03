@@ -66,8 +66,15 @@ Callback events that MUST echo a correlation id (for example
 
 | Event                                  | Phase 1 schema file                           |
 |----------------------------------------|-----------------------------------------------|
-| `rewards.points.earned`                | `rewards.points.earned.v1.json`               |
-| `rewards.points.redeemed`              | `rewards.points.redeemed.v1.json`             |
+| `rewards.earned`                       | `rewards.earned.v1.json`                      |
+| `rewards.redeemed`                     | `rewards.redeemed.v1.json`                    |
+| `rewards.points.expired`               | `rewards.points.expired.v1.json`              |
+| `rewards.fraud.flagged`                | `rewards.fraud.flagged.v1.json`               |
+| `rewards.account.frozen`               | `rewards.account.frozen.v1.json`              |
+| `rewards.points.accrued`               | `rewards.points.accrued.v1.json`              |
+| `rewards.tier_changed`                 | `rewards.tier_changed.v1.json`                |
+| `rewards.streak_broken`                | `rewards.streak_broken.v1.json`               |
+| `rewards.badge_unlocked`               | `rewards.badge_unlocked.v1.json`              |
 | `crm.contact.created`                  | `crm.contact.created.v1.json`                 |
 | `crm.contact.stage_changed`            | `crm.contact.stage_changed.v1.json`           |
 | `payments.invoice.overdue`             | `payments.invoice.overdue.v1.json`            |

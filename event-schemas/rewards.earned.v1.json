@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/rewards.earned.v1.json",
+  "title": "rewards.earned v1",
+  "description": "Emitted after a successful earn on the rewards ledger. Source publisher: alebrije-mod-rewards-go, EventPublisher.PublishEarned (internal/service/events_publisher.go:225, event_type stamped at line 226). Renamed from rewards.points.earned 2026-07-03 (DEBT-AUDIT-20260701-019-rewards) to match the literal event_type string the producer emits. In production (real DB pool) this event is routed through OutboxEventPublisher.PublishEarned (internal/service/outbox_event_publisher.go:88, called from rewards.go:481) which relays via the alebrije-common-go outbox poller onto the enveloped events:rewards SSOT stream -- the shape this schema describes. NOTE: the pool-less fallback path (rewards.go:522, tests only) instead XADDs the Event struct FLAT (no envelope, no data-nesting) onto the bare rewards.earned stream via events_publisher.go -- that shape is out of scope for this schema and is not expected in prod traffic. Also drops the previously-required 'idempotency_key' data field: the real Event struct (events_publisher.go:205-218) has no such field -- it was never emitted, so every real rewards.earned event has always failed strict validation against the old schema; removing it is an additive/relaxing change per README.md section 6.",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "rewards.earned" },
+        "data": {
+          "type": "object",
+          "required": ["user_id", "amount"],
+          "properties": {
+            "user_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Rewards member (user) receiving the points."
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Positive points awarded. Never zero, never negative."
+            },
+            "reason": {
+              "type": ["string", "null"],
+              "maxLength": 256,
+              "description": "Why the points were granted (free text or enum key, e.g. purchase_earn). Optional on the wire (Go struct tag omitempty) even though every known 2026-07-03 call site (rewards.go earn path) always sets it."
+            },
+            "account_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "Rewards account the points land on. Optional on the wire (Go struct tag omitempty) even though every known 2026-07-03 call site always sets it."
+            },
+            "transaction_id": {
+              "type": ["string", "null"],
+              "description": "Ledger transaction id (if already persisted)."
+            },
+            "balance_after": {
+              "type": ["integer", "null"],
+              "minimum": 0,
+              "description": "Account balance after this transaction, for audit."
+            },
+            "reference": {
+              "type": ["string", "null"],
+              "description": "Free-form reference to the originating entity (e.g. payment_id, visit_id)."
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}
