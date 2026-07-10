@@ -33,6 +33,26 @@
     "status": {
       "type": "string",
       "description": "Appointment status at emit time; 'scheduled' for this event."
+    },
+    "service_type": {
+      "type": "string",
+      "description": "Appointment service_type (e.g. 'lab_standard', 'lab_domicile'). Aditivo, ADR-31 §5.1 (2026-07-10) — added to event_publisher.ex's payload/1 alongside context_id/start_time/end_time/domicile_address so field-ops-ex's AppointmentConsumer can materialize a pickup_sample field order for service_type=='lab_domicile' (DEBT-FO-BLOQUE-C-BRIDGE). Stringified by both producers; empty string when absent — existing consumers ignore unknown keys per §5.3 forward-compat."
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Multi-context id (ADR-25) the appointment belongs to, if any. Added 2026-07-10, see service_type note above. Stringified; empty string when absent."
+    },
+    "start_time": {
+      "type": "string",
+      "description": "Appointment start_time. Added 2026-07-10, see service_type note above. Stringified via Elixir's to_string/1 (DateTime.to_string/1 format, e.g. '2026-07-15 14:00:00.000000Z' — space-separated, RFC3339-compatible for parsers that accept a space or 'T' date/time separator); empty string when absent."
+    },
+    "end_time": {
+      "type": "string",
+      "description": "Appointment end_time. Same format/notes as start_time. Added 2026-07-10."
+    },
+    "domicile_address": {
+      "type": "string",
+      "description": "Domicile address for lab_domicile appointments. Always a JSON-encoded string on the wire (the DB column is TEXT-as-JSON) even though agenda-ex's in-memory Appointment struct sometimes holds it as a decoded map post-Appointments.decode_domicile/1 — the publisher re-encodes it back to a string before emitting. Added 2026-07-10. Empty string when absent."
     }
   },
   "additionalProperties": true
