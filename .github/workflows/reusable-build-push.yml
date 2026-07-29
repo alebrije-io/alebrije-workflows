@@ -391,10 +391,25 @@ jobs:
           python-version: '3.12'
 
       - name: Install and run detect-secrets
+        # Fixed 2026-07-29: BOTH lines below were decorative. `scan --baseline FILE`
+        # always exits 0 and silently absorbs new secrets into the baseline
+        # (detect_secrets/main.py's handle_scan_action merges+saves unconditionally).
+        # `audit --report` is equally non-blocking — main() always `return 0`
+        # regardless of action. Neither ever failed a build. Diff a throwaway scan
+        # against the committed baseline instead; never call --baseline here.
+        # Canary + full rationale: alebrije-adapt-toronja/run_prepush.sh. This step
+        # runs against the CALLING repo's checkout (see the checkout step above), so
+        # it gates every repo that consumes this reusable workflow.
         run: |
           pip install detect-secrets --quiet
-          detect-secrets scan --baseline .secrets.baseline
-          detect-secrets audit --report .secrets.baseline
+          detect-secrets scan --exclude-files ".secrets.baseline" > /tmp/secrets_check_ci.json
+          OLD_RESULTS=$(python3 -c "import json; d=json.load(open('.secrets.baseline')); print(json.dumps(d.get('results',{}), sort_keys=True))" 2>/dev/null || echo "{}")
+          NEW_RESULTS=$(python3 -c "import json; d=json.load(open('/tmp/secrets_check_ci.json')); print(json.dumps(d.get('results',{}), sort_keys=True))" 2>/dev/null || echo "{}")
+          if [ "$OLD_RESULTS" != "$NEW_RESULTS" ]; then
+            echo "::error::detect-secrets: drift vs .secrets.baseline (new/changed findings). Never update the baseline blindly — audit locally with 'detect-secrets audit .secrets.baseline' and commit the reviewed result."
+            exit 1
+          fi
+          echo "✅ No secrets detected"
 
       # ====================================================================
       # 9. SECURITY: COSIGN KEYLESS SIGNING
