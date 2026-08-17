@@ -1,0 +1,43 @@
+# Como esta cubierto este repo respecto a aislamiento por tenant.
+#
+# Lo lee `scripts/rls-domain-preflight.sh scope`. Su existencia NO afirma que el
+# repo este protegido: afirma que alguien escribio como lo esta, que es lo unico
+# que ese chequeo puede sostener. El contenido es para humanos.
+#
+# Medido 2026-08-17: 1 archivo .py/.go/.ex/.exs menciona tenant_id.
+
+MECANISMO: ninguno, y no le aplica el modelo GUC/RLS. No aplica porque no hay
+dato real de tenant en este repo, no porque el mecanismo se haya evaluado y
+descartado.
+
+POR QUE. alebrije-workflows es el registro de GitHub Actions reusables +
+schemas de eventos de la flota (ver README.md: "Centralized GitHub Actions
+reusable workflows and CI/CD utilities"). No define, despliega ni corre
+ningun servicio con acceso a base de datos en runtime -- no hay `app/`,
+`internal/`, ni `lib/` con logica de negocio, solo `.github/workflows/*.yml`,
+`event-schemas/*.json` (contratos JSON Schema) y `scripts/*.py` de tooling
+CI (auditoria de contratos FE/BE, generacion de colecciones de API).
+
+La unica mencion de tenant_id en todo el arbol bajo esas extensiones esta en
+tests/test_event_schemas.py, y es dato de prueba, no logica de aislamiento:
+
+  - tests/test_event_schemas.py:72 -- `"tenant_id": "11111111-...",` dentro de
+    `_valid_envelope()`, un fixture literal para validar que un evento de
+    ejemplo cumple el JSON Schema de `omnichannel.message.received.v1.json`
+    (test_event_with_aq112_fields_validates y vecinos, AQ-112).
+  - tests/test_event_schemas.py:238 -- el mismo patron dentro de
+    `_outbox_envelope()`, fixture para test_rewards_earned_validates_against_
+    real_outbox_envelope_shape / test_rewards_redeemed_..., que reproduce la
+    forma que emite alebrije-common-go's outbox.Poller.buildEnvelope().
+
+En ninguno de los dos casos el valor de tenant_id se lee de una base de datos,
+se usa para filtrar una consulta, ni entra a una ruta de autorizacion: es un
+UUID de relleno para que el validador de JSON Schema tenga un documento
+estructuralmente valido que revisar. El repo no toca Postgres, no abre pool,
+no tiene GUC ni RLS que declarar -- por eso "ninguno" arriba no es un hueco,
+es la descripcion exacta de lo que hay: cero superficie de dato de tenant.
+
+Si algun dia este repo empieza a leer o escribir contra una base de datos con
+tenant_id real (p.ej. un job de agregacion que consulte Postgres en vez de
+solo validar JSON localmente), esta declaracion deja de aplicar y hay que
+rehacerla.
