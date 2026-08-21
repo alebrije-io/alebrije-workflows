@@ -2,12 +2,83 @@
 
 > Updated: 2026-05-07. Per ADR-001 tracking.
 
-## DEBT-001 — Missing scripts/gen-api-collection.sh
+## Census — 2026-08-21 (censo por cuerpo, no por titulo)
 
-**Status**: CLOSED (both gen-api-collection.sh and gen_api_collection.py exist in scripts/)
-**Priority**: P2 (was blocking)
-**Impact**: `api-collection-gen.yml` workflow — script was referenced but missing
-**Resolution**: Scripts created — now workflow can run
+Se releyeron los 25 encabezados con cadena `DEBT` que existen hoy en este archivo (`grep -niE
+'^#.*debt' TECHNICAL-DEBT.md`, excluyendo la linea 1 que es el titulo del documento) — **no el
+titulo, el `Status:`/`FIXED`/`CLOSED` real dentro del cuerpo**. Resultado:
+
+| Categoria | Cuenta | Detalle |
+|---|---|---|
+| **CERRADO** | 6 | DEBT-W14 (property-tests mask, dos veces con el mismo ID — ver abajo), DEBT-W13 (envelope AQ-112), DEBT-§43-SUPPLY-CHAIN-6, DEBT-§43-SUPPLY-CHAIN-7, DEBT-§44-CONTRACT-GAP-RECONCILE |
+| **ABIERTO** | 18 | DEBT-001 (REABIERTO esta sesion — ver abajo, no es el mismo P1 original), DEBT-002, DEBT-003, DEBT-004, DEBT-005, DEBT-W01, DEBT-W02, DEBT-W03, DEBT-W04, DEBT-W05, DEBT-W06, DEBT-W07, DEBT-W08 (alcance corregido), DEBT-W09, DEBT-W10, DEBT-W11, DEBT-W12, DEBT-W15 |
+| **AMBIGUO** | 1 | La linea `## §44 — DEBT-FN-ADR-79-EVENT-BUS-SCHEMA-REGISTRY (infra-CI portion) reconciliation` (encabezado de SECCION, no de item) contiene la cadena `DEBT-` y por eso el regex la cuenta como un 25º encabezado, pero no tiene su propio bloque `Status:` — es el envoltorio del unico item real que cuelga debajo, `DEBT-§44-CONTRACT-GAP-RECONCILE` (linea inmediatamente siguiente). Contarla como ticket independiente duplica el mismo ticket dos veces. |
+
+**Suman 25** (6+18+1). Dos hallazgos de la propia auditoria, no del contenido:
+
+1. **El numero de "abiertos" que traia el encargo (19) no es el real (18).** El heuristico de
+   encabezado-con-palabra-clave (ya corregido para reconocer `DONE` ademas de
+   `FIXED|RESUELTO|CLOSED|CERRADO|RESOLVED`) cuenta 6 headers con esa palabra en el TITULO — los
+   mismos 6 que el censo por cuerpo confirma CERRADOS, asi que en eso acertó — pero cuenta la
+   linea `## §44 — DEBT-...` de arriba como un item "abierto" mas cuando en realidad es el
+   envoltorio de un item que YA esta contado. 25 titulos − 6 cerrados = 19 "abiertos" por
+   heuristico; 25 titulos − 6 cerrados − 1 envoltorio-sin-status = **18 abiertos reales**.
+2. **`DEBT-001` estaba marcado `Status: CLOSED` en el cuerpo y la cifra `19` YA lo daba por
+   abierto** (el titulo `## DEBT-001 — Missing scripts/gen-api-collection.sh` no trae ninguna
+   palabra de cierre, así que el heuristico lo contaba abierto pese al cuerpo decir CLOSED) — es
+   decir el heuristico acertó por la razón equivocada: no leyó el cuerpo, y el cuerpo mentia.
+   Ver el REABIERTO abajo: el cierre original era falso por "existe" ≠ "funciona", así que el
+   heuristico y el censo real coinciden en ABIERTO para este item, pero por motivos opuestos.
+
+**Metodo de correlacion en las dos direcciones** (para no repetir la trampa de "0 hits = limpio"):
+para cada uno de los 6 marcados CERRADO en el cuerpo hice al menos una verificacion externa al
+propio texto del archivo (grep contra el workflow/action real que el item dice haber tocado) antes
+de aceptar la marca. Confirmado con evidencia in-situ: DEBT-W14 (linea 222, `check-no-deprecated-set-output`
+existe en `validate-self.yml:536` y esta en la lista `needs:` del summary), DEBT-§43-SUPPLY-CHAIN-6
+(`Gate — validate Dockerfile base images against whitelist` existe en `reusable-build-push.yml:132`),
+DEBT-§44-CONTRACT-GAP-RECONCILE (`alebrije-mod-campaigns-ex` y `alebrije-svc-notifications-ex`
+aparecen en `event-schemas/consumers.yaml`). No se re-verificaron §43-7, W13 y W14(linea173) linea
+por linea contra codigo externo — su cuerpo trae su propia evidencia citada (comandos + salidas) y
+no hubo señal de alarma al leerlos completos.
+
+---
+
+## DEBT-001 — Missing scripts/gen-api-collection.sh — REABIERTO 2026-08-21, cierre anterior era falso
+
+**Status**: **ABIERTO** (el `Status: CLOSED` anterior de esta sección quedó demostrado FALSO hoy —
+"el fichero existe" no es lo mismo que "el fichero hace lo que promete", y aquí el segundo hecho es
+el que cuenta)
+**Priority**: P2
+**Impact real (medido, no el original)**: ambos ficheros existen (`scripts/gen-api-collection.sh`,
+`scripts/gen_api_collection.py`) y el wrapper corre limpio, exit 0:
+
+```
+$ bash scripts/gen-api-collection.sh -r ../alebrije-api-gateway-go -o /tmp/api-collection-debt001.json
+[INFO] API Repository: ../alebrije-api-gateway-go
+[INFO] Output File: /tmp/api-collection-debt001.json
+Generated API collection: /tmp/api-collection-debt001.json
+Total endpoints: 0
+[INFO] Successfully generated API collection: /tmp/api-collection-debt001.json
+```
+
+**El "Total endpoints: 0" no es limpio, es ciego.** `alebrije-api-gateway-go` es el gateway real de
+la flota y expone decenas de rutas — el regex de `scripts/gen_api_collection.py:64`
+(`r'(?:router|r)\.(GET|POST|PUT|DELETE|PATCH)\s*\(\s*"([^"]+)"\s*,\s*(\w+)\)'`) solo matchea
+verbos en **MAYUSCULAS**. El gateway real usa `go-chi/chi` (`internal/handler/router.go:1-17`
+importa `github.com/go-chi/chi/v5`), cuyo idioma es `r.Get(...)`/`r.Post(...)` — primera letra
+mayúscula, resto minúscula. Verificado: `grep -rnE '\br\.(Get|Post|Put|Delete|Patch)\(' 
+internal/handler/router.go` devuelve 7+ rutas reales (`r.Get("/api/v1/dashboard/hero", ...)`,
+`r.Post("/artifacts/{id}/token", ...)`, etc.), y `grep -rlE '\.(Get|Post|Put|Delete|Patch)\(\s*"'
+--include='*.go' .` cuenta **40 archivos** con ese patrón en todo el repo del gateway. El script
+nunca podrá encontrarlas: su regex está escrito para un router estilo gin/mux en mayúsculas que
+este gateway no usa desde que existe.
+**Fix real pendiente**: agregar el patrón chi (`\.(Get|Post|Put|Delete|Patch)\(` case-sensitive tal
+cual, sin forzar mayúsculas) a `gen_api_collection.py:64`, y agregar un caso de prueba que falle si
+el conteo de endpoints es 0 contra un repo con rutas reales — ahora mismo nada distingue "no hay
+rutas" de "la regex no las vio".
+**Effort**: S — un segundo patrón de regex + un test dirigido.
+
+---
 
 ---
 
@@ -132,9 +203,25 @@ A comprehensive audit of all 28 workflows, 9 custom actions, and meta-files was 
 ### DEBT-W07: validate-self.yml — No approved-base-images.json schema validation job
 - **Effort**: XS — Status: OPEN
 
-### DEBT-W08: Dead shell scripts in custom actions
-- **What**: bump-version/bump.sh + parse-semver.sh unused; trigger-canary/apply-weight.sh unused
-- **Effort**: S — Status: OPEN
+### DEBT-W08: Dead shell scripts in custom actions — ALCANCE CORREGIDO 2026-08-21 (era 3 de 3, son 2 de 3)
+- **What (original, 2 de 3 partes correctas)**: `bump-version/bump.sh` + `parse-semver.sh` siguen
+  muertos, y hoy están MÁS muertos que cuando se escribió el item: `.github/actions/bump-version/action.yml`
+  ya no invoca `bump.sh` en absoluto — el step `Parse commits and bump version` hace el cálculo de
+  semver **inline en Python** dentro del propio `action.yml` (`run: | python3 << 'PY' ... PY`).
+  `grep -rn "bump-version/bump\.sh" . --include='*.yml' --include='*.sh'` → 0 resultados en todo el
+  repo. Y `bump.sh` a su vez hace `source "$SCRIPT_DIR/parse-semver.sh"` (`bump.sh:26`) — así que
+  `parse-semver.sh` solo se ejecutaría SI algo llamara a `bump.sh`, y nada lo hace.
+- **What (corrección, 1 de 3 era falso)**: `trigger-canary/apply-weight.sh` **NO está muerto** —
+  `grep -n "apply-weight.sh" .github/workflows/reusable-canary-deploy.yml` → 2 sitios de llamada
+  reales (líneas 305 y 312, dentro del job `Wait & Monitor Canary`). El item original lo incluía en
+  la lista de "unused" sin haberlo comprobado; es el mismo defecto que el brief advierte con
+  DEBT-001 pero en dirección contraria (aquí sobra alcance, en DEBT-001 faltaba).
+- **Fix pendiente**: `git rm .github/actions/bump-version/bump.sh .github/actions/bump-version/parse-semver.sh`
+  (o, si se prefiere conservar el cálculo fuera del YAML por legibilidad, invertir el orden: hacer
+  que `action.yml` vuelva a llamar a `bump.sh` en vez de duplicar la lógica inline — pero eso es un
+  cambio de diseño, no limpieza). No tocar `apply-weight.sh`.
+- **Effort**: XS (son 2 `rm` + una línea de README si `Scripts` los llegó a listar — no los lista,
+  verificado) — **Status**: OPEN (alcance corregido)
 
 ### DEBT-W09: README.md — No usage examples for Go, Elixir, TypeScript
 - **Effort**: S — Status: OPEN
@@ -336,3 +423,32 @@ A comprehensive audit of all 28 workflows, 9 custom actions, and meta-files was 
   errors, no new warnings introduced).
 - **Effort**: S — **Priority**: P2 — **Status**: **FIXED** (infra-CI portion reconciled; EventCatalog
   tool deployment remains separately OPEN per central `TECHNICAL-DEBT.md`, do-now: no)
+
+---
+
+## Próxima ola — los 3 más baratos de cerrar (para no volver a censar)
+
+De los 18 items ABIERTOS reales (censo 2026-08-21 arriba), estos tres no dependen de ningún
+secret/token/cluster externo que este repo no controle, y su fix cabe entero en un diff de este
+mismo repo — por eso rankean más barato que el resto:
+
+1. **DEBT-W08 (alcance ya corregido arriba)** — el más barato de los 18: son dos `git rm`
+   (`bump-version/bump.sh`, `bump-version/parse-semver.sh`), cero diseño, cero riesgo de romper
+   nada porque ya se verificó que ningún `.yml`/`.sh` del repo los invoca. `apply-weight.sh` NO se
+   toca.
+2. **DEBT-W03** (`generate-postmortem` — faltan `incident-commander`, `related-services`,
+   `escalation-path`) — extender `inputs:` en `.github/actions/generate-postmortem/action.yml`
+   siguiendo el patrón ya existente (`incident-title`/`severity`/`service`/... con
+   `required: false` + `default`) y sumar sus placeholders al heredoc del template. Es edición de
+   plantilla pura, sin dependencia externa, y el patrón a copiar ya está en el mismo fichero.
+3. **DEBT-W12** (`setup-vault-token` — masking depende de la acción upstream `hashicorp/vault-action`)
+   — antes de tocar código, la siguiente ola debe verificar si esa acción YA enmascara el token por
+   default (muchas `composite actions` de Vault lo hacen); si no, cerrar es añadir un step
+   `echo "::add-mask::${{ steps.vault.outputs.vault_token }}"` inmediatamente después del step
+   `vault`. Va tercero porque, a diferencia de los otros dos, requiere ese paso de verificación
+   antes de saber si hace falta código o solo documentar que ya está cubierto.
+
+Quedan fuera del top-3 por depender de algo fuera de este repo: DEBT-005/W05 (requieren GH App
+token / webhook de Slack que no existen todavía), W06 (requiere `alebrije/data/pagerduty/routing-key`
+en Vault), W02 (requiere clúster con Flagger real para probar el patch), W04/DEBT-004 (requieren
+credencial con permiso de escritura en repos ajenos para abrir PRs).
