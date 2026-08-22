@@ -216,6 +216,24 @@ corrido + control en las dos direcciones cada uno — ver su propia entrada mas 
 produccion — pero se cerraron igual porque el efecto/costo de cerrarlos era bajo y real, dejando
 mas presupuesto de sesion para medir W02 a fondo, que si importaba.)
 
+**Hallazgo adicional, fuera de los 15 pero directamente encima de DEBT-002** (ver la entrada
+`DEBT-002` completa arriba en el documento): al re-medir su cifra "~27" con el instrumento real
+(`reusable-event-schema-check.yml`, extraido y corrido contra los 19 repos hermanos reales), el
+instrumento devolvio **0 candidatos de tipo evento en cada uno de los repos Go/Elixir muestreados**
+— no porque esos repos no publiquen eventos (rewards-go publica al menos 9 tipos reales por su
+propio `events_publisher.go`), sino porque el regex del check (`"event_type"\s*:\s*"..."`, estilo
+JSON/dict) no reconoce ni la asignacion de campo de struct de Go (`e.EventType = "..."`) ni el
+keyword/map de Elixir (`event_type: "..."`, sin comillas en la clave) — y el patron de archivos
+(`PUBLISHER_GLOBS`) tampoco cubre el nombrado real `outbox_*_publisher.go` que este proyecto usa
+para el patron outbox. Encontrado en vivo: `cadences.reply.received` se emite hoy en
+`alebrije-mod-cadences-ex/lib/alebrije_cadences/reply_detection.ex:72` y **no tiene schema
+registrado** — drift real, no hipotetico, invisible para el gate que 10 repos consumidores ya
+tienen cableado en su CI (`DEBT-§44-CONTRACT-GAP-RECONCILE`). No se arregla en esta sesion — el
+radio (10 repos consumidores reales) exige primero correr el detector arreglado en modo
+report-only y triar el backfill antes de subir el gate a fatal; ver el spec dejado en la entrada
+`DEBT-002` para la proxima ronda. Esto es mas grande que cualquiera de los 15 originales: no es un
+item mal cerrado, es el CENSO del que salio la cifra del ticket el que estaba ciego.
+
 ---
 
 ## DEBT-001 — CERRADO 2026-08-22 (regex ampliado a chi + test dirigido contra el repo real; el "REABIERTO 2026-08-21" de abajo era la ultima medicion falsa)
@@ -331,12 +349,89 @@ pasada — se deja escrito aquí para que no se pierda.
 
 ---
 
-## DEBT-002 — Event schema registry incomplete
+## DEBT-002 — Event schema registry incomplete — PREMISE CORRECTED 2026-08-22, priority RAISED (not closed)
 
-**Status**: OPEN
-**Priority**: P3
-**Impact**: ~27 event types published by the fleet now lack registered JSON schemas (agentic, campaigns, omnichannel, proyectos, catalog, agenda, control-medico, rewards, auth enhanced)
-**Fix**: Add schemas for all missing event types — partial progress in Wave 1
+**Status**: OPEN — **the "~27" figure is unmeasurable with the current instrument, real number unknown**
+**Priority**: was P3 — **raised, see below** — the instrument this ticket's number came from is
+structurally blind to Go and Elixir, the two languages that publish the majority of this fleet's
+events.
+
+**Original claim**: ~27 event types published by the fleet lack registered schemas.
+
+**What was actually measured 2026-08-22 (the real check, run for real, not assumed)**: extracted
+the literal Python heredoc from `reusable-event-schema-check.yml`'s `check` job via
+`yaml.safe_load` (not retyped) and ran it against all 19 real sibling repos in the cowork:
+```
+alebrije-mod-rewards-go:      scanned 1 publisher file(s), 0 candidate event type(s) referenced
+alebrije-mod-crm-go:          scanned 2 publisher file(s), 0 candidate event type(s) referenced
+alebrije-mod-campaigns-ex:    scanned 2 publisher file(s), 0 candidate event type(s) referenced
+alebrije-svc-notifications-ex: scanned 1 publisher file(s), 0 candidate event type(s) referenced
+```
+**0 candidate event types found in every Go/Elixir repo sampled**, despite these being the
+fleet's highest-volume real publishers (rewards-go alone emits at least 9 distinct types per its
+own `events_publisher.go`). Aggregate across all 19 repos: only **2** missing-schema hits total
+(`toronja.order.created`, `toronja.sync.completed`, both from `alebrije-adapt-toronja`, a Python
+repo). **Neither 27 nor 2 is a trustworthy fleet-wide number** — 2 is real for the one repo whose
+idiom the regex happens to match; for every Go/Elixir repo the check returns "OK" not because
+schemas are complete but because **it cannot see the publishers at all**.
+
+**Root cause, verified against real source (not guessed)**: `EVENT_TYPE_RE` in the check is
+`r'"event_type"\s*:\s*"([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)"'` — it only matches
+literal JSON/dict-style text: a quoted key `"event_type"`, a colon, a quoted string value. Real
+Go and Elixir source does not write events that way:
+```go
+// alebrije-mod-rewards-go/internal/service/events_publisher.go:234 (the ONE file the check
+// actually scans for this repo — matches the "events_publisher.*" glob):
+e.EventType = "rewards.earned"          // struct-field assignment, no quotes around EventType
+```
+```go
+// alebrije-mod-rewards-go/internal/service/outbox_event_publisher.go — the REAL outbox-pattern
+// publisher (per this project's own "producer emits via outbox.Poller" architecture) — does NOT
+// match ANY of the 9 PUBLISHER_GLOBS (none of them match "outbox_event_publisher.go"), so it is
+// never even opened:
+p.emit(ctx, tx, "rewards.earned", outboxIdemKey("rewards.earned", e), e, ...)   // positional arg
+```
+```elixir
+# alebrije-mod-cadences-ex/lib/alebrije_cadences/reply_detection.ex:72 — DOES match the
+# "events.ex"-adjacent naming loosely but the file itself isn't named events.ex/event_publisher.ex
+# so it is ALSO never scanned; even if it were, the syntax wouldn't match:
+event_type: "cadences.reply.received",   # Elixir keyword/map shorthand, key has no quotes at all
+```
+Two independent, compounding blind spots: (1) the 9 `PUBLISHER_GLOBS` filenames don't cover the
+`outbox_*_publisher.go` naming this project's own outbox pattern actually uses, and files with
+ad-hoc names like `reply_detection.ex` that happen to emit events; (2) even for files that ARE
+scanned, the regex only recognizes JSON-literal-key syntax, which is not how Go struct fields or
+Elixir keyword lists are written.
+
+**Concrete, currently-real drift this blindness is hiding** (not hypothetical): `cadences.reply.received`
+is emitted by real code (`alebrije-mod-cadences-ex/lib/alebrije_cadences/reply_detection.ex:72`)
+and has **no registered schema** — `event-schemas/` only has `cadences.converted.v1.json` and
+`cadences.enrolled.v1.json` for the cadences domain. `reusable-event-contract.yml` is wired into
+this repo's `ci.yml` (per `DEBT-§44-CONTRACT-GAP-RECONCILE`, already CLOSED, which lists
+cadences-ex among the 10 wired consumers) and has been reporting "OK" on every PR since this
+event type was added, without ever having been able to see it.
+
+**Why this is NOT fixed in this session**: `reusable-event-schema-check.yml` is `workflow_call`d
+by ~10 consumer repos' real CI (`reusable-event-contract.yml`, `DEBT-§44-CONTRACT-GAP-RECONCILE`).
+Loosening the regex to catch Go struct-assignment and Elixir keyword syntax can only turn
+existing silent "OK"s into new FAILURES for whatever real drift has already accumulated in those
+10 repos while the gate was blind — exactly the population DEBT-002 itself says needs backfilling
+first. Shipping a stricter detector in the same session as discovering it, without coordinating
+the backfill in each of the 10 affected repos, would turn every one of their next PRs red for
+pre-existing drift nobody has triaged yet. This is squarely the class of change the domain
+guardrail for this repo warns about ("un gate que se afloje/cambie aqui se afloja/cambia en los
+20 repos que lo llaman") — here inverted (tightening, not loosening) but the same blast-radius
+argument applies to an uncoordinated rollout.
+**Spec for the fix, left for a dedicated session** (do NOT do this inline with unrelated changes):
+(1) widen `PUBLISHER_GLOBS` to include `outbox_*publisher*.go`/`.ex` and any file containing a
+call matched by a new regex, not just specific filenames; (2) add a Go-idiom pattern
+(`EventType\s*=\s*"(...)"`  struct-field assignment) and an Elixir-idiom pattern
+(`event_type:\s*"(...)"` keyword/map shorthand, no quotes around the key) alongside the existing
+JSON-literal pattern; (3) before flipping `fail-on-missing` semantics fleet-wide, run the fixed
+check in **report-only** mode (`fail-on-missing: false`, already a supported input) against all
+10 wired repos first and triage the real backfill list it surfaces — THEN raise the gate.
+**Fix (original, still valid)**: once the detector can see them, add schemas for all missing
+event types — this remains real backfill work, now against an unmeasured population, not ~27.
 
 ---
 
@@ -726,9 +821,44 @@ no se tocó (verificado que sigue llamado 2 veces en `reusable-canary-deploy.yml
   `tests/test_readme_examples.py` (new file).
 - **Effort**: S — **Status**: **CLOSED**
 
-### DEBT-W10: validate-test-pool.sh — Python-only scope
-- **What**: Does not validate Go or Elixir test files
-- **Effort**: M — Status: OPEN
+### DEBT-W10: validate-test-pool.sh — Python-only scope — premise re-measured 2026-08-22, stays OPEN with a sharper reason
+
+- **What the ticket assumed**: "Does not validate Go or Elixir test files" — implying a Go/Elixir
+  clone of the Python orphan-detector is missing work.
+- **What was actually measured (real CI invocation, not assumed)**: `validate-test-pool.sh`
+  exists because THIS fleet's Python CI (`reusable-test.yml:204`) runs pytest **per-file, off an
+  explicit curated list** (`for test_file in ...: pytest ... "$test_file"`) — so a new
+  `tests/test_foo.py` that nobody adds to that list silently never runs. That's the real failure
+  mode the script guards against.
+  Go and Elixir do **not** have that failure mode, verified against this repo's own real
+  workflows:
+  ```
+  $ grep -n "go test" .github/workflows/reusable-test-go.yml
+  150:          go test $RACE_FLAG $TAGS_FLAG -coverprofile=coverage.out -covermode=atomic ./...
+  $ grep -n "mix coveralls\|mix test" .github/workflows/reusable-test-elixir.yml
+  169:        run: mix coveralls.json
+  206:          mix coveralls 2>/dev/null | grep ...
+  ```
+  `go test ./...` and `mix coveralls` (which wraps `mix test`) both **auto-discover every test
+  file** in the module/project unconditionally — there is no curated list for a new test file to
+  fall out of sync with. Cross-checked against 2 real repos' actual `run_prepush.sh` (not just
+  the reusable workflow): `alebrije-mod-crm-go/run_prepush.sh:149` runs
+  `go test ... ./... -count=1 ...` (full auto-discovery); `alebrije-mod-agenda-ex/run_prepush.sh:99`
+  runs `mix coveralls --max-failures 20` (full auto-discovery, no `Code.require_file` curated
+  list — that pattern only appears in this session's own ad-hoc dev-machine workaround for a
+  local Postgres auth limitation, documented separately in this project's memory, and is **not**
+  the repo's committed prepush/CI mechanism).
+- **Conclusion**: writing a Go/Elixir clone of this script would be solving a problem that does
+  not exist in either ecosystem's real invocation in this fleet — dead code with nothing to catch,
+  and worse, it would read as "orphan-test coverage now handled for Go/Elixir" when the real risk
+  was never there to begin with (same shape of harm as `gen_api_collection.py`'s false "0 is
+  clean" — a mechanism that LOOKS like protection but protects against nothing).
+  The one edge that IS real for Go — a `//go:build <tag>` test file silently excluded from
+  `./...` unless `-tags` matches — is already a first-class, deliberate input on this repo's own
+  `reusable-test-go.yml` (`test-tags`), not an accidental omission; out of scope for this ticket.
+- **Effort**: (re-scoped to zero — the described gap does not exist) — **Status**: **OPEN**, but
+  the "Python-only scope" framing is retired; re-open only if a Go/Elixir repo is found that
+  genuinely curates an explicit test-file list the way Python's `reusable-test.yml` does.
 
 ### DEBT-W11: Event schemas — required fields missing descriptions — CLOSED 2026-08-22
 
