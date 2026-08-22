@@ -236,6 +236,158 @@ item mal cerrado, es el CENSO del que salio la cifra del ticket el que estaba ci
 
 ---
 
+## Continuacion 2026-08-22 — confirmacion de ronda 2 (censo re-derivado + auditoria de supresiones en `scripts/`)
+
+**PASO 0, re-derivado de forma independiente (no releyendo el texto de arriba, parseando el
+CUERPO de cada header programaticamente)** sobre el arbol de hoy, HEAD `975cb5a` (el mismo que
+dejo la ronda anterior — nada lo toco entre medias):
+
+```
+$ grep -niE '^#.*debt' TECHNICAL-DEBT.md | tail -n +2 | wc -l
+25
+```
+
+Y para cada uno de los 25, se extrajo su campo `Status` real del cuerpo (no del titulo) con un
+parser propio. **Primer intento del parser: MINTIO** — un regex que solo reconocia `**Status**:`
+en negritas paso por alto `DEBT-W05`/`DEBT-W06` (que escriben `- **Effort**: S — Status: OPEN`,
+sin negrita en la palabra `Status`) y `DEBT-W13` (`Effort: XS — Status: **CLOSED**`), y los conto
+como "envoltorio sin status" en vez de ABIERTO/CERRADO — dio **12 CERRADO / 9 ABIERTO / 4
+envoltorio** (suma 25, pero la distribucion es falsa). Corregido el regex para buscar `Status`
+en cualquier parte de la linea (con o sin negrita), se re-corrio:
+
+```
+$ python3 /private/tmp/claude-501/-Users-ileonelperea-Documents-cowork-personal-alebrije/5a322fb4-3159-4520-a95f-268e09f73069/scratchpad/census-body-parser-workflowsronda2.py TECHNICAL-DEBT.md | tail -2
+total headers: 25
+CERRADO: 13 ABIERTO: 11 envoltorio: 1 sum: 25
+```
+
+**13 CERRADO, 11 ABIERTO, 1 envoltorio (el header `## §44 — ...` que envuelve a
+`DEBT-§44-CONTRACT-GAP-RECONCILE`, sin `Status` propio) — IDENTICO a lo que esta seccion ya
+afirmaba.** No hay drift que corregir: el censo de la ronda anterior era correcto; lo que fallo
+fue mi PRIMER intento de reproducirlo con un parser demasiado estricto — exactamente el tipo de
+instrumento que miente hacia un lado (aqui, hacia MAS envoltorio/menos cerrado) que esta unidad
+tiene la obligacion de detectar antes de creerle. Confirmados por parseo de cuerpo, los **11
+ABIERTO** son: `DEBT-002, DEBT-003, DEBT-004, DEBT-005, DEBT-W01, DEBT-W04, DEBT-W05, DEBT-W06,
+DEBT-W10, DEBT-W12, DEBT-W15` — misma lista que la ronda anterior dejo escrita, sin cambios.
+
+**Punto 2 del encargo (cerrar los 15, o los que tengan mecanismo)**: de los 15 que entraron a la
+ronda anterior, 4 ya se cerraron con mecanismo corrido (`DEBT-W02`, `DEBT-W03`, `DEBT-W09`,
+`DEBT-W11`, ver sus entradas mas abajo) y el premise de 2 mas se corrigio con medicion real sin
+que eso habilite un cierre (`DEBT-002`, `DEBT-W10`, ver sus entradas). Para los 11 que siguen
+ABIERTO no aparecio en esta ronda un mecanismo nuevo que no existiera ya documentado — cada uno
+tiene su razon de bloqueo citada con evidencia (vault RBAC real para W12, coordinacion de 10 repos
+consumidores para 002, decision explicita del user para 003, ausencia de infra de pago/Slack para
+005/W05, backlog de esfuerzo real sin atajo para W01/W04/004/W15/W06). No se fuerza ningun cierre
+sin mecanismo — cerrar sin haber corrido nada seria la misma clase de "existe pero no funciona"
+que `DEBT-001` origino.
+
+**Punto 3 del encargo — auditoria de `scripts/` por supresiones de error REALES (`|| true`,
+exit codes ignorados, `set +e` defensivo), distinguiendo USO de MENCION**:
+
+`scripts/` tiene exactamente 4 archivos fuente (fuera de `__pycache__`, confirmado con
+`find scripts -type f`): `gen-api-collection.sh`, `gen_api_collection.py`,
+`audit-fe-be-contracts.sh`, `fe_be_audit.py`. Comando de poblacion (excluye contenido de
+comentarios ANTES de buscar el patron, para no contar una mencion en prosa como si fuera el
+patron ejecutandose — el incidente que este mismo proyecto ya sufrio):
+
+```bash
+find scripts -type f \( -name '*.sh' -o -name '*.py' \) -not -path '*__pycache__*' -print0 |
+while IFS= read -r -d '' f; do
+  sed -E 's/(^|[[:space:]])#.*$//' "$f" \
+    | grep -nE '\|\|[[:space:]]*true\b|\bset[[:space:]]+\+e\b|except[[:space:]]*[A-Za-z_.]*[[:space:]]*:[[:space:]]*pass\b'
+done
+```
+
+```
+(sin salida)
+$ echo $?
+1
+```
+
+**Poblacion = 0.** Tambien se revisaron a mano los 4 archivos por otras formas de supresion no
+cubiertas por ese regex (`subprocess`/`os.system` con `check=False` o retorno descartado,
+`$?` capturado y nunca comparado): `grep -nE 'subprocess\.|os\.system|check=False|returncode|\$\?'
+scripts/*.py scripts/*.sh` → sin salida — ninguno de los 4 scripts invoca un subproceso ni
+inspecciona un exit code ajeno, asi que no hay superficie para esa clase de supresion. Los dos
+`except` reales que SI existen (`gen_api_collection.py:95` `except Exception as e: print(...)`,
+per-archivo, continua el batch pero **imprime el warning a stderr, no lo traga**; y
+`fe_be_audit.py:275` `except OSError: return []`, un archivo TS ilegible devuelve lista vacia sin
+aviso) no son la forma `|| true`/`set +e`/`except: pass` que el encargo nombra, y ninguno de los
+dos hace que un CHECK/GATE reporte exito falso — el segundo es la unica supresion silenciosa real
+de los 4 archivos y queda anotado abajo como hallazgo menor, no como poblacion del patron pedido.
+
+**Control de inyeccion, EN LAS DOS DIRECCIONES, con `Edit` (nunca `git`)** — para demostrar que el
+detector de arriba SI sabe encontrar un `|| true` real y SI sabe ignorar una mencion dentro de un
+comentario:
+
+1. Baseline (arbol tal cual, sin tocar nada):
+   ```
+   $ bash /private/tmp/claude-501/-Users-ileonelperea-Documents-cowork-personal-alebrije/5a322fb4-3159-4520-a95f-268e09f73069/scratchpad/suppress-audit-workflowsronda2.sh
+   POBLACION=0 (ninguna supresion de error USADA en scripts/, distinguido de mencion)
+   EXIT=0
+   ```
+2. Inyectado con `Edit` en `scripts/gen-api-collection.sh`: se reemplazo el `if ! python3 ...;
+   then log_error ...; exit 1; fi` real por `python3 ... || true` (una supresion de verdad, en
+   linea ejecutable). Al MISMO TIEMPO, inyectado con `Edit` en
+   `scripts/audit-fe-be-contracts.sh` un comentario puro: `# NOTA CONTROL M-RONDA2: nunca escribas
+   || true aqui para tapar un fallo real.` (la cadena `|| true` aparece en el archivo, pero SOLO
+   dentro de un comentario — la MISMA trampa que ya costo cara en este proyecto). Re-corrido el
+   detector:
+   ```
+   $ bash /private/tmp/claude-501/-Users-ileonelperea-Documents-cowork-personal-alebrije/5a322fb4-3159-4520-a95f-268e09f73069/scratchpad/suppress-audit-workflowsronda2.sh
+   scripts/gen-api-collection.sh:54:python3 "$SCRIPT_DIR/gen_api_collection.py" --repo "$API_REPO_PATH" --output "$OUTPUT_FILE" || true
+   POBLACION>0 -- ver lineas arriba
+   EXIT=1
+   ```
+   **RED** — y la unica linea acusada es la de `gen-api-collection.sh` (el USO real). La mencion
+   dentro del comentario de `audit-fe-be-contracts.sh` **no aparece en la salida** — el detector
+   la ignoro correctamente porque el `sed` le quito todo lo que sigue a `#` antes de buscar el
+   patron. Esto es la prueba de USO-vs-MENCION que pide el encargo, no solo la prueba de que el
+   detector puede encender una luz roja.
+3. Restaurado con `Edit` (los dos archivos, al contenido exacto de antes de este control):
+   ```
+   $ bash /private/tmp/claude-501/-Users-ileonelperea-Documents-cowork-personal-alebrije/5a322fb4-3159-4520-a95f-268e09f73069/scratchpad/suppress-audit-workflowsronda2.sh
+   POBLACION=0 (ninguna supresion de error USADA en scripts/, distinguido de mencion)
+   EXIT=0
+   $ git status --porcelain
+   (vacio)
+   $ git diff -- scripts/
+   (vacio)
+   $ bash -n scripts/gen-api-collection.sh; echo $?
+   0
+   $ bash -n scripts/audit-fe-be-contracts.sh; echo $?
+   0
+   ```
+   **GREEN**, arbol identico a como estaba, sin residuo.
+
+**Veredicto de la auditoria de `scripts/` (punto 3): poblacion real = 0 supresiones de error
+`|| true`/`set +e`/`except: pass` USADAS en los 4 scripts existentes**, con el detector probado en
+las dos direcciones sobre el arbol real de este repo (no un harness aislado) y con el caso de
+MENCION-en-comentario probado explicitamente para no repetir el incidente ya documentado en este
+proyecto. Hallazgo menor fuera del patron pedido: `fe_be_audit.py:275` (`except OSError: return
+[]`) traga silenciosamente un fallo de lectura de archivo TS sin log — no afecta ningun gate
+fatal (el peor efecto es sub-contar rutas frontend en el reporte, no un exito falso de CI) y no es
+uno de los 15 tickets ni parte de la poblacion pedida por el encargo; se deja anotado aqui, sin
+ticket nuevo, porque el efecto es cosmetico y el archivo ya tiene otra ruta de `except` (linea 95
+del otro script) que SI loggea — asimetria menor, no bloqueante.
+
+**Punto 4 del encargo — cifra exacta de lo que queda abierto**: **11 de 25** tickets con cadena
+`DEBT` en este archivo siguen ABIERTO tras esta ronda y la anterior combinadas (13 CERRADO + 1
+envoltorio + 11 ABIERTO = 25): `DEBT-002` (instrumento del propio censo ciego a Go/Elixir, backfill
+de poblacion aun no medida), `DEBT-003` (decision explicita del user, deferred), `DEBT-004`
+(bump-PR cross-fleet, sin bot), `DEBT-005` (ci-cost-aggregator necesita GH App token),
+`DEBT-W01` (release-extended sin goreleaser/docker/cosign), `DEBT-W04` (cross-repo-trigger sin
+apertura de PRs), `DEBT-W05` (ci-cost-aggregator sin Slack, mismo bloqueo que 005), `DEBT-W06`
+(reusable-notify sin canal PagerDuty, falta Vault path), `DEBT-W10` (premisa "Python-only" ya
+refutada con medicion real — Go/Elixir no tienen el failure-mode que el ticket asumia — pero se
+mantiene la decision ya tomada de dejarlo ABIERTO como placeholder, no se fuerza un cierre nuevo
+en esta ronda), `DEBT-W12` (fix de `outputToken` ya enviado, pero el login E2E real contra Vault
+kubernetes-auth sigue sin ejecutarse porque requiere acceso root/admin que las guardrails de este
+proyecto restringen a la terminal local del user), `DEBT-W15` (agregacion de run-ids en matrix,
+mejora de observabilidad, no de correctitud).
+
+---
+
 ## DEBT-001 — CERRADO 2026-08-22 (regex ampliado a chi + test dirigido contra el repo real; el "REABIERTO 2026-08-21" de abajo era la ultima medicion falsa)
 
 **Status**: **CLOSED 2026-08-22** (el `Status: CLOSED` de 2026-05-07 fue FALSO, luego REABIERTO
