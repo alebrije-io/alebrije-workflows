@@ -64,29 +64,27 @@ runs:
         RETRY_COUNT=0
         while [ ${RETRY_COUNT} -lt ${MAX_RETRIES} ]; do
           if [ "$METHOD" == "istio" ]; then
-            # Flagger CanaryCRD patch
+            # Flagger CanaryCRD patch.
+            # `error-rate`/`latency` moved INSIDE `spec.analysis.metrics` (alongside
+            # `request-success-rate`) -- there is no top-level `spec.canaryMetrics`
+            # field on the real CRD. Verified against the upstream schema
+            # (https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml,
+            # canaries.flagger.app v1beta1): `spec` properties are
+            # analysis/autoscalerRef/ingressRef/metricsServer/progressDeadlineSeconds/
+            # provider/revertOnDeletion/routeRef/service/skipAnalysis/suspend/targetRef/
+            # upstreamRef -- no `canaryMetrics`. Because `apiextensions.k8s.io/v1` CRDs
+            # are structural schemas, the API server silently PRUNES unknown top-level
+            # fields on a merge patch: the old payload's `canaryMetrics` array was
+            # dropped with no error, and the surrounding `2>/dev/null` hid even the
+            # non-fatal warning. Same defect class fixed in apply-weight.sh --method
+            # istio (see TECHNICAL-DEBT.md DEBT-W02 for the live before/after proof
+            # against a real Canary CR).
             PATCH_PAYLOAD=$(cat <<EOF
             {
               "spec": {
                 "targetRef": {
                   "name": "${SERVICE}"
                 },
-                "canaryMetrics": [
-                  {
-                    "name": "error-rate",
-                    "thresholdRange": {
-                      "max": 5
-                    },
-                    "interval": "1m"
-                  },
-                  {
-                    "name": "latency",
-                    "thresholdRange": {
-                      "max": 2000
-                    },
-                    "interval": "1m"
-                  }
-                ],
                 "analysis": {
                   "interval": "1m",
                   "threshold": 5,
@@ -100,6 +98,20 @@ runs:
                         "min": 99
                       },
                       "interval": "1m"
+                    },
+                    {
+                      "name": "error-rate",
+                      "thresholdRange": {
+                        "max": 5
+                      },
+                      "interval": "1m"
+                    },
+                    {
+                      "name": "latency",
+                      "thresholdRange": {
+                        "max": 2000
+                      },
+                      "interval": "1m"
                     }
                   ]
                 }
@@ -109,7 +121,7 @@ runs:
             )
 
             if kubectl patch canary/${SERVICE} -n ${NAMESPACE} \
-              --type merge -p "$PATCH_PAYLOAD" 2>/dev/null; then
+              --type merge -p "$PATCH_PAYLOAD"; then
               echo "::notice::Canary ${SERVICE} patched with weight ${WEIGHT}%"
 
               # Check canary status
@@ -132,15 +144,18 @@ runs:
               CANARY_REPLICAS=1
             fi
 
-            # Patch canary deployment
-            kubectl patch deployment/${SERVICE}-canary -n ${NAMESPACE} \
-              -p "{\"spec\":{\"replicas\":${CANARY_REPLICAS}}}" 2>/dev/null || true
-
-            echo "::notice::Canary weight ${WEIGHT}% applied via replica scaling (${CANARY_REPLICAS}/${STABLE_REPLICAS} replicas)"
-
-            echo "weight-applied=${WEIGHT}" >> $GITHUB_OUTPUT
-            echo "canary-status=progressing" >> $GITHUB_OUTPUT
-            exit 0
+            # Patch canary deployment. NOTE: this used to be `|| true`, which meant a
+            # failed patch (missing -canary deployment, RBAC denial, etc.) still fell
+            # through to the unconditional "::notice:: ... applied" + exit 0 below --
+            # a silent false-success identical in shape to the istio-path bug above.
+            # Now it retries like the istio branch instead of lying about the outcome.
+            if kubectl patch deployment/${SERVICE}-canary -n ${NAMESPACE} \
+              -p "{\"spec\":{\"replicas\":${CANARY_REPLICAS}}}"; then
+              echo "::notice::Canary weight ${WEIGHT}% applied via replica scaling (${CANARY_REPLICAS}/${STABLE_REPLICAS} replicas)"
+              echo "weight-applied=${WEIGHT}" >> $GITHUB_OUTPUT
+              echo "canary-status=progressing" >> $GITHUB_OUTPUT
+              exit 0
+            fi
           fi
 
           RETRY_COUNT=$((RETRY_COUNT + 1))

@@ -28,6 +28,22 @@ inputs:
     description: "What triggered the incident (e.g., deploy, traffic spike, config change)"
     required: false
     default: "TBD"
+  incident-commander:
+    description: "Person who owned/coordinated the incident response (DEBT-W03)"
+    required: false
+    default: "TBD"
+  related-services:
+    description: "Comma-separated list of OTHER services impacted or implicated besides the primary `service` (DEBT-W03)"
+    required: false
+    default: ""
+  deployment-context:
+    description: "What was deployed/changed in the window leading up to the incident -- repo, version/SHA, deploy time (DEBT-W03)"
+    required: false
+    default: "TBD"
+  escalation-path:
+    description: "Who was paged and in what order (on-call -> secondary -> EM, etc.) (DEBT-W03)"
+    required: false
+    default: "TBD"
   output-filename:
     description: "Output markdown filename (defaults to postmortem-<run-id>.md)"
     required: false
@@ -69,8 +85,8 @@ runs:
         # Build the file properly (avoid heredoc marker collisions)
         {
           printf "# Postmortem: %s\n\n" "${{ inputs.incident-title }}"
-          printf "> **Severity**: %s | **Service**: %s | **Generated**: %s\n" \
-            "${{ inputs.severity }}" "${{ inputs.service }}" "$GENERATED_AT"
+          printf "> **Severity**: %s | **Service**: %s | **Incident Commander**: %s | **Generated**: %s\n" \
+            "${{ inputs.severity }}" "${{ inputs.service }}" "${{ inputs.incident-commander }}" "$GENERATED_AT"
           printf "> **Repo**: %s | **Actor**: %s | **Commit**: %s\n\n" \
             "${{ github.repository }}" "${{ github.actor }}" "$SHA"
           printf -- "---\n\n"
@@ -91,12 +107,22 @@ runs:
           printf "<!-- Describe the technical root cause. What failed and why? -->\n\n"
           printf "_Triggered by_: %s\n\n" "${{ inputs.triggered-by }}"
           printf -- "---\n\n"
+          printf "## Deployment Context\n\n"
+          printf "<!-- What was deployed/changed in the window leading up to the incident? -->\n\n"
+          printf "%s\n\n" "${{ inputs.deployment-context }}"
+          printf -- "---\n\n"
           printf "## Impact\n\n"
-          printf "- **Duration**: <!-- from detected_at to resolved_at -->\n"
-          printf "- **Services affected**: %s\n" "${{ inputs.service }}"
-          printf "- **Users affected**: <!-- count or percentage -->\n"
-          printf "- **Data loss**: <!-- yes/no -->\n"
-          printf "- **SLA breach**: <!-- yes/no -->\n\n"
+          printf -- "- **Duration**: <!-- from detected_at to resolved_at -->\n"
+          printf -- "- **Primary service affected**: %s\n" "${{ inputs.service }}"
+          RELATED="${{ inputs.related-services }}"
+          if [ -n "$RELATED" ]; then
+            printf -- "- **Related services also impacted**: %s\n" "$RELATED"
+          else
+            printf -- "- **Related services also impacted**: none declared\n"
+          fi
+          printf -- "- **Users affected**: <!-- count or percentage -->\n"
+          printf -- "- **Data loss**: <!-- yes/no -->\n"
+          printf -- "- **SLA breach**: <!-- yes/no -->\n\n"
           printf -- "---\n\n"
           printf "## Contributing Factors\n\n"
           printf "1. \n2. \n\n"
@@ -111,18 +137,24 @@ runs:
           printf "| 2 | | | | pending |\n\n"
           printf -- "---\n\n"
           printf "## Detection and Alerting\n\n"
-          printf "- **How detected**: <!-- monitoring alert / user report / CI -->\n"
-          printf "- **Alert lag**: <!-- time between incident start and alert -->\n"
-          printf "- **Alerting gaps**: <!-- what should have fired but did not -->\n\n"
+          printf -- "- **How detected**: <!-- monitoring alert / user report / CI -->\n"
+          printf -- "- **Alert lag**: <!-- time between incident start and alert -->\n"
+          printf -- "- **Alerting gaps**: <!-- what should have fired but did not -->\n\n"
+          printf -- "---\n\n"
+          printf "## Escalation Path\n\n"
+          printf -- "- **Incident Commander**: %s\n" "${{ inputs.incident-commander }}"
+          printf -- "- **Paged (in order)**: %s\n" "${{ inputs.escalation-path }}"
+          printf -- "- **Time to acknowledge**: <!-- from page to ack -->\n"
+          printf -- "- **Escalation gaps**: <!-- who should have been paged sooner/later -->\n\n"
           printf -- "---\n\n"
           printf "## Lessons Learned\n\n"
           printf "<!-- What did we learn? What would you do differently? -->\n\n"
           printf -- "---\n\n"
           printf "## References\n\n"
-          printf "- Commit: %s\n" "$SHA"
-          printf "- GitHub Run: https://github.com/%s/actions/runs/%s\n" \
+          printf -- "- Commit: %s\n" "$SHA"
+          printf -- "- GitHub Run: https://github.com/%s/actions/runs/%s\n" \
             "${{ github.repository }}" "${{ github.run_id }}"
-          printf "- Related ADRs: <!-- link relevant ADRs -->\n"
+          printf -- "- Related ADRs: <!-- link relevant ADRs -->\n"
         } > "$OUT"
 
         echo "Generated postmortem template: $OUT"

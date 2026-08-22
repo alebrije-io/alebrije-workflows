@@ -15,14 +15,16 @@
           "properties": {
             "notification_id": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "description": "Notifications service internal id of the email that was opened."
             },
             "message_id": {
               "type": ["string", "null"]
             },
             "recipient": {
               "type": "string",
-              "format": "email"
+              "format": "email",
+              "description": "Address the email was sent to."
             },
             "provider": {
               "type": ["string", "null"]
@@ -32,7 +34,8 @@
             },
             "opened_at": {
               "type": "string",
-              "format": "date-time"
+              "format": "date-time",
+              "description": "Timestamp the open beacon fired."
             },
             "user_agent": {
               "type": ["string", "null"]

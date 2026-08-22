@@ -39,3 +39,9 @@ runs:
         secrets: |
           ${{ inputs.secrets }}
           ${{ inputs.extra-secrets }}
+        # Without this, `outputs.vault-token` below is ALWAYS an empty string:
+        # vault-action's src/action.js:19 defaults `outputToken` to `false`
+        # unless this exact input is passed, and its setOutput('vault_token', ...)
+        # call is gated behind `if (outputToken === true)` (src/action.js:90-91).
+        # See DEBT-W12 for the real vendored-source verification of both lines.
+        outputToken: "true"

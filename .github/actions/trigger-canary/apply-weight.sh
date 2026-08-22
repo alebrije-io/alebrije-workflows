@@ -25,11 +25,23 @@ fi
 
 case "$METHOD" in
   istio)
-    # Istio/Flagger Canary CRD: patch weight field
+    # Istio/Flagger Canary CRD: patch weight field.
+    # Field path is `spec.analysis.maxWeight` -- NOT `spec.analysis.canary.maxWeight`.
+    # Verified against the real upstream CRD (fetched from
+    # https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml,
+    # canaries.flagger.app, schema v1beta1): `spec.analysis` has no `canary` sub-object.
+    # The old path silently no-oped: `apiextensions.k8s.io/v1` CRDs are structural
+    # schemas, so the API server PRUNES unknown fields on a merge patch -- kubectl
+    # exits 0 ("patched (no change)") and prints only a non-fatal warning, which the
+    # old `2>/dev/null` below hid. `|| { exit 1; }` never fires because pruning is not
+    # a kubectl error. Reproduced live against a real Canary CR in the docker-desktop
+    # cluster before this fix (maxWeight stayed unchanged after the old payload) and
+    # confirmed fixed after (maxWeight actually updates) -- see TECHNICAL-DEBT.md
+    # DEBT-W02 for the exact commands/output.
     kubectl patch canary "${SERVICE_NAME}" \
       -n "${NAMESPACE}" \
       --type merge \
-      -p "{\"spec\":{\"analysis\":{\"canary\":{\"maxWeight\":${WEIGHT}}}}}" 2>/dev/null || {
+      -p "{\"spec\":{\"analysis\":{\"maxWeight\":${WEIGHT}}}}" || {
       echo "::warning::Failed to patch Canary CRD for ${SERVICE_NAME}"
       exit 1
     }

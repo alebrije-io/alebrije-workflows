@@ -305,6 +305,59 @@ def test_all_event_schemas_still_structurally_valid():
     assert errors == [], errors
 
 
+def _required_fields_missing_description(schema_node: dict, path: str = "") -> list[str]:
+    """Walk one schema document (JSON-Schema draft-07, this repo's dialect: plain
+    ``allOf``/``properties``/``required``, no ``$ref`` resolution needed here since
+    every event schema's own ``required`` list only ever names sibling
+    ``properties`` it also declares -- not fields pulled in through envelope.v1's
+    ``$ref``) and return ``"path.to.field"`` for every field that is BOTH listed
+    in a ``required`` array AND missing its own ``description`` key (DEBT-W11).
+    """
+    missing: list[str] = []
+
+    def walk(node, here: str) -> None:
+        if isinstance(node, dict):
+            props = node.get("properties", {})
+            for req_name in node.get("required", []):
+                field = props.get(req_name)
+                if isinstance(field, dict) and "description" not in field:
+                    missing.append(f"{here}.{req_name}" if here else req_name)
+            for sub in node.get("allOf", []):
+                walk(sub, here)
+            for prop_name, prop_schema in props.items():
+                walk(prop_schema, f"{here}.{prop_name}" if here else prop_name)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item, here)
+
+    walk(schema_node, path)
+    return missing
+
+
+def test_required_fields_have_descriptions():
+    """DEBT-W11 — every field named in a JSON-Schema ``required`` array (at any
+    nesting level, including envelope.v1's own top-level ``required``) must
+    carry its own ``description``. ``$ref``-only entries (``{"$ref": "..."}``)
+    are skipped -- they have no ``properties``/``required`` of their own to
+    walk, the referenced document is checked separately when its own file is
+    globbed.
+
+    This is the exact scan (unchanged) that measured 22 real gaps against
+    HEAD before this session's fix -- see TECHNICAL-DEBT.md DEBT-W11 for the
+    full list and the live rojo/verde control (revert one description with
+    Edit, this test fails naming that exact field; restore, it passes).
+    """
+    errors = []
+    for f in sorted(glob.glob(os.path.join(SCHEMA_DIR, "*.json"))):
+        name = os.path.basename(f)
+        if ".example." in name:
+            continue
+        schema = json.load(open(f))
+        for missing in _required_fields_missing_description(schema):
+            errors.append(f"{name}: {missing}")
+    assert errors == [], f"{len(errors)} required field(s) missing description: {errors}"
+
+
 # ---------------------------------------------------------------------------
 # Stand-alone runner (no pytest dependency required)
 # ---------------------------------------------------------------------------

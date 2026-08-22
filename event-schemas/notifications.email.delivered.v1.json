@@ -29,7 +29,8 @@
             },
             "recipient": {
               "type": "string",
-              "format": "email"
+              "format": "email",
+              "description": "Address the email was sent to."
             },
             "provider": {
               "type": "string",
@@ -40,7 +41,8 @@
             },
             "delivered_at": {
               "type": "string",
-              "format": "date-time"
+              "format": "date-time",
+              "description": "Timestamp the provider reported acceptance by the recipient MTA."
             },
             "response_code": {
               "type": ["string", "null"],

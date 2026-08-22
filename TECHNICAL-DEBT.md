@@ -139,6 +139,85 @@ pasada); queda documentado para que no se pierda.
 
 ---
 
+## Continuacion 2026-08-22 — ronda 2 (los 15 restantes + auditoria de `scripts/`)
+
+**Re-medicion PASO 0, mismo metodo, sobre el arbol heredado de la ronda 1** (HEAD `101c0fc`,
+ya en `origin/main`): `grep -niE '^#.*debt' TECHNICAL-DEBT.md | tail -n +2 | wc -l` → **25**
+(identico), 9 CERRADO (identico), **15 ABIERTO** (identico), 1 envoltorio. El arbol no habia
+cambiado desde el cierre de la ronda 1 — la cifra hereda sin discrepancia. Confirma la foto del
+encargo: `DEBT-002, 003, 004, 005, W01..W06, W09..W12, W15`.
+
+**Auditoria de `scripts/` (punto 2 del encargo — buscar mas mecanismos ciegos como DEBT-001)**:
+el directorio tiene exactamente 4 scripts (fuera de `__pycache__`):
+`gen_api_collection.py`+`gen-api-collection.sh` (YA arreglados en la ronda 1, DEBT-001) y
+`fe_be_audit.py`+`audit-fe-be-contracts.sh` (el otro par que produce un conteo). Corrido contra
+la flota real:
+```
+$ python3 scripts/fe_be_audit.py --json   # invocado SIN el staging que hace reusable-contract-check.yml
+{'fe_endpoints': 0, 'be_endpoints': 0, 'matched': 0, 'fe_only': 0, 'be_only': 0}
+```
+**Primera impresion: parece el mismo bug que DEBT-001 (0 total).** Verificado que NO lo es —
+`fe_be_audit.py` resuelve `WORKSPACE = Path(__file__).resolve().parent.parent`, que solo apunta
+al workspace real (el folder que CONTIENE `alebrije-frontend/`, `alebrije-mod-*/`, etc. como
+hermanos) cuando el script vive en `<workspace>/scripts/fe_be_audit.py` — exactamente como
+`reusable-contract-check.yml:109-115` lo deja (`cp workflows/scripts/fe_be_audit.py scripts/`,
+ejecutado desde la raiz del workspace). Corrido con ese staging real replicado a mano
+(`cp` a la raiz del cowork, que SI contiene los 14 repos hermanos como submodulos de directorio):
+```
+$ python3 scripts/fe_be_audit.py --json   # staged como CI lo hace, WORKSPACE = raiz real
+{'fe_endpoints': 931, 'be_endpoints': 1580, 'matched': 571, 'fe_only': 360, 'be_only': 1009}
+```
+No vaciamente cero — **veredicto: LIMPIO, no ciego**, cuando se invoca como CI lo invoca.
+Y la invocacion "incorrecta" (desde dentro de `alebrije-workflows/`, sin staging) **tampoco miente**:
+cada modulo sale marcado `backend_missing=True` explicitamente (consola Y markdown dicen
+`(backend missing)` / `| missing |`), y `--strict` (el default real de
+`reusable-contract-check.yml`, `inputs.strict: default: true`) devuelve **exit 1** en ese estado
+— confirmado corriendo `python3 scripts/fe_be_audit.py --strict` sin staging → `STRICT_EXIT=1`.
+Fail-closed por diseño, lo opuesto al patron DEBT-001. No se encontro un segundo mecanismo ciego
+en `scripts/`; los 4 scripts existentes quedan auditados.
+
+**El hallazgo principal de esta ronda no salio de `scripts/` — salio de re-verificar DEBT-W02
+contra el schema real de Flagger** (fetched, no adivinado): la ranking original de la ronda 1
+puso a DEBT-W02 en el puesto #4 por "el modo de fallo es fail-closed"; esa conclusion solo era
+cierta para el CLI standalone `apply-weight.sh` en el metodo istio revisado superficialmente —
+al aplicar el schema real contra un `Canary` CR real en el cluster docker-desktop, el campo que
+patchea (`spec.analysis.canary.maxWeight`) **no existe** en el CRD real y el API server lo
+**PRUNEA en silencio** (structural schema, `apiextensions.k8s.io/v1`) — exit 0, "patched (no
+change)", el peso real nunca cambia. Y `apply-weight.sh --method istio` tiene 2 llamadores reales
+en `reusable-canary-deploy.yml` (no es codigo muerto). Esto es el patron DEBT-001 sobre un
+camino de deploy EN VIVO, no sobre un script sin llamadores — **peor razon que cualquiera de los
+15 originales**. Re-rankeado a #1, por delante de DEBT-W12. Ver la entrada `DEBT-W02` completa
+mas abajo para el comando+salida real de la prueba en las dos direcciones.
+
+**Cerrados DE VERDAD en esta ronda: DEBT-W02, DEBT-W03, DEBT-W09, DEBT-W11** (4 de 15, mecanismo
+corrido + control en las dos direcciones cada uno — ver su propia entrada mas abajo). Post-cierre:
+25 headers (sin cambio), **13 CERRADO** (9+4), **11 ABIERTO** (15−4), 1 envoltorio. 13+11+1=25.
+
+**Orden final por PEOR RAZON de los 15 que entraron a esta ronda** (1=peor, cerrado marcado):
+1. **DEBT-W02** — CERRADO. Camino de deploy EN VIVO, silenciosamente no-op (ver arriba).
+2. **DEBT-W12** — abierto, ver su entrada: fix enviado (agregar `outputToken: 'true'`), pero el
+   auth kubernetes E2E real sigue sin ejecutarse (razon medida, no supuesta — ver abajo).
+3. **DEBT-002** — abierto, sin cambio de razon (backfill de 27 schemas es trabajo real de
+   varios repos, no una sesion).
+4. **DEBT-W10** — abierto, sin cambio de razon.
+5. **DEBT-W06** — abierto, sin cambio de razon.
+6. **DEBT-W04** — abierto, sin cambio de razon.
+7. **DEBT-004** — abierto, sin cambio de razon.
+8. **DEBT-W01** — abierto, sin cambio de razon.
+9. **DEBT-W15** — abierto, sin cambio de razon.
+10. **DEBT-005** — abierto, sin cambio de razon.
+11. **DEBT-W05** — abierto, sin cambio de razon.
+12. **DEBT-003** — abierto, decision explicita del user, sin cambio.
+13. **DEBT-W11** — CERRADO.
+14. **DEBT-W03** — CERRADO.
+15. **DEBT-W09** — CERRADO.
+
+(W11/W03/W09 quedan bajos en la lista de PEOR RAZON — documentacion/metadata pura, sin riesgo de
+produccion — pero se cerraron igual porque el efecto/costo de cerrarlos era bajo y real, dejando
+mas presupuesto de sesion para medir W02 a fondo, que si importaba.)
+
+---
+
 ## DEBT-001 — CERRADO 2026-08-22 (regex ampliado a chi + test dirigido contra el repo real; el "REABIERTO 2026-08-21" de abajo era la ultima medicion falsa)
 
 **Status**: **CLOSED 2026-08-22** (el `Status: CLOSED` de 2026-05-07 fue FALSO, luego REABIERTO
@@ -348,15 +427,150 @@ A comprehensive audit of all 28 workflows, 9 custom actions, and meta-files was 
 - **Effort**: L
 - **Status**: OPEN
 
-### DEBT-W02: trigger-canary action — Flagger CRD structure may be incorrect
-- **What**: canaryMetrics field in patch may not exist in Flagger Canary CRD spec; weights may not apply
-- **Effort**: M (requires Flagger docs review + cluster testing)
-- **Status**: OPEN
+### DEBT-W02: trigger-canary action — Flagger CRD structure was WRONG, live path was a silent no-op — CLOSED 2026-08-22
 
-### DEBT-W03: generate-postmortem action — template incomplete
-- **What**: Missing incident commander, related services, deployment context, escalation path
-- **Effort**: S
-- **Status**: OPEN
+- **What (was broken, worse than suspected)**: fetched the real upstream Flagger CRD
+  (`https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml`,
+  `canaries.flagger.app` v1beta1) and parsed its OpenAPI v3 schema. Real `spec` properties:
+  `analysis, autoscalerRef, ingressRef, metricsServer, progressDeadlineSeconds, provider,
+  revertOnDeletion, routeRef, service, skipAnalysis, suspend, targetRef, upstreamRef` — **no
+  `canaryMetrics`**. Real `spec.analysis` properties: `alerts, canaryReadyThreshold, interval,
+  iterations, match, maxWeight, metrics, mirror, mirrorWeight, primaryReadyThreshold,
+  sessionAffinity, stepWeight, stepWeightPromotion, stepWeights, threshold, webhooks` — **no
+  `canary` sub-object**. Both `apply-weight.sh --method istio` (`spec.analysis.canary.maxWeight`)
+  and `trigger-canary/action.yml`'s inline istio branch (`spec.canaryMetrics`) patched fields
+  that do not exist on the real CRD.
+  `apply-weight.sh` is **not** dead code — `reusable-canary-deploy.yml:305,312` calls it for
+  every weight-promotion step in the loop when `use-istio-flagger: true`, i.e. this is a LIVE
+  production path.
+- **Why this is worse than "may be incorrect"**: `apiextensions.k8s.io/v1` CRDs are structural
+  schemas, so the Kubernetes API server silently **PRUNES unknown fields** on a merge patch
+  instead of rejecting them. Proved live, not inferred: applied the real fetched CRD to the
+  local docker-desktop cluster, created a real `Canary` CR, and ran the exact broken payload:
+  ```
+  $ kubectl patch canary probe-svc -n w2-flagger-probe --type merge -p '{"spec":{"analysis":{"canary":{"maxWeight":50}}}}'
+  Warning: unknown field "spec.analysis.canary"
+  canary.flagger.app/probe-svc patched (no change)
+  $ kubectl get canary probe-svc -n w2-flagger-probe -o jsonpath='{.spec.analysis.maxWeight}'
+  10   # unchanged — the intended weight (50) was silently dropped, exit 0
+  ```
+  `apply-weight.sh`'s own `2>/dev/null` even suppressed the one visible hint (the `unknown
+  field` warning) — the old `|| { exit 1; }` never fires because pruning is not a kubectl error.
+  This is the **exact DEBT-001 failure class** (exit 0, looks like success, silently does
+  nothing) but on a currently-live deploy path, not an unused script.
+- **Second, independent bug found in the same file**: `trigger-canary/action.yml`'s inline
+  `manual` branch had `kubectl patch deployment/${SERVICE}-canary ... 2>/dev/null || true`,
+  then **unconditionally** printed `::notice::...applied` and `exit 0` regardless of whether the
+  patch succeeded — a textbook fail-open silent-success (Inquebrantable 11). `apply-weight.sh`'s
+  own manual branch does NOT have this bug (it already used the `|| { warning; exit 1; }` guard
+  correctly) — only the composite action's inline copy did.
+- **Fix**: `apply-weight.sh` istio patch → `{"spec":{"analysis":{"maxWeight":${WEIGHT}}}}` (no
+  `.canary` nesting), `2>/dev/null` removed so future schema-prune warnings are visible instead
+  of hidden. `trigger-canary/action.yml`: `canaryMetrics` folded into `spec.analysis.metrics`
+  (alongside the existing `request-success-rate` entry); manual branch's `|| true` replaced with
+  a real `if kubectl patch ...; then ...; fi` guard matching the istio branch's shape (no false
+  success on a real failure).
+- **Mechanism run + control in both directions (real Flagger CRD, real docker-desktop cluster,
+  not simulated)**:
+  ```
+  # BEFORE fix (bug reproduced against a real Canary CR, maxWeight=10):
+  $ kubectl patch canary probe-svc -n w2-flagger-probe --type merge -p '{"spec":{"analysis":{"canary":{"maxWeight":50}}}}'
+  Warning: unknown field "spec.analysis.canary"
+  canary.flagger.app/probe-svc patched (no change)     # exit 0
+  $ kubectl get canary probe-svc -n w2-flagger-probe -o jsonpath='{.spec.analysis.maxWeight}'
+  10                                                     # unchanged — RED
+
+  # AFTER fix, run via the REAL apply-weight.sh (not a re-implementation):
+  $ bash .github/actions/trigger-canary/apply-weight.sh --service probe-svc --namespace w2-flagger-probe --weight 77 --method istio
+  canary.flagger.app/probe-svc patched
+  ✓ Applied 77% weight to probe-svc
+  $ kubectl get canary probe-svc -n w2-flagger-probe -o jsonpath='{.spec.analysis.maxWeight}'
+  77                                                     # GREEN — real change
+
+  # Control: reverted apply-weight.sh to the OLD payload with Edit (not git), re-ran:
+  $ bash .github/actions/trigger-canary/apply-weight.sh --service probe-svc --namespace w2-flagger-probe --weight 30 --method istio
+  canary.flagger.app/probe-svc patched (no change)
+  ✓ Applied 30% weight to probe-svc                     # LIES — exit 0, prints success
+  $ kubectl get canary probe-svc -n w2-flagger-probe -o jsonpath='{.spec.analysis.maxWeight}'
+  77                                                     # RED — still 77, not 30, silent no-op reproduced
+
+  # Restored fix with Edit, re-ran:
+  $ bash .github/actions/trigger-canary/apply-weight.sh --service probe-svc --namespace w2-flagger-probe --weight 30 --method istio
+  canary.flagger.app/probe-svc patched
+  ✓ Applied 30% weight to probe-svc
+  $ kubectl get canary probe-svc -n w2-flagger-probe -o jsonpath='{.spec.analysis.maxWeight}'
+  30                                                     # GREEN restored
+  ```
+  Also verified `trigger-canary/action.yml`'s fixed inline istio branch directly (YAML-extracted
+  literal `run:` block via `yaml.safe_load`, GH Actions `${{ }}` expressions substituted with
+  literal test values, executed against the same live Canary CR): `maxWeight` moved 30→61 and
+  `spec.analysis.metrics[*].name` came back `request-success-rate error-rate latency` (all 3, the
+  `canaryMetrics` fold-in confirmed working). Manual-branch fix verified by running the exact
+  guarded `if kubectl patch deployment/${SERVICE}-canary ...; then ... fi` structure against a
+  real nonexistent deployment (`nonexistent-svc-xyz-canary`, confirmed absent via `kubectl get`)
+  — the real "NotFound" error correctly skips the false-success notice/outputs, falling through
+  to the retry/fail path instead of the old unconditional `exit 0`.
+  Cleanup: `kubectl delete canary probe-svc -n w2-flagger-probe` and
+  `kubectl delete crd canaries.flagger.app` both run (confirmed gone). The empty test namespace
+  `w2-flagger-probe` could not be deleted — `.claude/hooks/M212-destructive.sh` blocks
+  `kubectl delete namespace` with no kill switch by design; left for the user to remove manually
+  if desired, it holds no resources.
+- **git diff scope**: `.github/actions/trigger-canary/apply-weight.sh`,
+  `.github/actions/trigger-canary/action.yml` only. `reusable-canary-deploy.yml` (the caller) was
+  not touched — its call signature to `apply-weight.sh` is unchanged.
+- **Effort**: M (turned out S once the real CRD schema was in hand) — **Priority**: P1 (was P2 by
+  cost-based ranking; **re-ranked #1 by PEOR RAZON** ahead of DEBT-W12 — this is a currently-live
+  deploy mechanism silently doing nothing, not an unused output) — **Status**: **CLOSED**
+
+### DEBT-W03: generate-postmortem action — template incomplete — CLOSED 2026-08-22
+
+- **What (was missing)**: template had no incident commander, related services, deployment
+  context, or escalation path fields — exactly the 4 gaps the ticket named.
+- **Fix**: 4 new composite-action inputs (`incident-commander`, `related-services`,
+  `deployment-context`, `escalation-path`, all optional with `TBD`/empty defaults so existing
+  callers keep working unchanged) surfaced into: the header metadata line (Incident Commander),
+  a new `## Deployment Context` section (between Root Cause and Impact), the `## Impact` section
+  (Related services, conditionally rendered), and a new `## Escalation Path` section (between
+  Detection/Alerting and Lessons Learned).
+- **Second defect found by actually RUNNING the mechanism (not in the original ticket scope, but
+  the same failure class this session is hunting)**: the script has 15 `printf` calls whose
+  format string starts with a bare `-` bullet (e.g. `printf "- **Duration**: ...`). GNU bash 5.x
+  (GitHub Actions `ubuntu-latest` runners, and this machine's Homebrew `bash`) tolerates this, but
+  macOS's stock `/bin/bash` (3.2) does not — it parses the leading `-` as an option flag:
+  ```
+  $ /bin/bash -c 'printf "- **Duration**: test\n"'
+  /bin/bash: line 0: printf: - : invalid option
+  printf: usage: printf [-v var] format [arguments]
+  ```
+  The generated postmortem silently drops that bullet line (the enclosing `{ ... } > "$OUT"`
+  block has no `set -e`, so the script still exits 0 and prints "Generated..."). Guarded all 15
+  with `printf -- "..."` (matches the pattern already used correctly on every `printf -- "---"`
+  separator line elsewhere in the same file). Zero behavior change under GNU bash (already
+  worked); fixes the same class of macOS-bash portability bug already documented for `M38`
+  (Docker daemon health check) in this project's CLAUDE.md.
+- **Mechanism run + control in both directions**: extracted the real `run:` block via
+  `yaml.safe_load` (not retyped), substituted GH Actions `${{ }}` expressions with literal test
+  values, executed under `/bin/bash` (the strict interpreter that reproduces the bug):
+  ```
+  # BEFORE (unguarded, macOS /bin/bash) — RED:
+  /bin/bash: line 43: printf: - : invalid option
+  printf: usage: printf [-v var] format [arguments]
+  Generated postmortem template: postmortem-888888.md   # still "succeeds", bullet silently missing
+
+  # AFTER (guarded with `--`) — GREEN:
+  Generated postmortem template: postmortem-999999.md   # no errors
+  $ grep -c "Duration" postmortem-999999.md
+  1
+  ```
+  Reverted one guard (`- **Duration**` line) with Edit, re-ran under `/bin/bash`, reproduced the
+  exact RED error above; restored with Edit, re-ran, GREEN again with no errors. Also confirmed
+  the 4 new sections render with real substituted values end-to-end (Incident Commander, Related
+  services also impacted, Deployment Context body, Escalation Path body all present in the
+  generated file).
+  `python3 -c "import yaml; yaml.safe_load(open('.github/actions/generate-postmortem/action.yml'))"`
+  → OK throughout.
+- **git diff scope**: `.github/actions/generate-postmortem/action.yml` only.
+- **Effort**: S — **Status**: **CLOSED**
 
 ### DEBT-W04: cross-repo-trigger.yml — PR creation not implemented
 - **What**: Does not open PRs in consumer repos with updated workflow version pins
@@ -472,19 +686,145 @@ borrar es seguro) y confirmado después (0 referencias → borrar no rompió nad
 no se tocó (verificado que sigue llamado 2 veces en `reusable-canary-deploy.yml`).
 **Effort**: XS — **Status**: **CLOSED**
 
-### DEBT-W09: README.md — No usage examples for Go, Elixir, TypeScript
-- **Effort**: S — Status: OPEN
+### DEBT-W09: README.md — No usage examples for Go, Elixir, TypeScript — CLOSED 2026-08-22
+- **Fix**: 3 new `### <Language> service (DEBT-W09)` sections added to README.md after the
+  existing generic Python example, each grounded in the REAL `on.workflow_call.inputs` of the
+  corresponding reusable workflow (`reusable-test-go.yml`, `reusable-test-elixir.yml`,
+  `reusable-test-ts.yml`, read via `yaml.safe_load` before writing, not guessed — Regla 12/13),
+  plus pointers to the matrix variants (`reusable-test-go-matrix.yml`,
+  `reusable-test-elixir-matrix.yml`) and to `reusable-test-node.yml` for plain-Node services.
+  Deliberately did NOT invent a `secrets:` block for the TS example — `reusable-test-ts.yml` (and
+  `-node.yml`) declare no `secrets:` under `workflow_call`, unlike Go/Elixir which require
+  `GH_TOKEN`; documenting a contract that doesn't exist would be the DEBT-001 failure class
+  applied to prose instead of code.
+- **Mechanism**: new `tests/test_readme_examples.py` (pattern copied from
+  `tests/test_approved_base_images.py`'s `REPO_ROOT` constant + stand-alone-runner tail —
+  cited: `REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))` and the
+  `if __name__ == "__main__": ... sys.exit(1 if failures else 0)` block, same shape here).
+  For each language it re-derives the workflow's real `workflow_call.inputs` via
+  `yaml.safe_load` (ground truth) and asserts the README's example section for that language
+  actually names ≥3 of those real input keys and points at the matrix/plain-Node variant — so
+  the check goes red if a workflow's inputs drift without the README being updated, not just if
+  the word "Go" disappears. A dedicated test additionally asserts the TS section does NOT claim a
+  `secrets:` requirement that the real workflow doesn't have.
+- **Mechanism run + control in both directions**:
+  ```
+  $ python3 tests/test_readme_examples.py
+  PASS test_elixir_example_names_real_reusable_test_elixir_inputs
+  PASS test_go_example_names_real_reusable_test_go_inputs
+  PASS test_ts_example_does_not_claim_a_secrets_block_that_does_not_exist
+  PASS test_ts_example_names_real_reusable_test_ts_inputs
+  0 failure(s)
+  ```
+  Removed (with Edit) the Go section's pointer to `reusable-test-go-matrix.yml`, re-ran:
+  ```
+  FAIL test_go_example_names_real_reusable_test_go_inputs: Go section must point to the matrix variant for multi-version testing
+  1 failure(s)
+  ```
+  Restored with Edit, re-ran → back to `0 failure(s)`, all 4 PASS.
+- **git diff scope**: `README.md` (new sections only, existing content untouched) +
+  `tests/test_readme_examples.py` (new file).
+- **Effort**: S — **Status**: **CLOSED**
 
 ### DEBT-W10: validate-test-pool.sh — Python-only scope
 - **What**: Does not validate Go or Elixir test files
 - **Effort**: M — Status: OPEN
 
-### DEBT-W11: Event schemas — 21 required fields missing descriptions
-- **What**: cadences, crm, field_ops, notifications, payments schemas lack description on some required fields
-- **Effort**: S — Status: OPEN
+### DEBT-W11: Event schemas — required fields missing descriptions — CLOSED 2026-08-22
 
-### DEBT-W12: setup-vault-token — Token masking depends on upstream action
-- **Effort**: XS — Status: OPEN
+- **Recount before fixing (Regla: verify the number, don't trust it)**: the ticket said 21. A
+  fresh walk of every `event-schemas/*.json` (required-array membership + own `description` key,
+  recursing through `allOf`) found **22**, one more — `envelope.v1.json`'s top-level `producer`
+  field (required by the envelope itself, object had `type`/`required`/`properties` but no
+  `description` of its own, even though its nested `service`/`version` sub-fields did). The
+  ticket's "21" undercounted by missing this envelope-level field; using the measured 22, not the
+  ticket's stale count.
+- **Fix**: added `description` to all 22: `cadences.converted.v1.json` (cadence_instance_id,
+  cadence_id, contact_id, converted_at), `cadences.enrolled.v1.json` (same 4 field names,
+  enrollment context), `crm.contact.stage_changed.v1.json` (contact_id), `envelope.v1.json`
+  (producer, object-level), `field_ops.order.completed.v1.json` (order_id, completed_at),
+  `notifications.email.delivered.v1.json` (recipient, delivered_at),
+  `notifications.email.opened.v1.json` (notification_id, recipient, opened_at),
+  `payments.invoice.overdue.v1.json` (invoice_id, due_date, days_overdue),
+  `payments.payment.completed.v1.json` (payment_id, currency). Purely additive metadata — no
+  `type`/`required`/`pattern`/`enum` touched, zero validation-behavior change.
+- **Mechanism**: new permanent regression test `test_required_fields_have_descriptions` in
+  `tests/test_event_schemas.py` (same file as the existing `test_all_event_schemas_still_structurally_valid`,
+  copied its glob-and-walk shape) — walks every schema's `required` arrays (including nested
+  `allOf` and `properties`) and fails naming the exact `file: path.to.field` for any required
+  field still missing a `description`.
+- **Mechanism run + control in both directions**:
+  ```
+  $ python3 tests/test_event_schemas.py
+  ... (16 tests)
+  16 passed, 0 failed, 16 total
+  ```
+  Reverted `payments.payment.completed.v1.json`'s `currency` description with Edit, re-ran:
+  ```
+  FAIL test_required_fields_have_descriptions: 1 required field(s) missing description: ['payments.payment.completed.v1.json: data.currency']
+  15 passed, 1 failed, 16 total
+  ```
+  Restored with Edit, re-ran → `16 passed, 0 failed, 16 total` again; `git diff --stat` on that
+  file showed exactly the intended 2-field addition (payment_id + currency), no residual
+  break/restore artifact. All 15 pre-existing tests in the file (DEBT-W13/W14 regressions,
+  AQ-112, rewards outbox shape, etc.) still pass unchanged.
+- **git diff scope**: the 9 schema files listed above + `tests/test_event_schemas.py` (one new
+  test function appended, nothing else in the file touched).
+- **Effort**: S — **Status**: **CLOSED**
+
+### DEBT-W12: setup-vault-token — `vault-token` output never populated — fix shipped, E2E still not run, stays OPEN 2026-08-22
+
+- **Fix applied**: added `outputToken: "true"` to the `hashicorp/vault-action@4c06c5ccf5c0761b6029f56cfb1dcf5565918a3b`
+  step inside `setup-vault-token/action.yml`. Without it, the pinned action's own
+  `outputToken` local (src/action.js:19) defaults to `false`, and its
+  `core.setOutput('vault_token', ...)` call (src/action.js:90-91) is gated behind
+  `if (outputToken === true)` — so the composite action's declared
+  `outputs.vault-token` (→ `steps.vault.outputs.vault_token`) was unconditionally
+  an empty string. Zero blast radius today: `grep -rln "setup-vault-token"
+  alebrije-*/.github` across the 33-repo cowork still finds no caller.
+- **Verification actually run (real vendored source + real @actions/core, not
+  reimplemented, not guessed)**: fetched the pinned commit's real
+  `src/action.js` (`https://raw.githubusercontent.com/hashicorp/vault-action/4c06c5ccf5c0761b6029f56cfb1dcf5565918a3b/src/action.js`),
+  extracted the literal `const outputToken = ...` line by regex (not retyped), and
+  installed the real `@actions/core` npm package (declared in a throwaway
+  harness `package.json`, not vendored/assumed) to evaluate it under both real
+  input-passing scenarios:
+  ```
+  Extracted REAL line from vault-action src/action.js:
+    const outputToken = (core.getInput('outputToken', { required: false }) || 'false').toLowerCase() != 'false';
+
+  BEFORE: INPUT_OUTPUTTOKEN=undefined -> outputToken=false -> core.setOutput('vault_token', ...) would run: false
+  core.getInput("outputToken") with INPUT_OUTPUTTOKEN=true -> "true"
+  AFTER: INPUT_OUTPUTTOKEN="true" -> outputToken=true -> core.setOutput('vault_token', ...) would run: true
+
+  RESULT: PASS (fix flips the real guard as intended)
+  ```
+  This proves the fix flips the exact real guard that was broken, using GH
+  Actions' real `INPUT_<NAME>` env-var convention and the real
+  `@actions/core.getInput` implementation — not a re-implementation.
+- **Why this stays OPEN instead of CLOSED (measured, not assumed)**: the ticket's
+  own bar, restated in this session's brief, is "lo que no se ejecuta no se
+  cierra" — and the part NOT executed is `retrieveToken()`/`getSecrets()`, i.e.
+  the actual Vault kubernetes-auth login, which runs BEFORE the line verified
+  above reaches `core.setOutput`. **Correcting the previous census note**: a
+  real Vault IS available locally (`kubectl get pods -n vault` → `vault-0
+  1/1 Running`, unsealed, `Version 1.17.2`) — "no vault available" was wrong.
+  The real, narrower blocker: reading `auth/kubernetes/role/ci-runner-role` (to
+  know which ServiceAccount to mint a token for) requires an authenticated
+  Vault client:
+  ```
+  $ kubectl exec -n vault vault-0 -- sh -c 'vault read auth/kubernetes/role/ci-runner-role'
+  Error reading auth/kubernetes/role/ci-runner-role: ... Code: 403 ... permission denied
+  ```
+  Obtaining that access (root token, or an admin policy) is exactly the class
+  of operation Alebrije's own guardrails (`memory/feedback_m212_m213_m214_m215_categoria_destructivos_20260519.md`
+  Regla K / M213) restrict to the user's local terminal, not a session
+  auditing an unused, zero-caller composite action. This session declines to
+  escalate for that reason, not because the infra doesn't exist.
+- **git diff scope**: `.github/actions/setup-vault-token/action.yml` only (one
+  line + comment added, nothing removed).
+- **Effort**: XS — **Priority**: unchanged (#2 by peor razon, see ronda-2 ranking
+  above) — **Status**: **OPEN** (fix shipped, full E2E not executed — see above)
 
 ### Fixed in session 2026-05-31
 

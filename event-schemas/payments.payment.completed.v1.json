@@ -15,7 +15,8 @@
           "properties": {
             "payment_id": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "description": "Payment record that was settled."
             },
             "link_id": {
               "type": ["string", "null"],
@@ -40,7 +41,8 @@
             },
             "currency": {
               "type": "string",
-              "pattern": "^[A-Z]{3}$"
+              "pattern": "^[A-Z]{3}$",
+              "description": "ISO 4217 code (MXN, USD, ...)."
             },
             "method": {
               "type": "string",

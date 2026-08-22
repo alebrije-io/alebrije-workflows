@@ -15,7 +15,8 @@
           "properties": {
             "invoice_id": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "description": "Invoice that crossed its due date unpaid."
             },
             "contact_id": {
               "type": ["string", "null"],
@@ -37,11 +38,13 @@
             },
             "due_date": {
               "type": "string",
-              "format": "date"
+              "format": "date",
+              "description": "Date the invoice was due."
             },
             "days_overdue": {
               "type": "integer",
-              "minimum": 1
+              "minimum": 1,
+              "description": "Whole days elapsed since due_date, computed at emit time."
             },
             "invoice_number": {
               "type": ["string", "null"]

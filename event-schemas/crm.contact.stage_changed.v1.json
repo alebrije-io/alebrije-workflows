@@ -15,7 +15,8 @@
           "properties": {
             "contact_id": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "description": "CRM contact whose pipeline stage changed."
             },
             "old_stage": {
               "type": ["string", "null"],

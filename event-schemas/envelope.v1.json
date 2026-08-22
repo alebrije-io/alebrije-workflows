@@ -60,6 +60,7 @@
     },
     "producer": {
       "type": "object",
+      "description": "Identifies the service (and, best-effort, its version) that emitted this event.",
       "required": ["service"],
       "properties": {
         "service": {

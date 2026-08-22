@@ -15,7 +15,8 @@
           "properties": {
             "order_id": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "description": "field_orders row that was completed."
             },
             "kind": {
               "type": "string",
@@ -36,7 +37,8 @@
             },
             "completed_at": {
               "type": "string",
-              "format": "date-time"
+              "format": "date-time",
+              "description": "Timestamp the technician marked the work order as done."
             },
             "duration_seconds": {
               "type": ["integer", "null"],

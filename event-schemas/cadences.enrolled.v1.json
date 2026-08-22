@@ -15,19 +15,23 @@
           "properties": {
             "cadence_instance_id": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "description": "Id of the newly created enrollment instance (one contact's single run through the cadence)."
             },
             "cadence_id": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "description": "Id of the cadence definition/template the instance belongs to."
             },
             "contact_id": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "description": "CRM contact who was enrolled."
             },
             "enrolled_at": {
               "type": "string",
-              "format": "date-time"
+              "format": "date-time",
+              "description": "Timestamp the contact entered the cadence."
             },
             "enrollment_rule_id": {
               "type": ["string", "null"],

@@ -80,6 +80,68 @@ Required permissions in calling workflow:
       packages: write
       security-events: write
 
+### Go service (DEBT-W09)
+
+Inputs shown are the real `workflow_call.inputs` of `reusable-test-go.yml` — every
+value below is a **non-default** override to make the shape visible; omit any
+input to keep its default (`go-version: "1.23"`, `coverage-threshold: 90`,
+`with-services: true`, `lint: true`, `race: true`).
+
+    jobs:
+      test:
+        uses: alebrije-io/alebrije-workflows/.github/workflows/reusable-test-go.yml@main
+        with:
+          go-version: "1.23"
+          module-path: "."
+          with-services: true    # spins up postgres:16 + redis:7 for integration tests
+          test-tags: ""          # e.g. "integration" to include //go:build integration files
+        secrets:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+Need to test against several Go versions instead of one? Use
+`reusable-test-go-matrix.yml` in place of `reusable-test-go.yml` — same
+`with:` shape, fans out across the fleet-standard Go versions.
+
+### Elixir/Phoenix service (DEBT-W09)
+
+Inputs shown are the real `workflow_call.inputs` of `reusable-test-elixir.yml`
+(defaults: `elixir-version: '1.18'`, `otp-version: '27'`,
+`coverage-threshold: 90`, `with-credo: true`, `with-dialyzer: false` — Dialyzer
+is opt-in because it is slow).
+
+    jobs:
+      test:
+        uses: alebrije-io/alebrije-workflows/.github/workflows/reusable-test-elixir.yml@main
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+          with-credo: true
+          with-dialyzer: false   # set true to also run mix dialyzer (slow)
+        secrets:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+Need the OTP/Elixir version matrix instead of one pinned pair? Use
+`reusable-test-elixir-matrix.yml` with the same `with:` shape.
+
+### TypeScript / frontend service (DEBT-W09)
+
+Inputs shown are the real `workflow_call.inputs` of `reusable-test-ts.yml`
+(defaults: `node-version: '22'`, `coverage-threshold: 90`, `run-e2e: false` —
+Playwright E2E is opt-in because it's expensive; `working-directory: '.'` for
+monorepo layouts where the app isn't at the repo root).
+
+    jobs:
+      test:
+        uses: alebrije-io/alebrije-workflows/.github/workflows/reusable-test-ts.yml@main
+        with:
+          node-version: "22"
+          working-directory: "."
+          run-e2e: false   # set true to also run Playwright E2E (slow)
+
+Plain Node.js service with no coverage gate (no bundler/frontend build step)?
+Use `reusable-test-node.yml` instead — it only takes `node-version` and
+`run-e2e`, no `coverage-threshold`/`working-directory`.
+
 ## reusable-security-scan.yml
 
 Multi-capa scan post-build. Corre como job independiente después de
