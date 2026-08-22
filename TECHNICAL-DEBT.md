@@ -43,11 +43,107 @@ no hubo señal de alarma al leerlos completos.
 
 ---
 
-## DEBT-001 — Missing scripts/gen-api-collection.sh — REABIERTO 2026-08-21, cierre anterior era falso
+## Census — 2026-08-22 (re-medido sobre el arbol de hoy, mismo metodo por cuerpo)
 
-**Status**: **ABIERTO** (el `Status: CLOSED` anterior de esta sección quedó demostrado FALSO hoy —
-"el fichero existe" no es lo mismo que "el fichero hace lo que promete", y aquí el segundo hecho es
-el que cuenta)
+PASO 0 del encargo de hoy: se repitio EXACTO el metodo del censo 2026-08-21 (`grep -niE
+'^#.*debt' TECHNICAL-DEBT.md`, excluyendo linea 1, leyendo el `Status:` del CUERPO, no el
+titulo) sobre el arbol tal como estaba ANTES de tocar nada en esta sesion.
+
+**Resultado antes de esta sesion: 25 headers, 6 CERRADO, 18 ABIERTO, 1 envoltorio — IDENTICO al
+censo 2026-08-21.** El arbol no habia cambiado (mismo HEAD, `ae00b11`), asi que el censo se
+reproduce exacto — no hay drift que reportar entre las dos fechas. **El encargo decia 18 y
+midio 18 real: no hubo discrepancia que corregir esta vez** (a diferencia de la ronda anterior,
+donde el heuristico daba 19 y el real era 18).
+
+Ordenados por PEOR RAZON (lo que hoy deja pasar algo malo primero, no lo mas barato), con
+evidencia REAL citada — no supuesta — para cada uno:
+
+1. **DEBT-001** — un generador que sale con exit 0 e imprime "Generated API collection" mientras
+   es ciego al 100% de las rutas reales del gateway de la flota. Peor patron de los 18: exito
+   FALSO-POSITIVO, no una ausencia declarada. Ya habia sido cerrado en falso una vez.
+2. **DEBT-W07** — `validate-self.yml` (el propio gate de CALIDAD de este repo, ADR-001 Bloque R)
+   valida la estructura de `event-schemas/*.json` pero tenia CERO validacion de
+   `approved-base-images.json` — el archivo que gatea los builds Docker de ~33 repos de la flota
+   (DEBT-§43-SUPPLY-CHAIN-6/7). Un edit malformado podia fusionarse a `main` sin que NINGUN gate
+   de este repo lo notara, y detonar en el siguiente build de cualquiera de los 33 consumidores.
+   Mayor radio de explosion de los 18 (toda la flota, no solo este repo).
+3. **DEBT-W12** — la pregunta de si el masking del vault token depende de la accion upstream
+   quedo CONTESTADA con evidencia (no supuesta): se leyo el fuente real de
+   `hashicorp/vault-action@4c06c5ccf5c0761b6029f56cfb1dcf5565918a3b` (el SHA pineado que usa
+   `setup-vault-token/action.yml`) — `src/action.js:91` hace `core.setSecret(vaultToken)`
+   INCONDICIONAL, ANTES del `if (outputToken === true)` de la linea 95. El masking NO depende de
+   nada configurable: corre siempre. Pero verificar esto destapo un defecto REAL adyacente:
+   `setup-vault-token/action.yml` nunca pasa `outputToken: true` a la accion pineada, y
+   `outputToken` por default es `'false'` (`action.yml` upstream linea ~66) — asi que el output
+   propio `vault-token` que la accion de este repo declara (`outputs.vault-token` →
+   `steps.vault.outputs.vault_token`) JAMAS se puebla, es string vacio siempre. Mismo patron
+   "existe pero no funciona" que DEBT-001. Radio HOY: cero — `grep -rln "setup-vault-token"
+   alebrije-*/.github` en los 33 repos del cowork no encontro NINGUN caller — pero un futuro
+   consumidor que confie en ese output se encuentra con nada. Queda ABIERTO porque no ejecute la
+   accion compuesta contra un Vault+K8s-auth real (no hay uno disponible aqui) — leer el fuente
+   no es lo mismo que correrlo, y la regla de esta unidad es explicita: lo que no se ejecuta no
+   se cierra.
+4. **DEBT-W02** — la estructura del CRD de Flagger puede estar mal. Verificado que el mecanismo
+   de aplicacion (`apply-weight.sh --method istio` Y el paso inline equivalente en
+   `trigger-canary/action.yml`) falla RUIDOSO si el `kubectl patch` no aplica
+   (`::warning::Failed to patch Canary CRD` + `exit 1`), no en silencio — si el campo del CRD
+   esta mal, el deploy de canary FALLA, no finge exito con 0% de trafico canario. Riesgo real de
+   correccion sigue abierto (nadie lo probo contra un Flagger real), pero el modo de fallo es
+   fail-closed, no silencioso — por eso rankea debajo de W12. Sin cluster con Flagger disponible
+   aqui para probarlo.
+5. **DEBT-002** — 27 tipos de evento publicados sin schema registrado. Verificado en
+   `reusable-event-schema-check.yml` (lineas 41-45 y 175-176): `fail-on-missing` es `true` por
+   default y es FATAL para cualquier tipo de evento NUEVO que un repo empiece a publicar de hoy
+   en adelante — el gate NO deja pasar drift nuevo en silencio. Lo que falta es back-fill
+   retroactivo de los 27 tipos anteriores al gate. Acotado y ya declarado correctamente.
+6. **DEBT-W10** — `validate-test-pool.sh` alcance solo-Python. Verificado que NO es codigo
+   vestigial: esta copiado y en uso real en `alebrije-svc-auth/scripts/validate-test-pool.sh` y
+   `alebrije-mod-control-medico/scripts/validate-test-pool.sh`, invocado desde el `run_prepush.sh`
+   de cada uno — cumple su promesa para esos dos. El hueco real es que la mayoria Go/Elixir de la
+   flota (~30 de ~33 repos) no tiene ningun detector de tests huerfanos, ni existe una version
+   Go/Elixir en este repo-fuente para que la copien.
+7. **DEBT-W06** — `reusable-notify.yml` no tiene canal PagerDuty. Verificado que el switch de
+   canal (`case ... in slack|email|github|all|*) ... exit 1`) falla RUIDOSO ante un valor no
+   reconocido — no es un no-op silencioso, es una ausencia de feature declarada y acotada.
+8. **DEBT-W04** — `cross-repo-trigger.yml` no abre PRs en repos consumidores.
+9. **DEBT-004** — mismo hueco de raiz que W04 desde el otro lado (bump automatico cross-fleet):
+   sin bot de PRs, el fallback manual sigue funcionando, solo mas lento.
+10. **DEBT-W01** — `reusable-release-extended.yml` sin goreleaser/docker/cosign — incompleto
+    desde que se escribio, no una promesa rota.
+11. **DEBT-W15** — agregacion de run-ids en matrix se colapsa al ultimo leg — reduce
+    observabilidad de correlacion, no causa un deploy incorrecto.
+12. **DEBT-005** — `ci-cost-aggregator.yml` necesita GH App token que no existe todavia.
+13. **DEBT-W05** — mismo `ci-cost-aggregator.yml`, falta reporte a Slack — bloqueado por lo mismo
+    que 005 (sin webhook configurado).
+14. **DEBT-003** — self-hosted runners diferido por decision explicita de volumen — cero riesgo
+    funcional hoy.
+15. **DEBT-W11** — 21 campos requeridos en schemas de eventos sin `description` — completitud de
+    documentacion DENTRO del schema, no afecta la logica de validacion (ya enforced aparte).
+16. **DEBT-W03** — template de `generate-postmortem` incompleto — plantilla, sin dependencia
+    externa.
+17. **DEBT-W09** — README sin ejemplos de uso Go/Elixir/TS — documentacion pura.
+
+**Cerrados DE VERDAD en esta sesion (mecanismo corrido, control en las dos direcciones — ver
+cada entrada abajo para el comando+salida): DEBT-001, DEBT-W07, DEBT-W08.** Post-cierre: 25
+headers (sin cambio — cerrar no agrega ni quita encabezados), 9 CERRADO (6+3), **15 ABIERTO**
+(18−3), 1 envoltorio. 9+15+1=25.
+
+**Hallazgo colateral, fuera del alcance de los 18** (ver seccion "Hallazgo colateral" al final
+del archivo): al re-verificar con Regla 13 el patron de `tests/test_approved_base_images.py`
+(paso previo obligatorio antes de escribir el test nuevo de W07), su prueba preexistente
+`test_catalog_covers_every_real_fleet_base_image` **fallaba YA en HEAD, antes de que esta sesion
+tocara nada** — confirmado corriendo la copia de `git show HEAD:tests/test_approved_base_images.py`
+sin ningun cambio mio. No es uno de los 18 y no se toca en esta sesion (el fix cambia el
+mismisimo matcher de produccion que gatea 33 repos — requiere su propio diseno, no un parche de
+pasada); queda documentado para que no se pierda.
+
+---
+
+## DEBT-001 — CERRADO 2026-08-22 (regex ampliado a chi + test dirigido contra el repo real; el "REABIERTO 2026-08-21" de abajo era la ultima medicion falsa)
+
+**Status**: **CLOSED 2026-08-22** (el `Status: CLOSED` de 2026-05-07 fue FALSO, luego REABIERTO
+2026-08-21 con la evidencia de abajo; este cierre es el tercero y trae mecanismo corrido +
+control en las dos direcciones, no solo lectura)
 **Priority**: P2
 **Impact real (medido, no el original)**: ambos ficheros existen (`scripts/gen-api-collection.sh`,
 `scripts/gen_api_collection.py`) y el wrapper corre limpio, exit 0:
@@ -77,6 +173,80 @@ cual, sin forzar mayúsculas) a `gen_api_collection.py:64`, y agregar un caso de
 el conteo de endpoints es 0 contra un repo con rutas reales — ahora mismo nada distingue "no hay
 rutas" de "la regex no las vio".
 **Effort**: S — un segundo patrón de regex + un test dirigido.
+
+### Cierre real 2026-08-22
+
+**Fix aplicado**: `scripts/gen_api_collection.py:63-76` — el patrón ahora corre con `re.IGNORECASE`
+(cubre `GET`/`Get` sin duplicar la alternancia) y el grupo del handler pasó de `(\w+)` a
+`([\w.]+(?:\([^)]*\))?)` — el bloqueo real no era solo la mayúscula del verbo: los handlers reales
+de chi son selectores con punto (`artifactsHandler.ProxyData`) o llamadas (`health.LiveHandler()`,
+`startupHandler(cfg.WebhookEnabled, deps.db)`), ninguno de los cuales matchea `\w+`. Confirmado con
+la mitad "case-only" del fix por separado: subía de 0 a solo 2 matches en `router.go`; el fix
+completo (verbo + handler) sube a 7 en ese archivo y a **18 en todo el repo real**
+(`../alebrije-api-gateway-go`, `APICollectionGenerator.generate()` recorre `rglob("*.go")`).
+
+**Mecanismo corrido, comando exacto**:
+```
+$ bash scripts/gen-api-collection.sh -r ../alebrije-api-gateway-go -o /tmp/api-collection-debt001-after.json
+[INFO] API Repository: ../alebrije-api-gateway-go
+[INFO] Output File: /tmp/api-collection-debt001-after.json
+Generated API collection: /tmp/api-collection-debt001-after.json
+Total endpoints: 18
+[INFO] Successfully generated API collection: /tmp/api-collection-debt001-after.json
+```
+(antes del fix, el mismo comando exacto daba `Total endpoints: 0`, exit 0 igual — el problema
+nunca fue el exit code, fue el conteo silencioso.)
+
+**Control en las dos direcciones** (Edit, no git): se revirtió `gen_api_collection.py` al regex
+viejo exacto (`(?:router|r)\.(GET|POST|PUT|DELETE|PATCH)\s*\(\s*"([^"]+)"\s*,\s*(\w+)\)`, sin
+`re.IGNORECASE`) y se corrió `python3 tests/test_gen_api_collection.py`:
+```
+FAIL test_chi_call_expression_handler_is_detected: call-expression handler (pkg.Func()) must be detected
+FAIL test_chi_dotted_selector_handler_is_detected: chi handler as a dotted selector (artifactsHandler.ProxyData) must be detected
+FAIL test_chi_titlecase_verb_with_bare_handler_is_detected: chi-style Title-case verb (r.Get) with a bare handler must be detected — this alone was already a gap in the pre-fix regex
+PASS test_gin_mux_uppercase_style_still_detected_no_regression
+FAIL test_real_gateway_repo_yields_nonzero_endpoints: Total endpoints: 0 against the REAL gateway is not clean, it's blind (DEBT-001) — the regex stopped matching this gateway's real router idiom again
+PASS test_zero_endpoints_against_a_file_with_no_routes_is_still_zero
+
+4 failure(s)
+EXIT=1
+```
+Reproduce EXACTO el bug original (0 contra el gateway real). Se restauró el fix con Edit y se
+corrió de nuevo:
+```
+PASS test_chi_call_expression_handler_is_detected
+PASS test_chi_dotted_selector_handler_is_detected
+PASS test_chi_titlecase_verb_with_bare_handler_is_detected
+PASS test_gin_mux_uppercase_style_still_detected_no_regression
+real gateway endpoint count: 18
+PASS test_real_gateway_repo_yields_nonzero_endpoints
+PASS test_zero_endpoints_against_a_file_with_no_routes_is_still_zero
+
+0 failure(s)
+EXIT=0
+```
+`git diff scripts/gen_api_collection.py` contra HEAD tras restaurar coincide con el fix que se
+está commiteando (el árbol quedó en el estado que se commitea, no en un intermedio).
+
+**Test nuevo**: `tests/test_gen_api_collection.py` — importa el módulo real (no lo reimplementa),
+prueba las 4 formas reales de handler de chi (bare, dotted, call sin args, call con args), un caso
+de no-regresión gin/mux UPPERCASE, un caso de cero-rutas-reales-sigue-siendo-cero (para que el fix
+no sobre-matchee), y el caso contra el repo real con skip explícito (no un PASS falso) si el
+checkout hermano no existe.
+
+**Fuera de alcance de este cierre (nuevo hallazgo, no se toca)**: `api-collection-gen.yml` (el
+workflow que invoca este script a diario via `cron` con `contents: write` + `git push`) hace
+`actions/checkout` de **sí mismo** (no especifica `repository:`), y por default
+`API_REPO_PATH=../api-gateway-go` — ese directorio JAMÁS existe en un checkout de un solo repo en
+un runner de GitHub Actions. El job fallaría en el `if [[ ! -d "$API_REPO_PATH" ]]` de
+`gen-api-collection.sh:46` antes incluso de llegar al regex, todos los días, sea cual sea el
+regex. Esto es fail-closed (el job falla, no genera basura), así que no es "peor razón" que la
+ceguera del regex — pero sí significa que el mecanismo diario **nunca ha podido producir nada
+útil en CI real**, con o sin este fix, hasta que alguien decida cómo se espera que este workflow
+obtenga el checkout del gateway (sparse-checkout cross-repo como hace `reusable-build-push.yml`,
+o un input explícito de repo). No es parte del scope declarado de DEBT-001 (que es sobre el
+regex) y cambiar el diseño de checkout del workflow requiere una decisión, no un parche de
+pasada — se deja escrito aquí para que no se pierda.
 
 ---
 
@@ -200,8 +370,55 @@ A comprehensive audit of all 28 workflows, 9 custom actions, and meta-files was 
 - **Vault path needed**: alebrije/data/pagerduty/routing-key
 - **Effort**: S — Status: OPEN
 
-### DEBT-W07: validate-self.yml — No approved-base-images.json schema validation job
-- **Effort**: XS — Status: OPEN
+### DEBT-W07: validate-self.yml — No approved-base-images.json schema validation job — CLOSED 2026-08-22
+- **What (was broken)**: AUDIT 11 (`check-event-schemas-valid`) in `validate-self.yml` globs
+  `event-schemas/*.json` only. `approved-base-images.json` — the whitelist that gates Docker
+  builds for the whole fleet inline in `reusable-build-push.yml` (DEBT-§43-SUPPLY-CHAIN-6/7) —
+  had ZERO structural validation of its own in this repo's CI. A malformed or semantically-broken
+  edit could merge to `main` untouched by any check here, then break every one of the ~33
+  fleet consumers' builds simultaneously the next time each one built.
+- **Fix**: new job `check-approved-images-schema` (AUDIT 18) in `validate-self.yml`, wired into
+  `security-audit-summary.needs:` and into the final `Fail if any audit failed` condition (so a
+  schema violation actually fails the workflow, not just the advisory summary table). Validates:
+  `images` is a non-empty array; each entry has a non-empty `name`; each entry declares
+  `approved_tags` (non-empty array of non-empty strings) or `tag` (non-empty string); and
+  `scanning_policy.block_on_critical` is present.
+- **Mechanism run, exact literal script (extracted from the committed YAML via
+  `yaml.safe_load`, not retyped, so there is zero drift risk between what was tested and what CI
+  runs)**:
+  ```
+  $ python3 -c "import yaml; d=yaml.safe_load(open('.github/workflows/validate-self.yml')); \
+      print(d['jobs']['check-approved-images-schema']['steps'][-1]['run'])" > /tmp/extracted.py
+  $ python3 /tmp/extracted.py
+  PASS: approved-base-images.json structurally valid (11 image entries)
+  ```
+- **Control in two directions (Edit on the real `approved-base-images.json`, not git)**: emptied
+  the `golang` entry's `approved_tags` to `[]` —
+  ```
+  $ python3 /tmp/extracted.py
+  ::error::images[2] (golang): 'approved_tags' must be a non-empty array
+  ```
+  exit 1 — RED, names the exact broken entry. Restored the file to its original content with
+  Edit —
+  ```
+  $ python3 /tmp/extracted.py
+  PASS: approved-base-images.json structurally valid (11 image entries)
+  ```
+  exit 0 — GREEN. `git diff approved-base-images.json` against HEAD shows no residual diff (the
+  break/restore cycle left the file byte-identical to before).
+- **YAML re-validated**: `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/validate-self.yml'))"`
+  → OK; `yamllint -d "{extends: default, rules: {line-length: {max: 180}, comments: {min-spaces-from-content: 2}}}" .github/workflows/validate-self.yml`
+  → only the two pre-existing `document-start`/`truthy` warnings shared by every workflow in this
+  repo, no new warnings, no errors; no tabs.
+- **Tests**: appended to `tests/test_approved_base_images.py` (same file, same pattern as the
+  DEBT-§43 tests already there) — `_validate_schema()` re-implements the exact algorithm,
+  `test_schema_validator_extracted_from_workflow_matches_reimplementation` guards against the
+  re-implementation drifting from the real YAML text, plus 5 targeted cases (missing `images`,
+  entry without `name`, entry without tags, emptied `approved_tags` — the exact live-control
+  mutation — and missing `scanning_policy`). `python3 tests/test_approved_base_images.py` → all
+  new tests PASS (one PRE-EXISTING unrelated failure in this same file, `test_catalog_covers_...`,
+  predates this session — see "Hallazgo colateral" at the end of this document; not touched here).
+- **Effort**: XS — **Priority**: P2 — **Status**: **CLOSED**
 
 ### DEBT-W08: Dead shell scripts in custom actions — ALCANCE CORREGIDO 2026-08-21 (era 3 de 3, son 2 de 3)
 - **What (original, 2 de 3 partes correctas)**: `bump-version/bump.sh` + `parse-semver.sh` siguen
@@ -221,7 +438,39 @@ A comprehensive audit of all 28 workflows, 9 custom actions, and meta-files was 
   que `action.yml` vuelva a llamar a `bump.sh` en vez de duplicar la lógica inline — pero eso es un
   cambio de diseño, no limpieza). No tocar `apply-weight.sh`.
 - **Effort**: XS (son 2 `rm` + una línea de README si `Scripts` los llegó a listar — no los lista,
-  verificado) — **Status**: OPEN (alcance corregido)
+  verificado)
+
+### Cierre real 2026-08-22
+
+**Re-verificado sobre el árbol de hoy antes de tocar nada** (no confiar en el hallazgo de ayer sin
+remedir): `grep -rn "bump-version/bump\.sh\|bump\.sh" . --include='*.yml' --include='*.sh'
+--include='*.md'` → 0 llamadas reales (solo el propio `bump.sh` citándose en su docstring y las
+entradas de este archivo). `grep -rn "parse-semver"` → mismo resultado, solo `bump.sh:26` lo
+`source`ea, y nada llama a `bump.sh`. `action.yml` no menciona ninguno de los dos ficheros.
+README.md / README.orphan no los listan.
+
+**Mecanismo (no hay "correr" un script muerto — el control aquí es de AUSENCIA, no de
+comportamiento)**:
+```
+$ ls .github/actions/bump-version/*.sh
+.github/actions/bump-version/bump.sh
+.github/actions/bump-version/parse-semver.sh
+$ python3 -c "import yaml; d=yaml.safe_load(open('.github/actions/bump-version/action.yml')); print('action.yml valid, steps:', len(d['runs']['steps']))"
+action.yml valid, steps: 1
+$ git rm .github/actions/bump-version/bump.sh .github/actions/bump-version/parse-semver.sh
+rm '.github/actions/bump-version/bump.sh'
+rm '.github/actions/bump-version/parse-semver.sh'
+$ python3 -c "import yaml; d=yaml.safe_load(open('.github/actions/bump-version/action.yml')); print('action.yml valid, steps:', len(d['runs']['steps']))"
+action.yml valid, steps: 1
+$ grep -rn "bump-version/bump\.sh\|bump-version/parse-semver\.sh" .github/ 2>/dev/null
+(sin salida — exit 1, cero referencias colgantes)
+```
+**Control en las dos direcciones para este caso concreto** (no hay comportamiento que romper con
+Edit porque el archivo no ejecuta nada — la prueba de "peor caso" aquí es la ausencia de caller
+ANTES de borrar y la ausencia de referencia colgante DESPUÉS): confirmado antes (0 callers →
+borrar es seguro) y confirmado después (0 referencias → borrar no rompió nada). `apply-weight.sh`
+no se tocó (verificado que sigue llamado 2 veces en `reusable-canary-deploy.yml`).
+**Effort**: XS — **Status**: **CLOSED**
 
 ### DEBT-W09: README.md — No usage examples for Go, Elixir, TypeScript
 - **Effort**: S — Status: OPEN
@@ -426,29 +675,62 @@ A comprehensive audit of all 28 workflows, 9 custom actions, and meta-files was 
 
 ---
 
-## Próxima ola — los 3 más baratos de cerrar (para no volver a censar)
+## Próxima ola — SUPERSEDED 2026-08-22, ver "Census — 2026-08-22" arriba
 
-De los 18 items ABIERTOS reales (censo 2026-08-21 arriba), estos tres no dependen de ningún
-secret/token/cluster externo que este repo no controle, y su fix cabe entero en un diff de este
-mismo repo — por eso rankean más barato que el resto:
+Esta sección ordenaba por COSTO (lo más barato primero); el encargo de 2026-08-22 pidió
+ordenar por RAZÓN (lo que hoy deja pasar algo malo primero) — son criterios distintos y dan
+órdenes distintas. `DEBT-W08` (el ítem #1 de esta lista vieja) ya se cerró; `DEBT-W03` sigue
+abierto pero rankea de los últimos en la lista por razón porque es plantilla pura, sin riesgo;
+`DEBT-W12` subió al puesto #3 por razón (no por costo) porque, al verificarlo, destapó un output
+declarado que nunca se puebla — ver la entrada `DEBT-W12` en la sección de arriba para la
+evidencia completa (source de `hashicorp/vault-action` citado línea por línea).
 
-1. **DEBT-W08 (alcance ya corregido arriba)** — el más barato de los 18: son dos `git rm`
-   (`bump-version/bump.sh`, `bump-version/parse-semver.sh`), cero diseño, cero riesgo de romper
-   nada porque ya se verificó que ningún `.yml`/`.sh` del repo los invoca. `apply-weight.sh` NO se
-   toca.
-2. **DEBT-W03** (`generate-postmortem` — faltan `incident-commander`, `related-services`,
-   `escalation-path`) — extender `inputs:` en `.github/actions/generate-postmortem/action.yml`
-   siguiendo el patrón ya existente (`incident-title`/`severity`/`service`/... con
-   `required: false` + `default`) y sumar sus placeholders al heredoc del template. Es edición de
-   plantilla pura, sin dependencia externa, y el patrón a copiar ya está en el mismo fichero.
-3. **DEBT-W12** (`setup-vault-token` — masking depende de la acción upstream `hashicorp/vault-action`)
-   — antes de tocar código, la siguiente ola debe verificar si esa acción YA enmascara el token por
-   default (muchas `composite actions` de Vault lo hacen); si no, cerrar es añadir un step
-   `echo "::add-mask::${{ steps.vault.outputs.vault_token }}"` inmediatamente después del step
-   `vault`. Va tercero porque, a diferencia de los otros dos, requiere ese paso de verificación
-   antes de saber si hace falta código o solo documentar que ya está cubierto.
+**No recensar esto de nuevo bajo el criterio de costo** — el criterio vigente de esta unidad es
+razón, no esfuerzo; la lista de 15 restantes ordenada por razón vive en "Census — 2026-08-22" al
+inicio de este archivo y es la que debe usarse para decidir qué sigue.
 
-Quedan fuera del top-3 por depender de algo fuera de este repo: DEBT-005/W05 (requieren GH App
-token / webhook de Slack que no existen todavía), W06 (requiere `alebrije/data/pagerduty/routing-key`
-en Vault), W02 (requiere clúster con Flagger real para probar el patch), W04/DEBT-004 (requieren
-credencial con permiso de escritura en repos ajenos para abrir PRs).
+---
+
+## Hallazgo colateral 2026-08-22 — `test_catalog_covers_every_real_fleet_base_image` ya falla en HEAD (NO es uno de los 18, no se toca en esta sesión)
+
+Nota: este encabezado NO contiene la cadena `DEBT` a propósito, para que el censo automatizado
+(`grep -niE '^#.*debt'`) no lo cuente como un 19º ticket — es un hallazgo colateral, no un ítem
+nuevo de la lista de 18.
+
+**Qué se encontró**: al aplicar la Regla 13 (leer un archivo existente del mismo tipo antes de
+escribir código nuevo) para el cierre de DEBT-W07, se corrió `tests/test_approved_base_images.py`
+completo como parte de la verificación. Una de sus pruebas preexistentes —
+`test_catalog_covers_every_real_fleet_base_image`, que reconcilia el whitelist contra CADA
+`Dockerfile` real de la flota— falla:
+
+```
+FAIL test_catalog_covers_every_real_fleet_base_image: canonical fleet Dockerfiles use base
+images missing from the whitelist (drift):
+{'/Users/ileonelperea/.../alebrije-adapt-toronja/Dockerfile': ['playwright.sync_api']}
+```
+
+**Confirmado que NO lo causó esta sesión**: se extrajo `tests/test_approved_base_images.py` tal
+como está en `HEAD` (`git show HEAD:tests/test_approved_base_images.py`, sin ningún cambio de
+esta sesión) y se corrió standalone — falla exactamente igual. El defecto ya vivía en el árbol
+antes de que esta unidad tocara nada.
+
+**Causa raíz real (citada, no supuesta)**: `alebrije-adapt-toronja/Dockerfile:163` tiene una línea
+`from playwright.sync_api import sync_playwright; \` dentro de un bloque `RUN python3 -c "..."`
+multilínea. El `FROM_RE` que usa tanto el test como el gate real en producción
+(`reusable-build-push.yml`) es `^FROM\s+...` con `re.MULTILINE` **y `re.IGNORECASE`** — el
+`IGNORECASE` hace que la palabra clave de Python `from` (minúscula, al inicio de línea dentro del
+heredoc) matchee como si fuera la directiva Docker `FROM`. No es un problema exclusivo del test:
+la MISMA regex vive en el step `Gate — validate Dockerfile base images against whitelist` de
+`reusable-build-push.yml` (línea ~168), así que si `alebrije-adapt-toronja` corre ese gate real,
+recibiría un FALSO POSITIVO bloqueando su build por una imagen `playwright.sync_api:latest` que
+no existe — el Dockerfile en sí es correcto (`FROM python:3.12-slim` en las líneas 6 y 41 son las
+únicas directivas reales).
+
+**Por qué no se toca en esta sesión**: el `FROM_RE` compartido es el matcher de PRODUCCIÓN que
+gatea los ~33 repos de la flota (el mismo que cierran DEBT-§43-SUPPLY-CHAIN-6/7, ya CERRADOS).
+Endurecerlo sin medir el impacto en las otras 32 Dockerfiles reales de la flota — para no
+introducir un falso positivo NUEVO en dirección contraria, o un falso negativo que sí deje pasar
+algo — es un cambio de diseño con su propio radio de explosión de 33 repos, exactamente la clase
+de cambio que esta unidad tiene prohibido hacer de pasada. No es uno de los 18 ítems del encargo.
+Queda escrito aquí, con `archivo:línea` citado, para que la próxima ronda no tenga que
+redescubrirlo.

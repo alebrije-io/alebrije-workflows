@@ -570,6 +570,92 @@ jobs:
           print(f"PASS: No disabled {needle!r} worker command emitted")
 
   # ======================================================================
+  # AUDIT 18: Validate approved-base-images.json structure (DEBT-W07)
+  #   This file is NOT covered by AUDIT 11 (which only globs
+  #   event-schemas/*.json) even though it gates Docker builds for ~33 fleet
+  #   repos via the inline step in reusable-build-push.yml
+  #   (DEBT-§43-SUPPLY-CHAIN-6/7). A malformed or structurally-broken edit
+  #   could previously merge to main through THIS repo's own CI untouched,
+  #   then detonate at build time across the whole fleet at once. This audit
+  #   catches that BEFORE merge instead.
+  # ======================================================================
+  check-approved-images-schema:
+    name: Validate approved-base-images.json structure
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+        with:
+          python-version: "3.12"
+      - name: Validate schema
+        shell: python3 {0}
+        run: |
+          import json
+          import sys
+
+          try:
+              with open("approved-base-images.json") as fh:
+                  data = json.load(fh)
+          except FileNotFoundError:
+              print("::error::approved-base-images.json not found")
+              sys.exit(1)
+          except json.JSONDecodeError as e:
+              print(f"::error::approved-base-images.json is not valid JSON: {e}")
+              sys.exit(1)
+
+          errors = []
+          if not isinstance(data, dict):
+              errors.append("top-level JSON must be an object")
+              data = {}
+
+          images = data.get("images")
+          if not isinstance(images, list) or not images:
+              errors.append("'images' must be a non-empty array")
+          else:
+              for i, entry in enumerate(images):
+                  if not isinstance(entry, dict):
+                      errors.append(f"images[{i}] must be an object")
+                      continue
+                  name = entry.get("name")
+                  if not isinstance(name, str) or not name.strip():
+                      errors.append(f"images[{i}]: 'name' must be a non-empty string")
+                  tags = entry.get("approved_tags")
+                  tag = entry.get("tag")
+                  if tags is None and tag is None:
+                      errors.append(
+                          f"images[{i}] ({name}): must declare 'approved_tags' "
+                          "(array) or 'tag' (string)"
+                      )
+                  if tags is not None:
+                      if not isinstance(tags, list) or not tags:
+                          errors.append(
+                              f"images[{i}] ({name}): 'approved_tags' must be a "
+                              "non-empty array"
+                          )
+                      else:
+                          for t in tags:
+                              if not isinstance(t, str) or not t.strip():
+                                  errors.append(
+                                      f"images[{i}] ({name}): 'approved_tags' "
+                                      "entries must be non-empty strings"
+                                  )
+                  if tag is not None and (not isinstance(tag, str) or not tag.strip()):
+                      errors.append(f"images[{i}] ({name}): 'tag' must be a non-empty string")
+
+          sp = data.get("scanning_policy")
+          if not isinstance(sp, dict) or "block_on_critical" not in sp:
+              errors.append("'scanning_policy.block_on_critical' must be present")
+
+          if errors:
+              for e in errors:
+                  print(f"::error::{e}")
+              sys.exit(1)
+          print(f"PASS: approved-base-images.json structurally valid ({len(images)} image entries)")
+
+  # ======================================================================
   # SUMMARY: Aggregate all audit results
   # ======================================================================
   security-audit-summary:
@@ -595,6 +681,7 @@ jobs:
       - check-timeouts
       - check-input-injection
       - check-no-deprecated-set-output
+      - check-approved-images-schema
     permissions:
       contents: read
       pull-requests: write
@@ -626,6 +713,7 @@ jobs:
           echo "| Timeout-minutes Audit | ${{ needs.check-timeouts.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Script Injection (inputs.*) | ${{ needs.check-input-injection.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Disabled ::set-output (prod-broken) | ${{ needs.check-no-deprecated-set-output.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| approved-base-images.json schema (DEBT-W07) | ${{ needs.check-approved-images-schema.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ needs.audit-shas.result }}" = "success" ] && \
              [ "${{ needs.check-hardcoded-secrets.result }}" = "success" ] && \
@@ -683,5 +771,6 @@ jobs:
           needs.validate-yaml.result != 'success' ||
           needs.check-anti-patterns.result != 'success' ||
           needs.check-event-schemas-valid.result != 'success' ||
-          needs.check-no-deprecated-set-output.result != 'success'
+          needs.check-no-deprecated-set-output.result != 'success' ||
+          needs.check-approved-images-schema.result != 'success'
         run: exit 1

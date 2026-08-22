@@ -60,10 +60,24 @@ class APICollectionGenerator:
             with open(go_file, "r") as f:
                 content = f.read()
 
-            # Pattern for common router definitions
-            route_pattern = r'(?:router|r)\.(GET|POST|PUT|DELETE|PATCH)\s*\(\s*"([^"]+)"\s*,\s*(\w+)\)'
+            # Pattern for common router definitions.
+            #
+            # DEBT-001 (reopened 2026-08-21): the original pattern only matched
+            # UPPERCASE verbs (gin/mux idiom: router.GET(...)) and a bare-word
+            # handler (\w+). The fleet's real API gateway uses go-chi/chi,
+            # whose idiom is Title-case (r.Get(...), r.Post(...)) and whose
+            # handlers are frequently a selector or a call, not a bare
+            # identifier (heroHandler.ServeHTTP, health.LiveHandler(),
+            # startupHandler(cfg.WebhookEnabled, deps.db)). re.IGNORECASE
+            # covers both verb casings without duplicating the alternation;
+            # the handler group now accepts dotted selectors and a single
+            # level of call-arguments so it matches chi's real call shapes.
+            route_pattern = (
+                r'(?:router|r)\.(GET|POST|PUT|DELETE|PATCH)\s*\(\s*"([^"]+)"'
+                r'\s*,\s*([\w.]+(?:\([^)]*\))?)\s*\)'
+            )
 
-            for match in re.finditer(route_pattern, content):
+            for match in re.finditer(route_pattern, content, re.IGNORECASE):
                 method, path, handler = match.groups()
 
                 if any(ep["path"] == path and ep["method"] == method.upper() for ep in self.endpoints):

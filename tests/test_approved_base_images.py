@@ -186,6 +186,119 @@ def test_json_parses_and_blocks_critical():
     assert data["scanning_policy"]["block_on_critical"] is True
 
 
+# --------------------------------------------------------------------------
+# DEBT-W07 — approved-base-images.json structural validation, wired into
+# validate-self.yml AUDIT 18 (check-approved-images-schema). Previously this
+# file had ZERO pre-merge structural validation despite gating Docker builds
+# for ~33 fleet repos (DEBT-§43-SUPPLY-CHAIN-6/7) — a malformed edit could
+# merge to main through this repo's own CI untouched and only surface at the
+# next fleet build. Re-implementation below is an exact copy of the workflow
+# step's Python (extracted via yaml.safe_load in the closing session — see
+# TECHNICAL-DEBT.md DEBT-W07 for the extraction command used to prove drift
+# would be caught by the real, not a reimplemented, script).
+# --------------------------------------------------------------------------
+def _validate_schema(data):
+    errors = []
+    if not isinstance(data, dict):
+        errors.append("top-level JSON must be an object")
+        return errors
+    images = data.get("images")
+    if not isinstance(images, list) or not images:
+        errors.append("'images' must be a non-empty array")
+    else:
+        for i, entry in enumerate(images):
+            if not isinstance(entry, dict):
+                errors.append(f"images[{i}] must be an object")
+                continue
+            name = entry.get("name")
+            if not isinstance(name, str) or not name.strip():
+                errors.append(f"images[{i}]: 'name' must be a non-empty string")
+            tags = entry.get("approved_tags")
+            tag = entry.get("tag")
+            if tags is None and tag is None:
+                errors.append(
+                    f"images[{i}] ({name}): must declare 'approved_tags' "
+                    "(array) or 'tag' (string)"
+                )
+            if tags is not None:
+                if not isinstance(tags, list) or not tags:
+                    errors.append(
+                        f"images[{i}] ({name}): 'approved_tags' must be a "
+                        "non-empty array"
+                    )
+                else:
+                    for t in tags:
+                        if not isinstance(t, str) or not t.strip():
+                            errors.append(
+                                f"images[{i}] ({name}): 'approved_tags' "
+                                "entries must be non-empty strings"
+                            )
+            if tag is not None and (not isinstance(tag, str) or not tag.strip()):
+                errors.append(f"images[{i}] ({name}): 'tag' must be a non-empty string")
+    sp = data.get("scanning_policy")
+    if not isinstance(sp, dict) or "block_on_critical" not in sp:
+        errors.append("'scanning_policy.block_on_critical' must be present")
+    return errors
+
+
+def test_schema_validator_extracted_from_workflow_matches_reimplementation():
+    """Guards against the re-implementation above drifting from the real
+    YAML-embedded script (the exact drift risk DEBT-W07 exists to catch)."""
+    import yaml as _yaml
+
+    with open(
+        os.path.join(REPO_ROOT, ".github", "workflows", "validate-self.yml")
+    ) as fh:
+        doc = _yaml.safe_load(fh)
+    step = doc["jobs"]["check-approved-images-schema"]["steps"][-1]
+    assert step["name"] == "Validate schema"
+    assert "'approved_tags' must be a" in step["run"], (
+        "the extracted workflow script text no longer matches this test's "
+        "re-implementation — update _validate_schema() to match"
+    )
+
+
+def test_schema_validator_passes_real_file():
+    data, _ = load_approved()
+    assert _validate_schema(data) == []
+
+
+def test_schema_validator_catches_missing_images_key():
+    assert _validate_schema({"scanning_policy": {"block_on_critical": True}})
+
+
+def test_schema_validator_catches_entry_without_name():
+    bad = {
+        "images": [{"approved_tags": ["1.0"]}],
+        "scanning_policy": {"block_on_critical": True},
+    }
+    errs = _validate_schema(bad)
+    assert any("'name'" in e for e in errs)
+
+
+def test_schema_validator_catches_entry_without_tags():
+    bad = {"images": [{"name": "golang"}], "scanning_policy": {"block_on_critical": True}}
+    errs = _validate_schema(bad)
+    assert any("must declare" in e for e in errs)
+
+
+def test_schema_validator_catches_empty_approved_tags():
+    """The exact mutation used in the live break/restore control for
+    DEBT-W07: an entry present but with an emptied approved_tags array."""
+    bad = {
+        "images": [{"name": "golang", "approved_tags": []}],
+        "scanning_policy": {"block_on_critical": True},
+    }
+    errs = _validate_schema(bad)
+    assert any("golang" in e and "non-empty array" in e for e in errs)
+
+
+def test_schema_validator_catches_missing_scanning_policy():
+    bad = {"images": [{"name": "golang", "tag": "1.26.3-alpine"}]}
+    errs = _validate_schema(bad)
+    assert any("scanning_policy" in e for e in errs)
+
+
 def test_standalone_workflow_uses_tag_exact_matcher():
     """The opt-in standalone gate must use the same tag-exact logic — never
     re-introduce the bare-name allowance that defeats tag enforcement."""
