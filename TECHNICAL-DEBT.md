@@ -1583,6 +1583,114 @@ happens to hit first.
 
 ---
 
+## DEBT-W18: this repo's own `scripts/*.py` had ZERO lint coverage — no gate existed, not a degraded one — CLOSED 2026-08-23
+
+- **What was broken**: an unused `import os` sat in `scripts/gen_api_collection.py:8` (verified
+  dead — `grep -n "os\." scripts/gen_api_collection.py` returns nothing). The import itself is
+  trivial; what matters is *why* it survived. Grepped this repo end to end
+  (`grep -rn "ruff\|flake8\|pylint\|F401" --include="*.yml" --include="*.yaml" --include="*.toml"
+  --include="*.cfg" .`) and found exactly one hit, in
+  `.github/workflows/reusable-test.yml:123-124`:
+  ```
+  123:      - name: Lint with ruff
+  124:        run: ruff check app/
+  ```
+  That job is a `workflow_call` **reusable** workflow (`on.workflow_call`, no local trigger) —
+  it only runs *inside caller repos*, against *their* `app/` directory. This repo
+  (`alebrije-workflows`) never calls it on itself. Confirmed the negative directly: this repo has
+  no `pyproject.toml`/`ruff.toml`/`setup.cfg` (`find . -maxdepth 1 -iname "*.toml" -o -maxdepth 1
+  -iname "*.cfg"` → empty), no `run_prepush.sh`, no `ci.yml`, and `validate-self.yml` — the only
+  other CI in this repo that touches Python — only ever runs *inline* `shell: python3 {0}` blocks
+  (schema/JSON validators) or copies `scripts/fe_be_audit.py` *into another repo* to lint *that*
+  repo (`reusable-contract-check.yml:112-137`). Nothing, anywhere, ran a linter against this
+  repo's own `scripts/` or `tests/`. This is not a degraded/narrowed gate (the DEBT-001/W07/W16
+  shape) — it is the DEBT-§43-SUPPLY-CHAIN-6 shape: a mechanism that looks like it should apply
+  here (`ruff check` exists in this very repo's YAML) but structurally never fires on this repo's
+  own tree.
+- **Denominator, measured before writing anything**: `ruff check .` (whole repo, default rule
+  set, no config to bias it) → exactly **1 error, 0 warnings** (`ruff check --statistics .` →
+  `1 F401 unused-import`). Widening the gate to the entire repo does not destape a flood of
+  preexisting findings — the one F401 was the only thing there. `tests/*.py` (4 files) was
+  already clean.
+- **Fix**:
+  1. Removed the dead import — `scripts/gen_api_collection.py:8` (`import os` deleted; `argparse`,
+     `json`, `re`, `sys` all remain used).
+  2. Closed the structural gap, not just the symptom — added **AUDIT 19** to
+     `.github/workflows/validate-self.yml`: a new `lint-python-scripts` job that runs
+     `ruff check scripts/ tests/` against **this repo's own tree** (pinned `ruff==0.15.7`, the
+     exact version verified locally). Job skeleton copied from the existing AUDIT jobs in the same
+     file — Regla 13: pattern copied is `- uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7`
+     + `- uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0` +
+     `timeout-minutes:`/`permissions: {contents: read}`, the same shape every other AUDIT job in
+     this file already uses (e.g. `check-approved-images-schema`, AUDIT 18, lines 641-653 before
+     this edit) — kept it structurally identical rather than inventing a new step style.
+  3. Widened `on.push.paths`/`on.pull_request.paths` from `[.github/workflows/**,
+     .github/actions/**]` to also include `scripts/**, tests/**` — otherwise the new job would be
+     wired but never *triggered* by the exact class of change (a `scripts/*.py` edit) it exists to
+     catch, which is the orphaned-gate pattern this ticket is about, one level up.
+  4. Wired `lint-python-scripts` into `security-audit-summary`'s `needs:`, its report table row,
+     and the final `Fail if any audit failed` `if:` condition, matching how `validate-yaml` (also
+     a directly-fatal `ruff`/`yamllint`-style job) is treated — not left advisory-only like
+     `check-anti-patterns` (`::warning::` only, by design, see DEBT-W16 above).
+  5. **Kept FATAL, not advisory**: no `|| true`, no `continue-on-error`, no `# noqa`, no
+     `--exclude scripts/`. `ruff check` exits non-zero on any finding and GitHub Actions' real
+     `run:` default (`bash --noprofile --norc -eo pipefail {0}`, confirmed by DEBT-W16 above) fails
+     the step — and therefore the job — outright.
+- **Control in two directions (Edit on the real file, not git; not a `/tmp` harness)**:
+  ```
+  # RED — re-introduced `import os` with Edit, ran the exact new gate command:
+  $ ruff check scripts/ tests/
+  F401 [*] `os` imported but unused
+    --> scripts/gen_api_collection.py:8:8
+     |
+   6 | import argparse
+   7 | import json
+   8 | import os
+     |        ^^
+   9 | import re
+  10 | import sys
+     |
+  help: Remove unused import: `os`
+  Found 1 error.
+  [*] 1 fixable with the `--fix` option.
+  $ echo $?
+  1
+  ```
+  ```
+  # GREEN — restored with Edit, re-ran:
+  $ ruff check scripts/ tests/
+  All checks passed!
+  $ echo $?
+  0
+  ```
+  `git status --porcelain` after restore shows only the two intended files modified
+  (`.github/workflows/validate-self.yml`, `scripts/gen_api_collection.py`) — the RED/GREEN
+  round-trip left no residue.
+- **Verified the mechanism itself, not just trusted it**: `python3 -c "import yaml;
+  yaml.safe_load(open('.github/workflows/validate-self.yml'))"` → OK, `lint-python-scripts` present
+  in `jobs`, present in `security-audit-summary`'s `needs:` (last 3 entries confirmed:
+  `check-no-deprecated-set-output`, `check-approved-images-schema`, `lint-python-scripts`).
+  `yamllint -d "{extends: default, rules: {line-length: {max: 180}, comments:
+  {min-spaces-from-content: 2}}}" .github/workflows/validate-self.yml` → exit 0, same two
+  pre-existing `document-start`/`truthy` warnings this file has always had (confirmed identical
+  against `git show HEAD:.github/workflows/validate-self.yml`, only the line number of the
+  `truthy` warning shifted 18→22 from the added header comment lines — same finding, not a new
+  one). `awk '{ if (length($0) > 180) print NR }' .github/workflows/validate-self.yml` → no
+  output (no line-length violations introduced).
+- **Regression check**: `python3 tests/test_gen_api_collection.py` after removing the import →
+  `0 failure(s)`, exit 0 (7/7 PASS, including `test_real_gateway_repo_yields_nonzero_endpoints`
+  against the real gateway fixture).
+- **What this does NOT close**: the broader flota pattern ("19 controles de calidad existen en
+  varios repos y NADIE los invoca... confirmado en 8 repos") is a per-repo problem — this ticket
+  closes only `alebrije-workflows`' own instance of it. The other 7 repos' orphaned scripts are
+  out of this ticket's write-scope (this session's write access is `alebrije-workflows` only) and
+  remain open elsewhere.
+- **Effort**: S — **Priority**: P2 (single repo, one real finding, no cross-repo blast radius —
+  `validate-self.yml` has no `workflow_call:` trigger, confirmed same way DEBT-W16 confirmed it) —
+  **Status**: **CLOSED**
+
+---
+
 ## §43 — Supply-chain audit (base-image whitelist)
 
 ### DEBT-§43-SUPPLY-CHAIN-6: approved-images gate had 0 callers (FIXED)

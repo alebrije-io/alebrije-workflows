@@ -5,7 +5,6 @@ gen_api_collection.py - Generates API collection JSON from API gateway repositor
 
 import argparse
 import json
-import os
 import re
 import sys
 from pathlib import Path

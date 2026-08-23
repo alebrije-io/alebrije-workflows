@@ -8,6 +8,10 @@ name: Validate alebrije-workflows (Security Hardening Block R)
 #   3. check-permissions: EVERY workflow has permissions: block
 #   4. validate-yaml: All YAML syntax valid
 #   5. anti-patterns: Flag || true in critical contexts
+#   6. lint-python-scripts: ruff check on this repo's OWN scripts/ + tests/ (DEBT-W18 —
+#      reusable-test.yml's `ruff check app/` only ever lints CALLER repos' app/, this repo's
+#      own scripts/*.py had zero lint coverage; that's how an unused `import os` survived in
+#      scripts/gen_api_collection.py)
 #
 # Runs on: PR (path filter), push main/develop, weekly schedule, manual dispatch
 #
@@ -18,10 +22,10 @@ name: Validate alebrije-workflows (Security Hardening Block R)
 on:
   push:
     branches: [main, develop]
-    paths: [.github/workflows/**, .github/actions/**]
+    paths: [.github/workflows/**, .github/actions/**, scripts/**, tests/**]
   pull_request:
     branches: [main, develop]
-    paths: [.github/workflows/**, .github/actions/**]
+    paths: [.github/workflows/**, .github/actions/**, scripts/**, tests/**]
   schedule:
     # Weekly security audit (Sundays 00:00 UTC)
     - cron: "0 0 * * 0"
@@ -715,6 +719,33 @@ jobs:
           print(f"PASS: approved-base-images.json structurally valid ({len(images)} image entries)")
 
   # ======================================================================
+  # AUDIT 19: Lint this repo's OWN Python (scripts/ + tests/) with ruff (DEBT-W18)
+  #   reusable-test.yml's `ruff check app/` (line ~124) only ever runs inside CALLER
+  #   repos against THEIR app/ — it never touches this repo's own scripts/*.py. That
+  #   blind spot is why an unused `import os` sat in scripts/gen_api_collection.py
+  #   undetected. FATAL: `ruff check` exits non-zero on any finding, which fails this
+  #   job outright (no extra `if` plumbing needed, same as validate-yaml above).
+  # ======================================================================
+  lint-python-scripts:
+    name: Lint scripts/ + tests/ with ruff (DEBT-W18)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install ruff==0.15.7
+      - name: Lint scripts/ and tests/
+        run: |
+          echo "::group::ruff check scripts/ tests/"
+          ruff check scripts/ tests/
+          echo "::endgroup::"
+
+  # ======================================================================
   # SUMMARY: Aggregate all audit results
   # ======================================================================
   security-audit-summary:
@@ -741,6 +772,7 @@ jobs:
       - check-input-injection
       - check-no-deprecated-set-output
       - check-approved-images-schema
+      - lint-python-scripts
     permissions:
       contents: read
       pull-requests: write
@@ -773,6 +805,7 @@ jobs:
           echo "| Script Injection (inputs.*) | ${{ needs.check-input-injection.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Disabled ::set-output (prod-broken) | ${{ needs.check-no-deprecated-set-output.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| approved-base-images.json schema (DEBT-W07) | ${{ needs.check-approved-images-schema.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint scripts/ + tests/ with ruff (DEBT-W18) | ${{ needs.lint-python-scripts.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ needs.audit-shas.result }}" = "success" ] && \
              [ "${{ needs.check-hardcoded-secrets.result }}" = "success" ] && \
@@ -831,5 +864,6 @@ jobs:
           needs.check-anti-patterns.result != 'success' ||
           needs.check-event-schemas-valid.result != 'success' ||
           needs.check-no-deprecated-set-output.result != 'success' ||
-          needs.check-approved-images-schema.result != 'success'
+          needs.check-approved-images-schema.result != 'success' ||
+          needs.lint-python-scripts.result != 'success'
         run: exit 1
