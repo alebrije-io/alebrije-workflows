@@ -195,10 +195,27 @@ jobs:
           # Comments are stripped per-file before matching (same idiom as the scripts/ audit in
           # this file's own Census section) so a line that MENTIONS `|| true` to explain why it
           # was removed (e.g. this repo's own DEBT-W02/W14 entries) is not counted as a USE.
+          # NOTE: `|| true` on the `hit=$(...)` assignments below is REQUIRED, not decorative --
+          # GitHub Actions runs `run:` blocks as `bash -eo pipefail {0}` (real default, verified
+          # by invoking this exact extracted block under `bash -eo pipefail`), so a `grep` that
+          # finds no match (the expected outcome for almost every file scanned) exits non-zero
+          # and would abort this step's whole script under `-e` on the very first non-matching
+          # file, well before ever reaching a real hit or printing anything. This is exactly why
+          # the OLD one-liner had `|| true` on ITS OWN `suspicious=$(...)` -- losing it while
+          # restructuring into a loop caused this same fail-fast bug, caught before shipping by
+          # re-running the extracted step under the real `-eo pipefail` invocation (not just
+          # `-uo pipefail`, which does not reproduce this).
           echo "Checking for || true in test/coverage steps..."
           suspicious=""
           while IFS= read -r -d '' f; do
-            hit=$(sed -E 's/(^|[[:space:]])#.*$//' "$f" | grep -nE '\b(test|cov(erage)?)\b.*\|\|[[:space:]]*true\b')
+            # Self-exclusion required for the SAME reason as the --no-verify check below: this
+            # audit's own `hit=$(... || true)` lines legitimately need a literal `|| true` next
+            # to the word "test" (required for -e compatibility, see the block comment above) --
+            # without this exclusion the check would flag its own defensive code as a violation
+            # of the thing it defends against. Verified this is real (not hypothetical) by
+            # running this exact block under `-eo pipefail` before adding the exclusion.
+            [ "$f" = ".github/workflows/validate-self.yml" ] && continue
+            hit=$(sed -E 's/(^|[[:space:]])#.*$//' "$f" | grep -nE '\b(test|cov(erage)?)\b.*\|\|[[:space:]]*true\b' || true)
             if [ -n "$hit" ]; then
               suspicious="${suspicious}
           $f:
@@ -224,7 +241,7 @@ jobs:
           no_verify_hits=""
           while IFS= read -r -d '' f; do
             [ "$f" = ".github/workflows/validate-self.yml" ] && continue
-            hit=$(sed -E 's/(^|[[:space:]])#.*$//' "$f" | grep -nE -- '--no-verify')
+            hit=$(sed -E 's/(^|[[:space:]])#.*$//' "$f" | grep -nE -- '--no-verify' || true)
             if [ -n "$hit" ]; then
               no_verify_hits="${no_verify_hits}
           $f:

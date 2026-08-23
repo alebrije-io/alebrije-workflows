@@ -1512,6 +1512,64 @@ happens to hit first.
   like `.github/workflows/validate-self.yml`, not `./.github/workflows/...`. Caught by actually
   running it (the self-exclusion silently did nothing, self-match still fired) before trusting
   the fix — corrected to the real path shape and re-verified above.
+- **Second, more serious defect found by testing the FAITHFUL GitHub Actions shell, not a
+  loosely-flagged one — this one would have shipped as a real regression**: every mechanism run
+  cited above through this point in the ticket had been executed with `bash -uo pipefail`, not
+  GitHub Actions' real default for `run:` steps without an explicit `shell:`, which is
+  `bash --noprofile --norc -eo pipefail {0}` (`-e` included). Re-ran the exact extracted step
+  under the faithful invocation before considering this ticket closed:
+  ```
+  $ bash --noprofile --norc -eo pipefail /tmp/extracted_faithful.sh
+  ::group::Anti-pattern detection...
+  Checking for || true in test/coverage steps...
+  EXIT=1
+  ```
+  The step **aborted after printing a single line**, never reaching a single real result. Root
+  cause: `hit=$(sed ... | grep -nE ...)` is a bare assignment, not inside an `if`/`while`/`&&`
+  test — under `-e`, a `grep` that finds **no match** (the expected, common case for the vast
+  majority of files scanned) returns 1, and that non-zero status propagates through the
+  assignment and kills the whole script on the very first non-matching file. This is exactly why
+  the OLD, buggy one-liner had `suspicious=$(... || true)` — that `|| true` was not decorative,
+  it was load-bearing for `-e` compatibility, and restructuring into a per-file loop silently
+  dropped it. Had this shipped unverified, `check-anti-patterns` would have gone from
+  "always warns, never fails" (the noisy bug) to **"always fails, on every single push and PR to
+  this repo, for a shell-scripting reason unrelated to any real anti-pattern"** — a strictly
+  worse regression than either original defect, and the exact class of bug this session's own
+  guardrails warn about verifying before trusting a "0 hits"/"exit 0" result. **Fix**: added
+  `|| true` back onto both `hit=$(...)` assignments (the `|| true` check's and the `--no-verify`
+  check's). Re-verified under the faithful shell:
+  ```
+  $ bash --noprofile --norc -eo pipefail /tmp/extracted_faithful.sh
+  ::group::Anti-pattern detection...
+  Checking for || true in test/coverage steps...
+  ::warning::Found || true in test/coverage context (Rule #11):
+  .github/workflows/validate-self.yml:
+  211:            hit=$(sed -E 's/(^|[[:space:]])#.*$//' "$f" | grep -nE '\b(test|cov(erage)?)\b.*\|\|[[:space:]]*true\b' || true)
+  .github/workflows/reusable-test.yml:
+  229:            grep -E "TOTAL|Total" coverage.txt >> $GITHUB_STEP_SUMMARY || true
+  Checking for --no-verify flag...
+  ✓ Anti-pattern check complete
+  ::endgroup::
+  EXIT=0
+  ```
+  **Third self-reference, found by this exact re-run**: the `|| true` just added to satisfy `-e`
+  is itself a real, literal `|| true` sitting next to the word "test" on that same source line —
+  a genuine textual match, not a regex bug this time, since the check's own necessary defensive
+  code will always need to say `|| true` next to "test" to keep functioning under `-e`. Applied
+  the same self-exclusion already used for the `--no-verify` check
+  (`[ "$f" = ".github/workflows/validate-self.yml" ] && continue`) to this loop too. **Tradeoff
+  accepted and documented, not silently chosen**: this excludes the ENTIRE `validate-self.yml`
+  file (1600+ lines, dozens of jobs) from the `|| true` scan, not just this one line — a real
+  business-logic `|| true` added to a different job in this same file in the future would not be
+  caught by this check. Judged acceptable because this file's own jobs are exclusively
+  meta-validation (yamllint, grep-based structural checks, actionlint) and never run `go
+  test`/`pytest`/coverage business logic themselves — the risk this check exists to catch does
+  not occur inside its own file except as this one necessary, cited exception. Re-verified clean
+  under the faithful shell (shown above, `EXIT=0`), then re-ran the full both-directions control
+  (inject into `reusable-benchmark.yml`, RED with both real hits + comment mention correctly
+  ignored, restore, GREEN) a second time under `bash --noprofile --norc -eo pipefail`
+  specifically (not the looser `-uo pipefail` used for the first pass) — same RED/GREEN result
+  as documented above, this time under the shell that actually matches production.
 - **Validated**: `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/validate-self.yml'))"`
   → OK; `yamllint -d "{extends: default, rules: {line-length: {max: 180}, comments:
   {min-spaces-from-content: 2}}}" .github/workflows/validate-self.yml` → exit 0, only the two
