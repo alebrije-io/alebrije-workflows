@@ -181,17 +181,59 @@ jobs:
           echo "::group::Anti-pattern detection..."
 
           # Check for || true in test/coverage steps (FATAL anti-pattern)
+          # DEBT-W16 fix 2026-08-22: the old one-liner had two independent bugs, found by
+          # actually running it against this repo's own tree instead of trusting "it's there":
+          #   (1) scope: only scanned .github/workflows, never .github/actions — exactly where
+          #       DEBT-W02's real `|| true` fail-open lived (trigger-canary/action.yml) before
+          #       this session fixed it; this job's own trigger already watches
+          #       .github/actions/** (see `on.pull_request.paths` above) but its body never did.
+          #   (2) regex: '\btest\b.*|| true\|\bcov\|coverage.*|| true' has an untethered middle
+          #       branch (`\bcov`) with no `|| true` requirement at all — it matches every line
+          #       containing "cov"/"coverage" regardless of content, drowning any real signal
+          #       (129 hits on this repo's own tree, almost all just the word "coverage" in
+          #       unrelated comments/step names — verified by running the exact old command).
+          # Comments are stripped per-file before matching (same idiom as the scripts/ audit in
+          # this file's own Census section) so a line that MENTIONS `|| true` to explain why it
+          # was removed (e.g. this repo's own DEBT-W02/W14 entries) is not counted as a USE.
           echo "Checking for || true in test/coverage steps..."
-          suspicious=$(grep -r '\btest\b.*|| true\|\bcov\|coverage.*|| true' .github/workflows --include="*.yml" --include="*.yaml" 2>/dev/null || true)
+          suspicious=""
+          while IFS= read -r -d '' f; do
+            hit=$(sed -E 's/(^|[[:space:]])#.*$//' "$f" | grep -nE '\b(test|cov(erage)?)\b.*\|\|[[:space:]]*true\b')
+            if [ -n "$hit" ]; then
+              suspicious="${suspicious}
+          $f:
+          $hit"
+            fi
+          done < <(find .github/workflows .github/actions -type f \( -name '*.yml' -o -name '*.yaml' \) -print0)
           if [ -n "$suspicious" ]; then
             echo "::warning::Found || true in test/coverage context (Rule #11):"
-            echo "$suspicious" | head -5
+            echo "$suspicious" | head -20
           fi
 
           # Check for --no-verify (bypasses pre-commit hooks)
+          # DEBT-W16 fix 2026-08-22: this check has warned on EVERY single run since it was
+          # written (2026-05-07), regardless of repo content — `grep -r '\--no-verify'
+          # .github/workflows` matches its OWN four lines of comment/echo text that spell out
+          # "--no-verify" to explain what the check does, so `grep` (no self-exclusion) always
+          # finds itself. Verified by running the exact old command standalone against this
+          # tree before touching it: it hit only this job's own source, never a real usage.
+          # Same fix shape as the || true check above: strip comments, exclude this audit's own
+          # file (it legitimately has to say "--no-verify" in prose), extend scope to
+          # .github/actions to match this job's real trigger paths.
           echo "Checking for --no-verify flag..."
-          if grep -r '\--no-verify' .github/workflows --include="*.yml" --include="*.yaml" 2>/dev/null; then
-            echo "::warning::Found --no-verify flag (bypasses commit hooks)"
+          no_verify_hits=""
+          while IFS= read -r -d '' f; do
+            [ "$f" = ".github/workflows/validate-self.yml" ] && continue
+            hit=$(sed -E 's/(^|[[:space:]])#.*$//' "$f" | grep -nE -- '--no-verify')
+            if [ -n "$hit" ]; then
+              no_verify_hits="${no_verify_hits}
+          $f:
+          $hit"
+            fi
+          done < <(find .github/workflows .github/actions -type f \( -name '*.yml' -o -name '*.yaml' \) -print0)
+          if [ -n "$no_verify_hits" ]; then
+            echo "::warning::Found --no-verify flag (bypasses commit hooks):"
+            echo "$no_verify_hits"
           fi
 
           echo "✓ Anti-pattern check complete"

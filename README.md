@@ -199,6 +199,23 @@ en `push` a `main` con `sign-image: true` y un `image-ref` no vacío.
 | smoke_test.sh | Post-deploy health check |
 | audit-fe-be-contracts.sh | FE/BE contract audit driver |
 
+## Custom Actions (AQ-003)
+
+`.github/actions/*` — 9 composite actions, each `inputs:`/`outputs:` below taken directly from
+the real `action.yml` (not retyped from memory):
+
+| Action | Purpose | Key inputs | Key outputs |
+|---|---|---|---|
+| bump-version | Bumps `VERSION` from Conventional Commits since last tag | `version-file`, `dry-run` | `new-version`, `bump-type` |
+| check-tenant-id-leak | Scans for hardcoded tenant IDs outside test/fixture files (ADR-63 blocking gate) | `scan-path`, `known-tenants-file`, `exclude-patterns`, `fail-on-leak` | `leaks-found`, `leak-report` |
+| generate-postmortem | Generates a postmortem markdown template as a build artifact (non-blocking) | `incident-title`, `severity`, `service`, `incident-commander`, `related-services`, `deployment-context`, `escalation-path` | `postmortem-file` |
+| post-benchmark-comment | Posts benchmark comparison results as a PR comment | `comparison`, `comparison-file`, `threshold` | (none) |
+| post-coverage-comment | Posts a coverage-vs-baseline table as a PR comment (informational, non-blocking) | `coverage-file`, `coverage-format`, `baseline-coverage`, `gate-threshold` | `coverage-pct`, `delta` |
+| setup-vault-token | Fleet-standard Vault auth wrapper (Kubernetes SA → env-var secrets) | `vault-url`, `vault-role`, `secrets`, `extra-secrets` | `vault-token` (populated as of DEBT-W12; full Kubernetes-auth E2E still unverified — see TECHNICAL-DEBT.md) |
+| sign-with-cosign | Signs a Docker image with Cosign keyless OIDC, `main`-only guard built in | `image-ref`, `image-digest`, `only-on-main` | `signed`, `signature-ref` |
+| trigger-canary | Applies Istio/Flagger Canary weight changes for progressive rollout | `service-name`, `namespace`, `weight`, `method` | `weight-applied`, `canary-status` |
+| wait-for-metrics | Soaks then validates Prometheus error-rate/p99 thresholds, signals rollback | `duration-minutes`, `prometheus-url`, `error-rate-threshold`, `p99-latency-threshold` | `metrics-healthy`, `error-rate`, `p99-latency` |
+
 ## Policies
 
 | File | Purpose |

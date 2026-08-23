@@ -10,7 +10,7 @@ titulo, el `Status:`/`FIXED`/`CLOSED` real dentro del cuerpo**. Resultado:
 
 | Categoria | Cuenta | Detalle |
 |---|---|---|
-| **CERRADO** | 6 | DEBT-W14 (property-tests mask, dos veces con el mismo ID — ver abajo), DEBT-W13 (envelope AQ-112), DEBT-§43-SUPPLY-CHAIN-6, DEBT-§43-SUPPLY-CHAIN-7, DEBT-§44-CONTRACT-GAP-RECONCILE |
+| **CERRADO** | 6 | DEBT-W14 (property-tests mask, dos veces con el mismo ID — **renumerado a DEBT-W17 el 2026-08-22, ver esa entrada**), DEBT-W13 (envelope AQ-112), DEBT-§43-SUPPLY-CHAIN-6, DEBT-§43-SUPPLY-CHAIN-7, DEBT-§44-CONTRACT-GAP-RECONCILE |
 | **ABIERTO** | 18 | DEBT-001 (REABIERTO esta sesion — ver abajo, no es el mismo P1 original), DEBT-002, DEBT-003, DEBT-004, DEBT-005, DEBT-W01, DEBT-W02, DEBT-W03, DEBT-W04, DEBT-W05, DEBT-W06, DEBT-W07, DEBT-W08 (alcance corregido), DEBT-W09, DEBT-W10, DEBT-W11, DEBT-W12, DEBT-W15 |
 | **AMBIGUO** | 1 | La linea `## §44 — DEBT-FN-ADR-79-EVENT-BUS-SCHEMA-REGISTRY (infra-CI portion) reconciliation` (encabezado de SECCION, no de item) contiene la cadena `DEBT-` y por eso el regex la cuenta como un 25º encabezado, pero no tiene su propio bloque `Status:` — es el envoltorio del unico item real que cuelga debajo, `DEBT-§44-CONTRACT-GAP-RECONCILE` (linea inmediatamente siguiente). Contarla como ticket independiente duplica el mismo ticket dos veces. |
 
@@ -388,6 +388,115 @@ mejora de observabilidad, no de correctitud).
 
 ---
 
+## Continuacion 2026-08-22 — ronda 3 ("los 29 encabezados del repo que orquesta")
+
+**PASO 0, con el comando literal que trae este encargo** (distinto del metodo de las rondas
+anteriores — ver la reconciliacion abajo):
+
+```
+$ git rev-parse HEAD
+beae6334cb0072ff6a96f9e23ec9d25a48f58416
+$ grep -cE '^#{2,3} +(DEBT|GAP|AQ|Census|DEBT ITEMS)' TECHNICAL-DEBT.md
+29
+```
+
+**29 confirmado**, sobre el arbol tal como lo dejo la ronda anterior (`beae633`, ya empujado —
+ver el encargo, que cita ese mismo commit). **0 casillas** confirmado
+(`grep -c '^\s*- \[[ x]\]' TECHNICAL-DEBT.md` → 0, sin cambio).
+
+**Dos headers citados con `archivo:linea`, PASO 0 explicito del encargo — lineas re-derivadas por
+contenido con `grep -n` DESPUES de escribir todo lo demas en esta ronda, no calculadas a mano,
+justo para no caer en la propia trampa que este archivo ya documenta ("un `archivo:linea` migra
+solo")**:
+1. `grep -n "^### DEBT-W12" TECHNICAL-DEBT.md` → **linea 1239** —
+   `### DEBT-W12: setup-vault-token — ... stays OPEN 2026-08-22`. Releido el cuerpo completo:
+   sigue ABIERTO de verdad — el fix de `outputToken` esta commiteado, pero la propia entrada dice
+   explicitamente "lo que no se ejecuta no se cierra" y el login Kubernetes-auth real contra
+   Vault nunca corrio en esta sesion ni en las anteriores. El comando que la entrada ya cita
+   (`kubectl exec -n vault vault-0 -- sh -c 'vault read auth/kubernetes/role/ci-runner-role'` →
+   403) no se re-corrio para no repetir el mismo intento contra RBAC que las rondas previas ya
+   agotaron, pero `git log -1 --format=%H -- .github/actions/setup-vault-token/action.yml` da el
+   mismo commit que cerro el fix — el codigo no cambio desde que se midio, asi que el estado
+   sigue siendo el medido.
+2. `grep -n "^### DEBT-W17" TECHNICAL-DEBT.md` → **linea 1313** —
+   `### DEBT-W17: reusable-property-tests.yml — ... FIXED 2026-05-31` (este ticket vivia en la
+   linea 1131 con el ID `DEBT-W14` cuando el encargo se redacto; esa cifra y ese ID ya no
+   aplican, ver el rename abajo). Este SI estaba mal, pero no en su status (CERRADO de verdad,
+   mecanismo corrido y documentado con control en las dos direcciones) sino en su ID:
+   **duplicado** con otra entrada que tambien se llamaba `DEBT-W14` (`cross-repo-trigger.yml`'s
+   `::set-output`, ticket distinto). El censo del 2026-08-21 ya habia notado el duplicado en
+   prosa ("dos veces con el mismo ID") pero nunca lo resolvio. Verificado antes de renombrar que
+   ningun codigo fuera de este archivo referencia el de property-tests por ID
+   (`grep -rn "DEBT-W14" --include='*.md' --include='*.yml' --include='*.py' --include='*.sh' .`
+   fuera de `TECHNICAL-DEBT.md` solo pega en `tests/test_event_schemas.py`, y ambos hits son del
+   OTRO ticket, el de `cross-repo-trigger.yml`) — renombrado a `DEBT-W17` en esta ronda, dejando
+   el de `cross-repo-trigger.yml` con el ID `DEBT-W14` intacto para no romper esa referencia real.
+
+**Reconciliacion 25 (metodo de las rondas 1-2) vs 29 (metodo de este encargo)**: no es drift, son
+regex distintos apuntando al mismo arbol. El metodo anterior
+(`grep -niE '^#.*debt' TECHNICAL-DEBT.md | tail -n +2`, 25) solo cuenta headers que contienen la
+subcadena "debt" en cualquier parte del titulo (case-insensitive) — eso incluye los 24 tickets
+`DEBT-*` reales mas el envoltorio de seccion `## §44 — DEBT-FN-ADR-79-...` (1), pero **excluye**
+los 3 `AQ-00N` y los 2 `## Census — ...` porque ninguno de esos 5 titulos contiene la palabra
+"debt". El metodo de este encargo (`^#{2,3} +(DEBT|GAP|AQ|Census|DEBT ITEMS)`, 29) exige que el
+header EMPIECE con una de esas palabras — por eso SI cuenta los 3 `AQ` y los 2 `Census`, pero
+**no** cuenta el envoltorio `## §44 — ...` (empieza con "§44", no con "DEBT"). Cuadra
+exactamente: 24 tickets `DEBT-*` reales + 3 `AQ-*` + 2 `Census` = **29**; el otro metodo da
+24 + 1 envoltorio = **25**. Ninguno de los dos numeros es el "verdadero" — miden universos
+distintos (uno incluye preguntas de producto y secciones de censo, el otro incluye el envoltorio
+de seccion); lo que hoy se usa es el 29 porque es el que trae el encargo.
+
+**Separacion abiertos / cerrados / duplicados de los 29** (censo por CUERPO, no por titulo,
+mismo metodo que las rondas 1-2):
+- **2 no son tickets**: los dos headers `## Census — ...` son secciones de metodo, no items con
+  `Status:` propio — se cuentan en el 29 pero no entran en el conteo ABIERTO/CERRADO.
+- **24 tickets `DEBT-*`** — de estos, **13 CERRADO** (`DEBT-001`, `W02`, `W03`, `W07`, `W08`,
+  `W09`, `W11`, `W13`, `W14`[cross-repo-trigger], `W17`[property-tests, ex-`W14` duplicado],
+  `§43-SUPPLY-CHAIN-6`, `§43-SUPPLY-CHAIN-7`, `§44-CONTRACT-GAP-RECONCILE`) y **11 ABIERTO**
+  (`DEBT-002`, `003`, `004`, `005`, `W01`, `W04`, `W05`, `W06`, `W10`, `W12`, `W15`) — identico a
+  la cifra que dejaron las rondas 1-2, mas el ticket nuevo de esta ronda:
+  **`DEBT-W16` se agrega y se CIERRA en la misma ronda** (ver su entrada completa mas abajo),
+  asi que el tallo de tickets `DEBT-*` sube de 24 a 25 y el CERRADO de 13 a 14.
+- **1 duplicado de ID resuelto**: las dos entradas `DEBT-W14` de las rondas anteriores eran dos
+  tickets DISTINTOS con el MISMO ID — no un ticket contado dos veces por error de censo, sino un
+  defecto real de numeracion en el propio tracker. Resuelto renombrando la del property-tests
+  masking a `DEBT-W17` (mecanica y justificacion completas en esa entrada).
+- **3 `AQ-*`**: `AQ-001` (NOT DECIDED — pregunta de producto, no ticket con mecanismo: sigue
+  abierta, no se fuerza una decision de arquitectura que no me corresponde), `AQ-002` (FRAMEWORK
+  EXISTS, no completamente validado para Python/Elixir/TS — sigue abierta, validar
+  `reusable-release-extended.yml` en produccion para esos 3 lenguajes es trabajo de varias
+  sesiones, no una remedicion de esta ronda), `AQ-003` (**CERRADA esta ronda** — ver su entrada).
+
+**Tabla final de esta ronda**: PASO 0 midio **29** headers ANTES de tocar nada; esta ronda AGREGA
+un ticket nuevo (`DEBT-W16`, ver mas abajo), asi que el arbol que se commitea queda en **30**
+(verificado de nuevo tras escribir todo: `grep -cE '^#{2,3} +(DEBT|GAP|AQ|Census|DEBT ITEMS)'
+TECHNICAL-DEBT.md` → 30). De esos 30: 2 son secciones-Census (no tickets), 25 son tickets
+`DEBT-*` (14 CERRADO + 11 ABIERTO, tras sumar `DEBT-W16` y renombrar el duplicado sin cambiar su
+status), y 3 son `AQ-*` (1 CERRADA esta ronda, 2 siguen como preguntas de producto sin decision).
+2+25+3=30. **0 casillas** en todo el documento (`grep -cE '^\s*- \[[ x]\]' TECHNICAL-DEBT.md` →
+0), sin cambio.
+
+**Punto 2 del encargo — USO vs MENCION, demostrado para cada hallazgo nuevo de esta ronda**: los
+dos detectores construidos hoy (el de `printf` con guion inicial sin protector, para `AQ-003`; y
+el de `|| true`/`--no-verify`, para `DEBT-W16`) tuvieron el MISMO defecto al primer intento —
+ninguno de los dos despojaba comentarios en la rama que revisa los bloques `run:` extraidos de
+YAML — y el mismo control lo encontro las dos veces: una MENCION real (una nota de comentario
+citando la cadena vigilada para explicar por que no debe escribirse) se contaba como USO hasta
+que se corrigio. Ver el detalle completo, con las salidas ROJA y VERDE reales, en las entradas
+`DEBT-W16` y `AQ-003` mas abajo.
+
+**Punto 3 del encargo — cerrar por PEOR RAZON**: de los 3 hallazgos nuevos de esta ronda,
+`DEBT-W16` (el self-audit del propio repo, ADR-001 Bloque R, ciego a `.github/actions` Y
+ahogado en 129:1 ruido falso) se cerro primero — es la misma clase "parece proteger, no protege"
+que `DEBT-001`/`DEBT-W07`/`DEBT-W02` de las rondas anteriores, y su radio es el peor de los tres
+porque es el MECANISMO QUE AUDITA A LOS DEMAS. `AQ-003` se cerro segundo (documentacion +
+verificacion de portabilidad, sin riesgo de esconder un fallo). El renombrado de `DEBT-W14`
+duplicado se hizo ultimo porque es higiene de datos del tracker, no un mecanismo de CI — bajo
+riesgo, pero real (cualquier herramienta que resuelva por ID, como el propio
+`docs-avance.sh ver <ID>` de este proyecto, quedaria a merced de cual entrada matchea primero).
+
+---
+
 ## DEBT-001 — CERRADO 2026-08-22 (regex ampliado a chi + test dirigido contra el repo real; el "REABIERTO 2026-08-21" de abajo era la ultima medicion falsa)
 
 **Status**: **CLOSED 2026-08-22** (el `Status: CLOSED` de 2026-05-07 fue FALSO, luego REABIERTO
@@ -630,11 +739,84 @@ event types — this remains real backfill work, now against an unmeasured popul
 
 ---
 
-## AQ-003 — Custom actions completeness verification
+## AQ-003 — Custom actions completeness verification — CLOSED 2026-08-22
 
 **Question**: Are all 9 custom actions (.github/actions/*) fully implemented and documented?
-**Status**: PARTIAL — all have action.yml but some need inline script review (bump-version/bump.sh, wait-for-metrics/check-metrics.sh, generate-postmortem template completeness)
-**Risk**: Hidden issues in shell script portability or edge case handling
+**Status**: **CLOSED** — the three specifically-named blockers are gone (measured, not assumed),
+and the broader "documented" half of the question — not scoped to any of the three, and not
+previously measured — turned out to be the real gap: **0 of the 9 actions were named anywhere
+in README.md** before this session.
+
+**Original 3 named blockers, re-verified against today's tree**:
+1. `bump-version/bump.sh` — **no longer exists**. `ls .github/actions/bump-version/` → only
+   `action.yml`; both `bump.sh` and `parse-semver.sh` were `git rm`'d closing `DEBT-W08` earlier
+   this session (0 callers verified before removal). Nothing left to review.
+2. `wait-for-metrics/check-metrics.sh` — reviewed: `bash -n` exit 0; re-ran the exact printf
+   leading-dash-portability detector that found the real macOS `/bin/bash` bug in
+   `generate-postmortem` (`DEBT-W03`) against this file specifically — 0 hits (no unguarded
+   `printf "-...`). Its `_float_compare()` bc/awk fallback (line 62-69) is the fix already shipped
+   2026-05-07 per this file's own "Fixed in session 2026-05-07" list ("wait-for-metrics: script
+   consolidated to bundled check-metrics.sh, bc fallback") — unchanged, still present.
+3. `generate-postmortem` template completeness — **CLOSED** by `DEBT-W03` earlier this session
+   (4 new fields + the same printf-portability bug class fixed there).
+
+**Real gap found (not one of the 3 named, sharper than any of them)**: README.md documents
+reusable workflows (`## Reusable Workflows`), language examples (`DEBT-W09`), the security scan
+workflow, `scripts/`, and policies — but had **no section at all** for `.github/actions/*`
+(`grep -n "bump-version\|check-tenant-id-leak\|generate-postmortem\|post-benchmark-comment\|
+post-coverage-comment\|setup-vault-token\|sign-with-cosign\|trigger-canary\|wait-for-metrics"
+README.md` → 0 hits, verified before writing anything).
+
+**Fix**: new `## Custom Actions (AQ-003)` section in README.md — a table naming all 9 actions with
+their real `inputs:`/`outputs:`, each re-derived via `yaml.safe_load` against the committed
+`action.yml` (Regla 12 — not retyped from memory or guessed), same pattern as `DEBT-W09`'s
+per-language examples (cited: `tests/test_readme_examples.py`'s `_real_inputs()` helper, same
+ground-truth-from-YAML idiom reused here for actions instead of workflows). Also ran the printf
+leading-dash detector (built and proven both-directions for `DEBT-W16`/`AQ-003`, see below)
+against **all 9** actions' inline `run:` blocks and standalone `.sh` files, not just the 3 named
+ones — 0 remaining hits.
+**Mechanism, new test `test_all_nine_custom_actions_documented_in_readme` in
+`tests/test_readme_examples.py`** (appended, same file DEBT-W09 created, same stand-alone-runner
+pattern): asserts the action-directory count is 9 (fails loud if it silently drifts), that every
+action directory name appears in the README table, and that at least one of each action's REAL
+input keys (from `yaml.safe_load`, not the table's prose) is named — so it goes red if a new
+action ships undocumented or an existing one's real inputs drift from the table.
+**Mechanism run + control in both directions**:
+```
+$ python3 tests/test_readme_examples.py
+PASS test_all_nine_custom_actions_documented_in_readme
+PASS test_elixir_example_names_real_reusable_test_elixir_inputs
+PASS test_go_example_names_real_reusable_test_go_inputs
+PASS test_ts_example_does_not_claim_a_secrets_block_that_does_not_exist
+PASS test_ts_example_names_real_reusable_test_ts_inputs
+0 failure(s)
+```
+Removed (with Edit) the `trigger-canary` row from the README table, re-ran:
+```
+FAIL test_all_nine_custom_actions_documented_in_readme: AQ-003 gap(s) found:
+trigger-canary: name missing from README table
+1 failure(s)
+```
+Restored the row with Edit (alphabetical position, matching the other 8), re-ran → back to
+`0 failure(s)`, all 5 PASS. `git diff --stat README.md` shows a clean 17-line net addition (the
+whole section), no residual hole from the break/restore cycle.
+**Printf-portability detector, built for this ticket, proven both directions (Regla — no texto
+plano donde se pueda estructural)**: scans (a) every standalone `.sh` under `.github/actions/`
+and `scripts/` with shell comments stripped first (`sed -E 's/(^|[[:space:]])#.*$//'`), and (b)
+every `action.yml`'s real `run:` blocks extracted via `yaml.safe_load` (also comment-stripped
+per-line before matching — first version of this detector did NOT strip comments in branch (b)
+and wrongly flagged a comment in `sign-with-cosign/action.yml` that only *mentioned* the bug
+class; fixed before trusting the 0-hits result, see `DEBT-W16` for the identical defect found
+in the OTHER detector built this session). Injected via `Edit` a real unguarded
+`printf "- ...` into `wait-for-metrics/check-metrics.sh` (USE) and, simultaneously, a
+comment-only mention of the same string into a `run:` block of `sign-with-cosign/action.yml`
+(MENTION) — detector caught only the real USE, ignored the MENTION; restored both with Edit,
+re-ran, back to 0 hits; `git status --porcelain` empty on both files afterward.
+**Risk retired**: the two concrete, verifiable risks the ticket named (`bump-version/bump.sh`,
+`generate-postmortem`) are gone; the general "shell script portability" risk was checked with a
+real, both-directions-tested detector across all 9 actions, not sampled. Residual, out of this
+ticket's scope: `setup-vault-token`'s Kubernetes-auth E2E remains unexecuted (tracked under its
+own ticket, `DEBT-W12`) — AQ-003 does not re-open that, it is already open under its own ID.
 
 ---
 
@@ -1128,7 +1310,19 @@ no se tocó (verificado que sigue llamado 2 veces en `reusable-canary-deploy.yml
     - YAML re-validated: `yamllint` (CI invocation) exit 0 (only pre-existing document-start/truthy warnings, identical in sibling workflows); `python3 yaml.safe_load` OK, all 4 jobs intact.
   - **Effort**: S — **Status**: CLOSED
 
-### DEBT-W14: reusable-property-tests.yml — Go & Elixir steps mask test failures via `|| { echo ...; }` (SAME no-op class as the just-fixed TS bug) — FIXED 2026-05-31
+### DEBT-W17: reusable-property-tests.yml — Go & Elixir steps mask test failures via `|| { echo ...; }` (SAME no-op class as the just-fixed TS bug) — FIXED 2026-05-31
+
+**Renumbered from DEBT-W14 to DEBT-W17 on 2026-08-22** — this ticket and the *different* ticket
+below (`cross-repo-trigger.yml`'s `::set-output` gap) were both filed under the ID `DEBT-W14`,
+a duplicate the 2026-08-21 census already noticed and named ("DEBT-W14, dos veces con el mismo
+ID") but never resolved. Verified before renaming that no code outside this file references
+this ticket by ID (`grep -rn "DEBT-W14" --include='*.md' --include='*.yml' --include='*.py'
+--include='*.sh' .` outside `TECHNICAL-DEBT.md` only hits `tests/test_event_schemas.py`, and
+both hits there are about the *other* ticket — the `cross-repo-trigger.yml` one, which keeps the
+`DEBT-W14` ID unchanged so that reference stays correct). A duplicate ticket ID is a real defect
+in this tracker, not cosmetic: any tool that resolves debt items by ID (e.g. this project's own
+`docs-avance.sh ver <ID>` pattern) would silently return whichever of the two entries `grep`
+happens to hit first.
 
 - **What**: The Go step (`go test ... || { echo "::notice"; }`) and Elixir step (`mix test ... || { echo "::notice"; }`)
   used the brace-block idiom to handle the "no property tests yet" case. Confirmed under `bash -euo pipefail`
@@ -1211,6 +1405,123 @@ no se tocó (verificado que sigue llamado 2 veces en `reusable-canary-deploy.yml
   per-repo artifacts or a JSON-array output keyed by repo). The `::set-output`→`$GITHUB_OUTPUT` fix
   (W14) was a prerequisite; this aggregation is the remaining functional improvement.
 - **Effort**: M — **Priority**: P3 — **Status**: OPEN
+
+### DEBT-W16: validate-self.yml AUDIT 5 (check-anti-patterns) — the repo's own `|| true`/`--no-verify` self-audit was blind AND permanently noisy — CLOSED 2026-08-22
+
+- **What was broken (found by actually running the mechanism, per AQ-003, not by reading the
+  YAML and trusting it)**: `check-anti-patterns` (AUDIT 5, the job whose own header comment calls
+  its `|| true` check a "FATAL anti-pattern") had two independent, compounding defects, same
+  failure shape as DEBT-001/W07/W02 on this session: it *looked* like a working guard and was
+  not.
+  1. **Scope blind spot**: the job's `on.push`/`on.pull_request` triggers already watch
+     `paths: [.github/workflows/**, .github/actions/**]` (line 21/24 of this file), but the
+     check's own body only ever `grep -r`'d `.github/workflows` — never `.github/actions`. That
+     is exactly where this session's own DEBT-W02 fix lived (`trigger-canary/action.yml`'s
+     `kubectl patch ... 2>/dev/null || true` unconditional-success bug) — the repo's own
+     self-audit could never have caught the bug this same session found and fixed by hand.
+  2. **Regex bug (`|| true` check)**: the pattern
+     `'\btest\b.*|| true\|\bcov\|coverage.*|| true'` has an untethered middle alternative
+     (`\bcov`) with **no `|| true` requirement at all** — it matches any line containing
+     "cov"/"coverage" regardless of content. Reproduced by running the *exact* old command
+     against this repo's own tree before touching anything: **129 hits**, almost all just the
+     word "coverage" in unrelated comments/step names — including the check's own source line
+     describing itself. A signal drowned in 129:1 noise is indistinguishable from no signal.
+  3. **Self-reference bug (`--no-verify` check)**: `grep -r '\--no-verify' .github/workflows`
+     matches its own 4 lines of comment/echo text that literally contain the string
+     `--no-verify` to explain what the check does — verified this fires on **every single run**
+     regardless of repo content, since the check has never NOT matched itself. Confirmed this
+     predates this session (unrelated to today's edits, present since the file's 2026-05-07
+     origin per this document's own history).
+  Neither defect is hypothetical or theoretical severity: (1) is a real blind spot proven by
+  this session's own DEBT-W02 finding; (2) and (3) are 100%-of-runs alert fatigue that trains
+  reviewers to ignore the `::warning::` line entirely — the exact precondition under which a
+  *real* `|| true`/`--no-verify` addition would go unnoticed, i.e. the check protects against
+  nothing while looking like it protects against everything.
+- **Fix**: rewrote both checks in the same step to (a) scan `.github/workflows` AND
+  `.github/actions` (matching the job's own real trigger paths), (b) strip shell comments
+  per-file before matching (`sed -E 's/(^|[[:space:]])#.*$//'`, the exact idiom this file's own
+  Census section already established and proved for the `scripts/` audit — Regla 13: pattern
+  copied from `TECHNICAL-DEBT.md`'s own "Continuacion 2026-08-22 — confirmacion de ronda 2"
+  suppression-audit control, cited above), so a line that *mentions* `|| true`/`--no-verify` in
+  prose to explain why it was removed (this very file has several) is never counted as a use,
+  (c) tighten the `|| true` regex to require the flag on *both* branches
+  (`\b(test|cov(erage)?)\b.*\|\|[[:space:]]*true\b`), and (d) exclude `validate-self.yml` itself
+  from the `--no-verify` scan (it legitimately has to say the string in prose to implement the
+  check). Severity kept as-is (`::warning::`, never `exit 1`) — this fix is about signal
+  accuracy and coverage, not about turning an advisory into a gate; that would be a separate,
+  bigger decision this session does not make.
+- **Blast radius checked before touching**: `validate-self.yml` is triggered by
+  `push`/`pull_request`/`schedule`/`workflow_dispatch` on **this repo's own tree** — it is not a
+  `workflow_call` reusable workflow consumed by the fleet (verified: `on:` block has no
+  `workflow_call:` key). Unlike DEBT-002's regex, tightening this one carries zero cross-repo
+  blast radius; it only changes what `alebrije-workflows`' own CI warns about on its own future
+  commits.
+- **Mechanism run, real content, structurally extracted (not retyped) — both checks**:
+  ```
+  $ python3 -c "import yaml; d=yaml.safe_load(open('.github/workflows/validate-self.yml')); \
+      print([s['run'] for s in d['jobs']['check-anti-patterns']['steps'] \
+      if s.get('name','').startswith('Check for error suppression')][0])" > /tmp/extracted.py
+  $ python3 /tmp/extracted.py   # via bash wrapper, same content
+  Checking for || true in test/coverage steps...
+  ::warning::Found || true in test/coverage context (Rule #11):
+  .github/workflows/reusable-test.yml:
+  229:            grep -E "TOTAL|Total" coverage.txt >> $GITHUB_STEP_SUMMARY || true
+  Checking for --no-verify flag...
+  ✓ Anti-pattern check complete
+  ```
+  One real, legitimate hit remains — `reusable-test.yml:229`'s `grep -E "TOTAL|Total"
+  coverage.txt >> $GITHUB_STEP_SUMMARY || true` — read in context
+  (`.github/workflows/reusable-test.yml:217-232`): it is inside the "Write coverage summary"
+  step (`if: always()`), a purely cosmetic step that appends to `$GITHUB_STEP_SUMMARY` for human
+  visibility; the real fatal gate already ran earlier (`exit $EXIT_CODE` at line 213, no
+  suppression) and the 90% coverage floor is enforced separately. `|| true` here only tolerates
+  `grep` finding no `TOTAL`/`Total` line in `coverage.txt`, it does not swallow a test or
+  coverage failure. Left as-is (verified benign, cited above), not part of this ticket's fix
+  scope, and now visible instead of buried under 129 false positives.
+- **Control in two directions (Edit on real repo files, not git; not a harness in `/tmp`)**:
+  injected into `.github/workflows/reusable-benchmark.yml` (a real, unrelated workflow, chosen
+  for low blast radius) a real anti-pattern (`go test ./... || true`, `git commit --no-verify -m
+  "control"`) **and**, on the line right above, a comment-only mention of the exact same two
+  strings ("nunca escribas go test ... || true ni git commit --no-verify aqui"):
+  ```
+  # RED — both real uses caught, the comment mention on the line above is absent from output:
+  ::warning::Found || true in test/coverage context (Rule #11):
+  .github/workflows/reusable-benchmark.yml:
+  78:          go test ./... || true
+  .github/workflows/reusable-test.yml:
+  229:            grep -E "TOTAL|Total" coverage.txt >> $GITHUB_STEP_SUMMARY || true
+  Checking for --no-verify flag...
+  ::warning::Found --no-verify flag (bypasses commit hooks):
+  .github/workflows/reusable-benchmark.yml:
+  79:          git commit --no-verify -m "control"
+  ```
+  Restored `reusable-benchmark.yml` to its original content with Edit; re-ran:
+  ```
+  # GREEN — back to only the one pre-existing, verified-benign hit:
+  ::warning::Found || true in test/coverage context (Rule #11):
+  .github/workflows/reusable-test.yml:
+  229:            grep -E "TOTAL|Total" coverage.txt >> $GITHUB_STEP_SUMMARY || true
+  Checking for --no-verify flag...
+  ✓ Anti-pattern check complete
+  ```
+  `git diff -- .github/workflows/reusable-benchmark.yml` and
+  `git status --porcelain -- .github/workflows/reusable-benchmark.yml` both empty after restore.
+  First attempt at the `--no-verify` self-exclusion used a `./`-prefixed path
+  (`[ "$f" = "./.github/workflows/validate-self.yml" ]`) that never matched — `find
+  .github/workflows .github/actions ...` (search roots without a leading `./`) yields paths
+  like `.github/workflows/validate-self.yml`, not `./.github/workflows/...`. Caught by actually
+  running it (the self-exclusion silently did nothing, self-match still fired) before trusting
+  the fix — corrected to the real path shape and re-verified above.
+- **Validated**: `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/validate-self.yml'))"`
+  → OK; `yamllint -d "{extends: default, rules: {line-length: {max: 180}, comments:
+  {min-spaces-from-content: 2}}}" .github/workflows/validate-self.yml` → exit 0, only the two
+  pre-existing `document-start`/`truthy` warnings shared by every workflow in this repo, no new
+  warnings.
+- **git diff scope**: `.github/workflows/validate-self.yml` only (the "Check for error
+  suppression in critical contexts" step body).
+- **Effort**: S — **Priority**: P1 by peor razon (this repo's own quality gate, ADR-001 Bloque
+  R — same class as DEBT-W07, which also ranked #2 worst in the 2026-08-22 census) —
+  **Status**: **CLOSED**
 
 ---
 

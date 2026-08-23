@@ -32,6 +32,7 @@ import yaml
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 README = os.path.join(REPO_ROOT, "README.md")
 WORKFLOWS_DIR = os.path.join(REPO_ROOT, ".github", "workflows")
+ACTIONS_DIR = os.path.join(REPO_ROOT, ".github", "actions")
 
 
 def _real_inputs(workflow_filename: str) -> set[str]:
@@ -95,6 +96,51 @@ def test_ts_example_names_real_reusable_test_ts_inputs():
     assert "reusable-test-node.yml" in section, (
         "TS section must point to reusable-test-node.yml for plain-Node services"
     )
+
+
+def _readme_h2_section(heading: str) -> str:
+    """Same idea as `_readme_section` but for `##` headings (the Custom
+    Actions table lives at `##`, not `###`, per README.md's own structure)."""
+    text = open(README, encoding="utf-8").read()
+    start = text.index(f"## {heading}")
+    rest = text[start + len(f"## {heading}") :]
+    m = re.search(r"\n#{2,3} ", rest)
+    return rest[: m.start()] if m else rest
+
+
+def test_all_nine_custom_actions_documented_in_readme():
+    """AQ-003 asked 'are all 9 custom actions fully implemented and
+    documented?'. Ground truth, not a word-count: every real action
+    directory under .github/actions/ must be named in the README's Custom
+    Actions table, together with at least one of its REAL `inputs:` keys
+    (re-derived via yaml.safe_load, same idiom as `_real_inputs` above) --
+    so this goes red if a new action is added and never documented, or if
+    an action's real inputs drift away from what the table claims."""
+    action_dirs = sorted(
+        d for d in os.listdir(ACTIONS_DIR)
+        if os.path.isfile(os.path.join(ACTIONS_DIR, d, "action.yml"))
+    )
+    assert len(action_dirs) == 9, (
+        f"expected 9 custom actions (AQ-003's own count), found "
+        f"{len(action_dirs)}: {action_dirs} -- update AQ-003 and this test "
+        f"together, don't let the count drift silently"
+    )
+    section = _readme_h2_section("Custom Actions (AQ-003)")
+    undocumented = []
+    for action_dir in action_dirs:
+        if action_dir not in section:
+            undocumented.append(f"{action_dir}: name missing from README table")
+            continue
+        doc = yaml.safe_load(
+            open(os.path.join(ACTIONS_DIR, action_dir, "action.yml"))
+        )
+        real_inputs = set((doc.get("inputs") or {}).keys())
+        if real_inputs and not any(f"`{inp}`" in section for inp in real_inputs):
+            undocumented.append(
+                f"{action_dir}: none of its real inputs {sorted(real_inputs)} "
+                f"appear in the README table"
+            )
+    assert not undocumented, "AQ-003 gap(s) found:\n" + "\n".join(undocumented)
 
 
 def test_ts_example_does_not_claim_a_secrets_block_that_does_not_exist():
