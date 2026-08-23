@@ -21,6 +21,7 @@ Run with:
 or stand-alone (no pytest needed):
     python3 tests/test_readme_examples.py
 """
+
 from __future__ import annotations
 
 import os
@@ -117,7 +118,8 @@ def test_all_nine_custom_actions_documented_in_readme():
     so this goes red if a new action is added and never documented, or if
     an action's real inputs drift away from what the table claims."""
     action_dirs = sorted(
-        d for d in os.listdir(ACTIONS_DIR)
+        d
+        for d in os.listdir(ACTIONS_DIR)
         if os.path.isfile(os.path.join(ACTIONS_DIR, d, "action.yml"))
     )
     assert len(action_dirs) == 9, (
@@ -131,9 +133,7 @@ def test_all_nine_custom_actions_documented_in_readme():
         if action_dir not in section:
             undocumented.append(f"{action_dir}: name missing from README table")
             continue
-        doc = yaml.safe_load(
-            open(os.path.join(ACTIONS_DIR, action_dir, "action.yml"))
-        )
+        doc = yaml.safe_load(open(os.path.join(ACTIONS_DIR, action_dir, "action.yml")))
         real_inputs = set((doc.get("inputs") or {}).keys())
         if real_inputs and not any(f"`{inp}`" in section for inp in real_inputs):
             undocumented.append(

@@ -744,6 +744,15 @@ jobs:
           echo "::group::ruff check scripts/ tests/"
           ruff check scripts/ tests/
           echo "::endgroup::"
+      # The flotilla standard this job copies (reusable-test.yml) is TWO steps, not one:
+      # `ruff check app/` AND `ruff format --check app/`. Mirroring only the first half left
+      # this repo exactly as blind to formatting as it was to F401 — measured 2026-08-23:
+      # `ruff format --check scripts/ tests/` failed on 6 of 6 .py files, 100% of the population.
+      - name: Format check scripts/ and tests/
+        run: |
+          echo "::group::ruff format --check scripts/ tests/"
+          ruff format --check scripts/ tests/
+          echo "::endgroup::"
 
   # ======================================================================
   # SUMMARY: Aggregate all audit results

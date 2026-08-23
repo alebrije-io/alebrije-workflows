@@ -1589,12 +1589,25 @@ happens to hit first.
   dead — `grep -n "os\." scripts/gen_api_collection.py` returns nothing). The import itself is
   trivial; what matters is *why* it survived. Grepped this repo end to end
   (`grep -rn "ruff\|flake8\|pylint\|F401" --include="*.yml" --include="*.yaml" --include="*.toml"
-  --include="*.cfg" .`) and found exactly one hit, in
-  `.github/workflows/reusable-test.yml:123-124`:
+  --include="*.cfg" . | grep -v .ruff_cache`) and found **7 hits, all inside the same file**,
+  `.github/workflows/reusable-test.yml` — lines 8, 122, 123, 124, 126, 127, 128:
   ```
+    8:# - Ruff lint + format check
+  122:      # Ruff lint check: enforces code style and common mistakes.
   123:      - name: Lint with ruff
   124:        run: ruff check app/
+  126:      # Ruff format check: ensures consistent code formatting.
+  127:      - name: Format check with ruff
+  128:        run: ruff format --check app/
   ```
+  > ⚠️ **Corrección 2026-08-23, misma fecha.** La primera redacción de esta entrada decía «found
+  > exactly one hit … `reusable-test.yml:123-124`». Es **falso**: su propio comando devuelve 7
+  > líneas sobre `origin/main` (9 sobre HEAD). La conclusión estructural no cambia — los 7 hits
+  > viven en el mismo workflow `workflow_call`, ninguno con alcance sobre este árbol — pero el
+  > recorte **no cayó en una línea cualquiera**: se comió `128: ruff format --check app/`, la
+  > SEGUNDA MITAD del estándar de flota que esta unidad tomó como modelo, y con ella la única
+  > pista de que faltaba medir el formato. Un error hacia el lado tranquilizador, exactamente
+  > el que más cuesta. Ver «Segunda mitad» abajo.
   That job is a `workflow_call` **reusable** workflow (`on.workflow_call`, no local trigger) —
   it only runs *inside caller repos*, against *their* `app/` directory. This repo
   (`alebrije-workflows`) never calls it on itself. Confirmed the negative directly: this repo has
@@ -1612,6 +1625,41 @@ happens to hit first.
   `1 F401 unused-import`). Widening the gate to the entire repo does not destape a flood of
   preexisting findings — the one F401 was the only thing there. `tests/*.py` (4 files) was
   already clean.
+  > ⚠️ **Ese denominador es de `ruff check` y SÓLO de `ruff check`.** La primera redacción lo
+  > tituló «ampliar el linter no destapó backlog oculto — 1 de 1», y eso es falso para el
+  > estándar completo. Medido el mismo día:
+  > ```
+  > $ python3 -m ruff format --check scripts/ tests/
+  > Would reformat: scripts/fe_be_audit.py
+  > Would reformat: scripts/gen_api_collection.py
+  > Would reformat: tests/test_approved_base_images.py
+  > Would reformat: tests/test_event_schemas.py
+  > Would reformat: tests/test_gen_api_collection.py
+  > Would reformat: tests/test_readme_examples.py
+  > 6 files would be reformatted   EXIT=1
+  > ```
+  > **6 de 6 — el 100 % de la población `.py` del repo.** El backlog oculto sí existía; sólo que
+  > no lo veía la mitad del estándar que se había copiado.
+
+- **Segunda mitad del gate: `ruff format --check` — cerrada, no registrada como pendiente
+  (2026-08-23)**. AUDIT 19 replicaba `ruff check` y no `ruff format --check`, dejando el repo
+  tan ciego al formato como estaba a F401 el día anterior. Cerrado en la única dirección
+  permitida (que el gate vea MÁS): se añadió el step `Format check scripts/ and tests/` al mismo
+  job y se formatearon los 6 ficheros con `ruff format`. Sin `# noqa`, sin `--exclude`, sin
+  excepciones por fichero.
+  - **El formateo es semánticamente inerte, probado por AST y no por confianza** — comparé
+    `ast.dump(ast.parse(...))` de cada fichero contra su versión en `HEAD`: **AST IDÉNTICO en los
+    6**. Por eso ningún fallo de test puede atribuirse a este cambio.
+  - **Control en las dos direcciones**, con el shell real de GitHub Actions
+    (`bash --noprofile --norc -eo pipefail`): con una función mal formateada inyectada por Edit →
+    `Would reformat: scripts/gen_api_collection.py`, `STEP_EXIT=1` y el `::endgroup::` **no se
+    imprime** (`-e` aborta ⇒ el step es fatal, sin fail-open). Restaurado →
+    `6 files already formatted`, `STEP_EXIT=0`, árbol sin residuo de la sonda.
+  - **Nota de método**: el primer control que intenté fue correr los tests sobre un
+    `git archive origin/main` extraído al scratchpad. Dio `EXIT=0` y parecía probar que el fallo
+    de `test_approved_base_images.py` era nuevo. **Era una ventana vacía**: ese test recorre los
+    repos hermanos de la flota y en una copia aislada no hay ninguno, así que pasó midiendo una
+    población de cero. Ventana ≠ población, otra vez, y otra vez fallando hacia lo tranquilizador.
 - **Fix**:
   1. Removed the dead import — `scripts/gen_api_collection.py:8` (`import os` deleted; `argparse`,
      `json`, `re`, `sys` all remain used).
@@ -1685,6 +1733,18 @@ happens to hit first.
   closes only `alebrije-workflows`' own instance of it. The other 7 repos' orphaned scripts are
   out of this ticket's write-scope (this session's write access is `alebrije-workflows` only) and
   remain open elsewhere.
+- **QUEDA ABIERTO, y es la misma familia que motivó este ticket (2026-08-23): ningún workflow
+  EJECUTA los tests propios de este repo.** Medido:
+  `grep -rn "tests/test_\|pytest\|python3 tests" --include="*.yml" .github/workflows/ | grep -v reusable-`
+  → exit 1, sin resultados. Consecuencia incómoda que hay que decir en voz alta: **AUDIT 19
+  LINTEA una carpeta `tests/` que nadie CORRE**, y `tests/test_approved_base_images.py` está en
+  **rojo hoy** (exit 1) sin que ningún gate lo vea. El fallo es un falso positivo de `FROM_RE`
+  con `IGNORECASE` matcheando `from playwright.sync_api import ...` en
+  `alebrije-adapt-toronja/Dockerfile:163`; el mismo regex vive en `reusable-build-push.yml` y
+  gatea ~33 repos, así que endurecerlo es un cambio de diseño con blast radius propio —
+  deliberadamente fuera de esta unidad, **no silenciado**. Cablear un job que corra estos 4 tests
+  es el siguiente ticket natural, y hasta que exista, «este repo tiene sus controles cableados»
+  es cierto sólo para el linter.
 - **Effort**: S — **Priority**: P2 (single repo, one real finding, no cross-repo blast radius —
   `validate-self.yml` has no `workflow_call:` trigger, confirmed same way DEBT-W16 confirmed it) —
   **Status**: **CLOSED**

@@ -23,6 +23,7 @@ event-schemas/README.md §5, resolving the envelope ``$ref`` by ``$id`` URL
 through a local ``referencing`` registry (the same mapping the Python/Elixir/
 Go validators perform when they load the registry from disk).
 """
+
 from __future__ import annotations
 
 import glob
@@ -38,9 +39,7 @@ from referencing.jsonschema import DRAFT7
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA_DIR = os.path.join(REPO_ROOT, "event-schemas")
-WORKFLOW = os.path.join(
-    REPO_ROOT, ".github", "workflows", "cross-repo-trigger.yml"
-)
+WORKFLOW = os.path.join(REPO_ROOT, ".github", "workflows", "cross-repo-trigger.yml")
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +53,9 @@ def _build_registry() -> Registry:
         sid = doc.get("$id")
         if not sid:
             continue
-        resources.append((sid, Resource.from_contents(doc, default_specification=DRAFT7)))
+        resources.append(
+            (sid, Resource.from_contents(doc, default_specification=DRAFT7))
+        )
     return Registry().with_resources(resources)
 
 
@@ -254,7 +255,8 @@ def test_envelope_event_type_pattern_admits_2_and_3_segment_names():
 def test_rewards_earned_validates_against_real_outbox_envelope_shape():
     v = _validator_for("rewards.earned.v1.json")
     event = _outbox_envelope(
-        "rewards.earned", {"user_id": "22222222-2222-2222-2222-222222222222", "amount": 10}
+        "rewards.earned",
+        {"user_id": "22222222-2222-2222-2222-222222222222", "amount": 10},
     )
     errors = [e.message for e in v.iter_errors(event)]
     assert errors == [], f"real rewards.earned outbox event rejected: {errors}"
@@ -263,7 +265,8 @@ def test_rewards_earned_validates_against_real_outbox_envelope_shape():
 def test_rewards_redeemed_validates_against_real_outbox_envelope_shape():
     v = _validator_for("rewards.redeemed.v1.json")
     event = _outbox_envelope(
-        "rewards.redeemed", {"user_id": "22222222-2222-2222-2222-222222222222", "amount": 5}
+        "rewards.redeemed",
+        {"user_id": "22222222-2222-2222-2222-222222222222", "amount": 5},
     )
     errors = [e.message for e in v.iter_errors(event)]
     assert errors == [], f"real rewards.redeemed outbox event rejected: {errors}"
@@ -297,15 +300,22 @@ def test_all_event_schemas_still_structurally_valid():
                 errors.append(f"{name}: missing data object")
         else:
             desc = schema.get("description", "")
-            if "FLAT payload (does NOT use the envelope.v1 data-nested shape)" not in desc:
+            if (
+                "FLAT payload (does NOT use the envelope.v1 data-nested shape)"
+                not in desc
+            ):
                 errors.append(f"{name}: missing allOf and missing FLAT payload marker")
             props = schema.get("properties", {})
             if "const" not in props.get("event_type", {}):
-                errors.append(f"{name}: missing top-level event_type const (flat schema)")
+                errors.append(
+                    f"{name}: missing top-level event_type const (flat schema)"
+                )
     assert errors == [], errors
 
 
-def _required_fields_missing_description(schema_node: dict, path: str = "") -> list[str]:
+def _required_fields_missing_description(
+    schema_node: dict, path: str = ""
+) -> list[str]:
     """Walk one schema document (JSON-Schema draft-07, this repo's dialect: plain
     ``allOf``/``properties``/``required``, no ``$ref`` resolution needed here since
     every event schema's own ``required`` list only ever names sibling
@@ -355,7 +365,9 @@ def test_required_fields_have_descriptions():
         schema = json.load(open(f))
         for missing in _required_fields_missing_description(schema):
             errors.append(f"{name}: {missing}")
-    assert errors == [], f"{len(errors)} required field(s) missing description: {errors}"
+    assert errors == [], (
+        f"{len(errors)} required field(s) missing description: {errors}"
+    )
 
 
 # ---------------------------------------------------------------------------

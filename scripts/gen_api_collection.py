@@ -73,13 +73,16 @@ class APICollectionGenerator:
             # level of call-arguments so it matches chi's real call shapes.
             route_pattern = (
                 r'(?:router|r)\.(GET|POST|PUT|DELETE|PATCH)\s*\(\s*"([^"]+)"'
-                r'\s*,\s*([\w.]+(?:\([^)]*\))?)\s*\)'
+                r"\s*,\s*([\w.]+(?:\([^)]*\))?)\s*\)"
             )
 
             for match in re.finditer(route_pattern, content, re.IGNORECASE):
                 method, path, handler = match.groups()
 
-                if any(ep["path"] == path and ep["method"] == method.upper() for ep in self.endpoints):
+                if any(
+                    ep["path"] == path and ep["method"] == method.upper()
+                    for ep in self.endpoints
+                ):
                     continue
 
                 endpoint = {
@@ -92,7 +95,10 @@ class APICollectionGenerator:
                 }
                 self.endpoints.append(endpoint)
         except Exception as e:
-            print(f"Warning: Failed to parse Go routes from {go_file}: {e}", file=sys.stderr)
+            print(
+                f"Warning: Failed to parse Go routes from {go_file}: {e}",
+                file=sys.stderr,
+            )
 
     def save(self, output_path: str) -> None:
         """Save collection to JSON file."""
@@ -107,14 +113,16 @@ def main() -> int:
     )
 
     parser.add_argument(
-        "-r", "--repo",
+        "-r",
+        "--repo",
         default="../api-gateway-go",
-        help="Path to API gateway repository (default: ../api-gateway-go)"
+        help="Path to API gateway repository (default: ../api-gateway-go)",
     )
     parser.add_argument(
-        "-o", "--output",
+        "-o",
+        "--output",
         default="api-collection.json",
-        help="Output file path (default: api-collection.json)"
+        help="Output file path (default: api-collection.json)",
     )
 
     args = parser.parse_args()

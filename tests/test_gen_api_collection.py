@@ -22,6 +22,7 @@ Run with:
 or stand-alone (no pytest needed):
     python3 tests/test_gen_api_collection.py
 """
+
 from __future__ import annotations
 
 import os
@@ -81,8 +82,7 @@ def test_chi_dotted_selector_handler_is_detected():
     )
     paths = {ep["path"] for ep in collection["endpoints"]}
     assert "/artifacts/{id}/data/{queryID}" in paths, (
-        "chi handler as a dotted selector (artifactsHandler.ProxyData) must "
-        "be detected"
+        "chi handler as a dotted selector (artifactsHandler.ProxyData) must be detected"
     )
 
 
@@ -119,7 +119,9 @@ def test_zero_endpoints_against_a_file_with_no_routes_is_still_zero():
     """A directory that genuinely has no routes must still report 0 — the
     fix must not overmatch and invent endpoints out of thin air."""
     tmp = _mk_tmp_dir()
-    collection = _generate_from_content(tmp, "notes.go", "package handler\n// no routes here\n")
+    collection = _generate_from_content(
+        tmp, "notes.go", "package handler\n// no routes here\n"
+    )
     assert collection["endpoints"] == []
 
 

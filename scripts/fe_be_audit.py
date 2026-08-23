@@ -209,9 +209,9 @@ STANDALONE_FE = {
 # ``${var}`` (FE template literal) all normalise to ``:param``.
 PARAM_PATTERNS = [
     re.compile(r"\$\{[^}]+\}"),  # FE template literal — apply first so the
-                                 # trailing ``}`` doesn't get consumed by
-                                 # the generic ``{...}`` pattern below.
-    re.compile(r"\{[^}]+\}"),    # FastAPI / chi verbose form
+    # trailing ``}`` doesn't get consumed by
+    # the generic ``{...}`` pattern below.
+    re.compile(r"\{[^}]+\}"),  # FastAPI / chi verbose form
     re.compile(r":[A-Za-z_][A-Za-z0-9_]*"),  # chi / Phoenix
 ]
 
@@ -345,9 +345,7 @@ PHOENIX_ROUTE_RE = re.compile(
     r"""^\s*(?P<verb>get|post|put|patch|delete)\s+(?P<quote>["'])(?P<path>[^"']+)(?P=quote)""",
     re.MULTILINE,
 )
-PHOENIX_SCOPE_RE = re.compile(
-    r"""scope\s+(?P<quote>["'])(?P<scope>[^"']+)(?P=quote)"""
-)
+PHOENIX_SCOPE_RE = re.compile(r"""scope\s+(?P<quote>["'])(?P<scope>[^"']+)(?P=quote)""")
 
 
 def collect_python_routes(backend_dir: Path, prefix_hint: str) -> list[tuple[str, str]]:
@@ -403,7 +401,9 @@ def collect_python_routes(backend_dir: Path, prefix_hint: str) -> list[tuple[str
         for m in FASTAPI_ROUTE_RE.finditer(text):
             verb = m.group("verb").upper()
             path = m.group("path")
-            full = (router_prefix + path) if not path.startswith(router_prefix) else path
+            full = (
+                (router_prefix + path) if not path.startswith(router_prefix) else path
+            )
             routes.append((verb, full))
 
     return routes
@@ -608,9 +608,7 @@ def audit_module(name: str, cfg: dict) -> ModuleReport:
             or p.startswith("/metrics/")
         )
 
-    normalised = sorted(
-        {(v, normalise_path(p)) for v, p in routes if not is_probe(p)}
-    )
+    normalised = sorted({(v, normalise_path(p)) for v, p in routes if not is_probe(p)})
     report.be_endpoints = normalised
 
     fe_set = set(report.fe_endpoints)
@@ -631,7 +629,9 @@ def render_markdown(reports: list[ModuleReport]) -> str:
     out = [f"# Frontend ↔ Backend Contract Audit — {today}", ""]
     out.append("## Summary")
     out.append("")
-    out.append("| Module | FE endpoints | BE routes | Match | FE only | BE only | Backend |")
+    out.append(
+        "| Module | FE endpoints | BE routes | Match | FE only | BE only | Backend |"
+    )
     out.append("|---|---:|---:|---:|---:|---:|---|")
 
     for r in sorted(reports, key=lambda r: r.module):
@@ -653,7 +653,9 @@ def render_markdown(reports: list[ModuleReport]) -> str:
         out.append(f"### {r.module}")
         out.append("")
         if r.backend_missing:
-            out.append(f"Backend directory missing on disk. FE ships {len(r.fe_endpoints)} endpoints with no counterpart.")
+            out.append(
+                f"Backend directory missing on disk. FE ships {len(r.fe_endpoints)} endpoints with no counterpart."
+            )
             out.append("")
             for verb, path in r.fe_endpoints:
                 out.append(f"- FE: `{verb} {path}`")
@@ -673,14 +675,16 @@ def render_markdown(reports: list[ModuleReport]) -> str:
             out.append("")
 
     if not any_mismatch:
-        out.append("No mismatches detected. Every frontend call hits a defined backend route.")
+        out.append(
+            "No mismatches detected. Every frontend call hits a defined backend route."
+        )
         out.append("")
 
     out.append("## Recommendation")
     out.append("")
     top_drift = sorted(
         reports,
-        key=lambda r: (len(r.fe_only) * 2 + len(r.be_only)),
+        key=lambda r: len(r.fe_only) * 2 + len(r.be_only),
         reverse=True,
     )[:3]
     if top_drift and any(len(r.fe_only) or len(r.be_only) for r in top_drift):
@@ -693,7 +697,9 @@ def render_markdown(reports: list[ModuleReport]) -> str:
                 f"- `{r.module}`: {len(r.fe_only)} FE-only, {len(r.be_only)} BE-only"
             )
     else:
-        out.append("Keep the audit wired into CI so any new drift fails the PR that introduced it.")
+        out.append(
+            "Keep the audit wired into CI so any new drift fails the PR that introduced it."
+        )
 
     return "\n".join(out) + "\n"
 

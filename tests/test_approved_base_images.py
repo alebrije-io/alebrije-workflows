@@ -24,6 +24,7 @@ Run with:
 or stand-alone (no pytest needed):
     python3 tests/test_approved_base_images.py
 """
+
 from __future__ import annotations
 
 import json
@@ -65,9 +66,7 @@ def load_approved():
 
 def violations_in(content, approved):
     """Exact re-implementation of the workflow matcher (tag-exact)."""
-    stage_names = {
-        m.group(2).lower() for m in FROM_RE.finditer(content) if m.group(2)
-    }
+    stage_names = {m.group(2).lower() for m in FROM_RE.finditer(content) if m.group(2)}
     out = []
     for match in FROM_RE.finditer(content):
         image = match.group(1)
@@ -277,7 +276,10 @@ def test_schema_validator_catches_entry_without_name():
 
 
 def test_schema_validator_catches_entry_without_tags():
-    bad = {"images": [{"name": "golang"}], "scanning_policy": {"block_on_critical": True}}
+    bad = {
+        "images": [{"name": "golang"}],
+        "scanning_policy": {"block_on_critical": True},
+    }
     errs = _validate_schema(bad)
     assert any("must declare" in e for e in errs)
 
