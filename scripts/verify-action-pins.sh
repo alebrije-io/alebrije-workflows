@@ -11,6 +11,24 @@
 # Usage: scripts/verify-action-pins.sh [repo-root]   (needs `gh` authenticated; CI uses github.token)
 set -euo pipefail
 root="${1:-.}"
+ATTEMPTS=3
+# resolve OWNER/REPO SHA -> 0 exists; 1 upstream says it does not exist (HTTP 404/422);
+# 2 could not be verified (network, rate limit, 5xx) after $ATTEMPTS tries. On 1 and 2 the
+# API's own message is printed so the log says WHY, not just that it failed.
+resolve() {
+  local out attempt
+  for attempt in $(seq 1 "$ATTEMPTS"); do
+    if out=$(gh api "repos/$1/commits/$2" --jq '.sha' 2>&1); then
+      return 0
+    fi
+    case "$out" in
+      *"HTTP 404"*|*"HTTP 422"*) printf '%s' "$out" | head -1; return 1 ;;
+    esac
+    sleep $((attempt * 3))
+  done
+  printf '%s' "$out" | head -1
+  return 2
+}
 pins=$(grep -rhoE 'uses: *[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[0-9a-f]{7,}' "$root/.github" | sed -E 's/uses: *//' | sort -u)
 fail=0
 n=0
@@ -24,8 +42,12 @@ while read -r ref; do
     fail=1
     continue
   fi
-  if ! gh api "repos/$repo/commits/$sha" --jq '.sha' >/dev/null 2>&1; then
-    echo "::error::$ref — commit does not exist in github.com/$repo (or could not be verified)"
+  if ! msg=$(resolve "$repo" "$sha"); then
+    if [ "$?" -eq 1 ]; then
+      echo "::error::$ref — commit does not exist in github.com/$repo ($msg)"
+    else
+      echo "::error::$ref — could not be verified after $ATTEMPTS attempts ($msg)"
+    fi
     fail=1
   fi
 done <<< "$pins"
