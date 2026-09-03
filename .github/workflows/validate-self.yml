@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
       - name: "Check for untagged uses: statements (supply chain risk)"
         id: audit-shas
@@ -61,6 +61,14 @@ jobs:
           echo "✓ All uses: statements are SHA-pinned (40 hex chars)"
           echo "::endgroup::"
 
+      # Shape is not existence: from 2026-05-07 to 2026-09-03 212 pins here pointed at commits that
+      # do not exist upstream and every consumer job died in "Set up job". This step resolves each
+      # distinct pin against the GitHub API and fails closed (no network / no token = failure).
+      - name: "Verify every pinned SHA resolves upstream (fail-closed)"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/verify-action-pins.sh .
+
   # ======================================================================
   # AUDIT 2: NO hardcoded secrets (AWS keys, GH tokens, etc)
   # ======================================================================
@@ -69,7 +77,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
       - name: Check for AWS keys (AKIA pattern)
         run: |
@@ -115,7 +123,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
       - name: "Check all workflows have permissions: block"
         id: check-perms
@@ -148,7 +156,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
       - name: Install yamllint
         run: pip install yamllint
@@ -178,7 +186,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
       - name: Check for error suppression in critical contexts
         run: |
@@ -268,7 +276,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
       - name: Check local action paths are relative
         run: |
@@ -295,7 +303,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
       - name: Check for reusable workflow markers
         run: |
@@ -326,7 +334,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
       - name: Verify concurrency blocks
         run: |
           MISSING=0
@@ -352,7 +360,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
       - name: Check SHA pins have version comments
         run: |
           MISSING=$(grep -rn 'uses:.*@[a-f0-9]\{40\}' .github/workflows .github/actions 2>/dev/null | grep -v '#[[:space:]]*v' | wc -l)
@@ -373,7 +381,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
       - name: Scan for direct context use in run steps
         run: |
           # Check for ${{ github.event.* }} used inline in run: (injection risk)
@@ -398,8 +406,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
-      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3  # v5.2.0
         with:
           python-version: "3.12"
       - name: Validate all event schemas
@@ -454,7 +462,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
       - name: Check for missing permissions blocks
         run: |
           MISSING=0
@@ -481,8 +489,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
-      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3  # v5.2.0
         with:
           python-version: "3.12"
       - name: Check inputs have descriptions
@@ -513,7 +521,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
       - name: Run actionlint
         uses: rhysd/actionlint@v1
         with:
@@ -527,8 +535,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
-      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3  # v5.2.0
         with:
           python-version: "3.12"
       - name: Find jobs without timeout-minutes
@@ -559,8 +567,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
-      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3  # v5.2.0
         with:
           python-version: "3.12"
       - name: Scan for inputs.* in run blocks
@@ -603,8 +611,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
-      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3  # v5.2.0
         with:
           python-version: "3.12"
       - name: Scan for emitted set-output worker command
@@ -649,8 +657,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
-      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3  # v5.2.0
         with:
           python-version: "3.12"
       - name: Validate schema
@@ -733,8 +741,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
-      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3  # v5.2.0
         with:
           python-version: "3.12"
       - name: Install ruff
@@ -787,7 +795,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
       - name: Generate audit report
         id: report
@@ -827,7 +835,7 @@ jobs:
 
       - name: Comment audit results on PR (if PR)
         if: github.event_name == 'pull_request' && failure()
-        uses: actions/github-script@60a0d83039c74a4aee1596a2a764a0a72b574be9  # v7.0.1
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea  # v7.0.1
         with:
           script: |
             const results = {

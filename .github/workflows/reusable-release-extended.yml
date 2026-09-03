@@ -68,7 +68,7 @@ jobs:
       bump-type: ${{ steps.bump.outputs.bump-type }}
       current-version: ${{ steps.bump.outputs.current-version }}
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
         with:
           fetch-depth: 0
           token: ${{ secrets.GH_TOKEN }}
@@ -163,7 +163,7 @@ jobs:
     runs-on: arc-runner-set
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
         with:
           fetch-depth: 0
           token: ${{ secrets.GH_TOKEN }}
@@ -263,12 +263,12 @@ jobs:
     runs-on: arc-runner-set
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
         with:
           ref: "v${{ needs.determine-version.outputs.new-version }}"
 
       - name: Get PyPI token from Vault
-        uses: hashicorp/vault-action@d1720f055e0e7a166814d3702ccad504a236238f  # v2.8.1
+        uses: hashicorp/vault-action@9c2d817b85b9fff56bcab21cb74b485aee9e9d73  # v2.8.1
         with:
           url: http://vault.vault.svc:8200
           method: kubernetes
@@ -276,7 +276,7 @@ jobs:
           secrets: |
             alebrije/data/ci/pypi token | PYPI_TOKEN
 
-      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3  # v5.2.0
         with:
           python-version: '3.12'
 
@@ -310,12 +310,12 @@ jobs:
     runs-on: arc-runner-set
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
         with:
           ref: "v${{ needs.determine-version.outputs.new-version }}"
 
       - name: Get Hex API key from Vault
-        uses: hashicorp/vault-action@d1720f055e0e7a166814d3702ccad504a236238f  # v2.8.1
+        uses: hashicorp/vault-action@9c2d817b85b9fff56bcab21cb74b485aee9e9d73  # v2.8.1
         with:
           url: http://vault.vault.svc:8200
           method: kubernetes
@@ -323,7 +323,7 @@ jobs:
           secrets: |
             alebrije/data/ci/hex api_key | HEX_API_KEY
 
-      - uses: erlef/setup-beam@7bac9ca1bd48b5e4021d43cbe9ce61172821b092  # v1.18.1
+      - uses: erlef/setup-beam@b9c58b0450cd832ccdb3c17cc156a47065d2114f  # v1.18.1
         with:
           elixir-version: '1.18'
           otp-version: '27'
@@ -355,12 +355,12 @@ jobs:
     runs-on: arc-runner-set
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
         with:
           ref: "v${{ needs.determine-version.outputs.new-version }}"
 
       - name: Get npm token from Vault
-        uses: hashicorp/vault-action@d1720f055e0e7a166814d3702ccad504a236238f  # v2.8.1
+        uses: hashicorp/vault-action@9c2d817b85b9fff56bcab21cb74b485aee9e9d73  # v2.8.1
         with:
           url: http://vault.vault.svc:8200
           method: kubernetes
@@ -368,7 +368,7 @@ jobs:
           secrets: |
             alebrije/data/ci/npm token | NPM_TOKEN
 
-      - uses: actions/setup-node@1a4442caab129478d0a1be482dbe86fb8fbf7f4f  # v4.1.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
         with:
           node-version: '22'
 

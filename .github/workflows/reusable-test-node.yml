@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
       - name: Detect package manager
         id: pm
@@ -38,7 +38,7 @@ jobs:
           fi
 
       - name: Set up Node.js ${{ inputs.node-version }}
-        uses: actions/setup-node@1a4442caab129478d0a1be482dbe86fb8fbf7f4f  # v4.1.0
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
         with:
           node-version: ${{ inputs.node-version }}
           cache: ${{ steps.pm.outputs.manager }}
@@ -71,7 +71,7 @@ jobs:
 
       - name: Upload coverage (if available)
         if: always()
-        uses: codecov/codecov-action@125fc84a2bfd3c102d6a49fa07367b1ac6dbf2ac  # v4.4.1
+        uses: codecov/codecov-action@125fc84a9a348dbcf27191600683ec096ec9021c  # v4.4.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: frontend

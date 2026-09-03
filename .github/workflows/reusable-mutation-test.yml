@@ -60,9 +60,9 @@ jobs:
     runs-on: arc-runner-set
 
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
-      - uses: actions/setup-python@f677139bbe7f9c59030f3dec7cea6f7fc22ad2b7  # v5.2.0
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3  # v5.2.0
         with:
           python-version: '3.12'
 
@@ -106,7 +106,7 @@ jobs:
 
       - name: Upload mutmut results
         if: always()
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
         continue-on-error: true
         with:
           name: mutmut-results-${{ github.run_number }}
@@ -123,9 +123,9 @@ jobs:
     runs-on: arc-runner-set
 
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
-      - uses: actions/setup-node@1a4442caab129478d0a1be482dbe86fb8fbf7f4f  # v4.1.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
         with:
           node-version: '22'
           cache: 'pnpm'
@@ -162,7 +162,7 @@ jobs:
 
       - name: Upload Stryker report
         if: always()
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
         continue-on-error: true
         with:
           name: stryker-report-${{ github.run_number }}
@@ -179,9 +179,9 @@ jobs:
     runs-on: arc-runner-set
 
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
-      - uses: actions/setup-go@cdcb36256b49618355e264982131d2dec09dee08  # v5.1.0
+      - uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed  # v5.1.0
         with:
           go-version: '1.23'
           cache: true
@@ -226,7 +226,7 @@ jobs:
 
       - name: Upload gremlins report
         if: always()
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
         continue-on-error: true
         with:
           name: gremlins-report-${{ github.run_number }}
@@ -243,9 +243,9 @@ jobs:
     runs-on: arc-runner-set
 
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
-      - uses: erlef/setup-beam@7bac9ca1bd48b5e4021d43cbe9ce61172821b092  # v1.18.1
+      - uses: erlef/setup-beam@b9c58b0450cd832ccdb3c17cc156a47065d2114f  # v1.18.1
         with:
           elixir-version: '1.18'
           otp-version: '27'

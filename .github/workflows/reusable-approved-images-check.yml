@@ -45,12 +45,12 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout target repo
-        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
         with:
           path: target
 
       - name: Checkout alebrije-workflows (whitelist source)
-        uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
         with:
           repository: alebrije-io/alebrije-workflows
           ref: ${{ inputs.workflows-ref }}

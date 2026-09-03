@@ -165,7 +165,7 @@ jobs:
     continue-on-error: true
     steps:
       - name: Fetch Slack webhook from Vault
-        uses: hashicorp/vault-action@d1720f055e0e7a166814d3702ccad504a236238f  # v2.8.1
+        uses: hashicorp/vault-action@9c2d817b85b9fff56bcab21cb74b485aee9e9d73  # v2.8.1
         id: vault
         with:
           url: http://vault.vault.svc:8200
@@ -284,7 +284,7 @@ jobs:
     continue-on-error: true
     steps:
       - name: Fetch SMTP credentials from Vault
-        uses: hashicorp/vault-action@d1720f055e0e7a166814d3702ccad504a236238f  # v2.8.1
+        uses: hashicorp/vault-action@9c2d817b85b9fff56bcab21cb74b485aee9e9d73  # v2.8.1
         id: vault
         with:
           url: http://vault.vault.svc:8200
@@ -532,7 +532,7 @@ jobs:
 
       - name: Upload audit log
         if: always()
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c6e5e938f0e6ea  # v4.4.3
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
         with:
           name: notification-audit-${{ github.run_id }}
           path: /tmp/notification-audit.log

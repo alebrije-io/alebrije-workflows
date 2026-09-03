@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
       - name: Check if OpenAPI spec exists
         id: check-spec
@@ -75,7 +75,7 @@ jobs:
 
       - name: Setup Node.js for Spectral
         if: steps.check-spec.outputs.exists == 'true'
-        uses: actions/setup-node@1a4442caab129478d0a1be482dbe86fb8fbf7f4f  # v4.1.0
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
         with:
           node-version: '22'
 
@@ -108,7 +108,7 @@ jobs:
 
       - name: Upload Spectral SARIF
         if: always() && steps.check-spec.outputs.exists == 'true'
-        uses: github/codeql-action/upload-sarif@883bce87b3291ad2b9a21f98b1ade60785d39451  # v3.26.0
+        uses: github/codeql-action/upload-sarif@eb055d739abdc2e8de2e5f4ba1a8b246daa779aa  # v3.26.0
         continue-on-error: true
         with:
           sarif_file: spectral-results.sarif
@@ -121,7 +121,7 @@ jobs:
     name: oasdiff breaking change detection
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
       - name: Check if OpenAPI spec exists
         id: check-spec
@@ -191,7 +191,7 @@ jobs:
           github.event_name == 'pull_request' &&
           steps.oasdiff.outputs.report != '' &&
           env.NO_BASELINE != 'true'
-        uses: peter-evans/create-or-update-comment@c6c9a1a66007646a28c153e2a8580a5bad27bcad  # v4.1.4
+        uses: peter-evans/create-or-update-comment@71345be0265236311c031f5c7866368bd1eff043  # v4.0.0
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body: |

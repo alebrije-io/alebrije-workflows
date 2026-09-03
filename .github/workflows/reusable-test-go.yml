@@ -108,13 +108,13 @@ jobs:
       GONOSUMCHECK: github.com/alebrije-io
 
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
       - name: Configure git for private repos
         run: git config --global url."https://${{ secrets.GH_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Set up Go ${{ inputs.go-version }}
-        uses: actions/setup-go@cdcb36256b49618355e264982131d2dec09dee08  # v5.1.0
+        uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed  # v5.1.0
         with:
           go-version: ${{ inputs.go-version }}
           cache: true
@@ -128,7 +128,7 @@ jobs:
 
       - name: Lint with golangci-lint
         if: ${{ inputs.lint }}
-        uses: golangci/golangci-lint-action@3f06ab41dd0f7fbf14c900841e8861faca4e8e38  # v6.1.0
+        uses: golangci/golangci-lint-action@aaa42aa0628b4ae2578232a66b541047968fac86  # v6.1.0
         with:
           working-directory: ${{ inputs.module-path }}
           args: --config .golangci.yml
@@ -193,7 +193,7 @@ jobs:
           fi
 
       - name: Upload coverage to codecov (best-effort)
-        uses: codecov/codecov-action@125fc84a2bfd3c102d6a49fa07367b1ac6dbf2ac  # v4.4.1
+        uses: codecov/codecov-action@125fc84a9a348dbcf27191600683ec096ec9021c  # v4.4.1
         with:
           files: ${{ inputs.module-path }}/coverage.out
           flags: go
@@ -201,7 +201,7 @@ jobs:
 
       - name: Upload coverage artifact
         if: always()
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68cf7e19c021a7b80b37814  # v4.6.1
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1  # v4.6.1
         with:
           name: coverage-go-${{ github.run_id }}
           path: ${{ inputs.module-path }}/coverage.out
@@ -219,13 +219,13 @@ jobs:
       GONOSUMCHECK: github.com/alebrije-io
 
     steps:
-      - uses: actions/checkout@692d26c91165b778bcc2f91e71f7a51b677a0334  # v4.1.7
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
       - name: Configure git for private repos
         run: git config --global url."https://${{ secrets.GH_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Set up Go ${{ inputs.go-version }}
-        uses: actions/setup-go@cdcb36256b49618355e264982131d2dec09dee08  # v5.1.0
+        uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed  # v5.1.0
         with:
           go-version: ${{ inputs.go-version }}
           cache: true
@@ -239,7 +239,7 @@ jobs:
 
       - name: Lint with golangci-lint
         if: ${{ inputs.lint }}
-        uses: golangci/golangci-lint-action@3f06ab41dd0f7fbf14c900841e8861faca4e8e38  # v6.1.0
+        uses: golangci/golangci-lint-action@aaa42aa0628b4ae2578232a66b541047968fac86  # v6.1.0
         with:
           working-directory: ${{ inputs.module-path }}
           args: --config .golangci.yml
@@ -304,7 +304,7 @@ jobs:
           fi
 
       - name: Upload coverage to codecov (best-effort)
-        uses: codecov/codecov-action@125fc84a2bfd3c102d6a49fa07367b1ac6dbf2ac  # v4.4.1
+        uses: codecov/codecov-action@125fc84a9a348dbcf27191600683ec096ec9021c  # v4.4.1
         with:
           files: ${{ inputs.module-path }}/coverage.out
           flags: go
@@ -312,7 +312,7 @@ jobs:
 
       - name: Upload coverage artifact
         if: always()
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68cf7e19c021a7b80b37814  # v4.6.1
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1  # v4.6.1
         with:
           name: coverage-go-${{ github.run_id }}
           path: ${{ inputs.module-path }}/coverage.out
