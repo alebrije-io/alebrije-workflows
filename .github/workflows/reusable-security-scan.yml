@@ -280,8 +280,8 @@ jobs:
           pip install detect-secrets --quiet
           echo "::group::Scanning for secrets"
           detect-secrets scan --exclude-files ".secrets.baseline" > /tmp/secrets_check_ci.json
-          OLD_RESULTS=$(python3 -c "import json; d=json.load(open('.secrets.baseline')); print(json.dumps(d.get('results',{}), sort_keys=True))" 2>/dev/null || echo "{}")
-          NEW_RESULTS=$(python3 -c "import json; d=json.load(open('/tmp/secrets_check_ci.json')); print(json.dumps(d.get('results',{}), sort_keys=True))" 2>/dev/null || echo "{}")
+          OLD_RESULTS=$(python3 -c "import json; d=json.load(open('.secrets.baseline')); r=d.get('results',{}); print(json.dumps({f:[{k:v for k,v in e.items() if k not in ('is_secret','is_verified')} for e in es] for f,es in r.items()}, sort_keys=True))" 2>/dev/null || echo "{}")
+          NEW_RESULTS=$(python3 -c "import json; d=json.load(open('/tmp/secrets_check_ci.json')); r=d.get('results',{}); print(json.dumps({f:[{k:v for k,v in e.items() if k not in ('is_secret','is_verified')} for e in es] for f,es in r.items()}, sort_keys=True))" 2>/dev/null || echo "{}")
           echo "::endgroup::"
           if [ "$OLD_RESULTS" != "$NEW_RESULTS" ]; then
             echo "::error::detect-secrets: drift vs .secrets.baseline (new/changed findings). Never update the baseline blindly — audit locally with 'detect-secrets audit .secrets.baseline' and commit the reviewed result."
