@@ -403,10 +403,22 @@ jobs:
         run: |
           pip install detect-secrets --quiet
           detect-secrets scan --exclude-files ".secrets.baseline" > /tmp/secrets_check_ci.json
-          OLD_RESULTS=$(python3 -c "import json; d=json.load(open('.secrets.baseline')); r=d.get('results',{}); print(json.dumps({f:[{k:v for k,v in e.items() if k!='is_secret'} for e in es] for f,es in r.items()}, sort_keys=True))") || { echo "::error::detect-secrets: no pude leer/parsear .secrets.baseline" >&2; exit 1; }
-          NEW_RESULTS=$(python3 -c "import json; d=json.load(open('/tmp/secrets_check_ci.json')); r=d.get('results',{}); print(json.dumps({f:[{k:v for k,v in e.items() if k!='is_secret'} for e in es] for f,es in r.items()}, sort_keys=True))") || { echo "::error::detect-secrets: no pude leer/parsear el scan fresco" >&2; exit 1; }
+          # detect-secrets results minus the per-entry is_secret verdicts, sorted so two
+          # scans of the same tree compare byte-for-byte.
+          normalize_results() {
+            python3 - "$1" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          r = d.get('results', {})
+          print(json.dumps({f: [{k: v for k, v in e.items() if k != 'is_secret'} for e in es]
+                            for f, es in r.items()}, sort_keys=True))
+          PY
+          }
+          OLD_RESULTS=$(normalize_results .secrets.baseline) || { echo "::error::detect-secrets: no pude leer/parsear .secrets.baseline" >&2; exit 1; }
+          NEW_RESULTS=$(normalize_results /tmp/secrets_check_ci.json) || { echo "::error::detect-secrets: no pude leer/parsear el scan fresco" >&2; exit 1; }
           if [ "$OLD_RESULTS" != "$NEW_RESULTS" ]; then
-            echo "::error::detect-secrets: drift vs .secrets.baseline (new/changed findings). Never update the baseline blindly — audit locally with 'detect-secrets audit .secrets.baseline' and commit the reviewed result."
+            echo "::error::detect-secrets: drift vs .secrets.baseline (new/changed findings)."
+            echo "::error::Never update the baseline blindly — audit locally with 'detect-secrets audit .secrets.baseline' and commit the reviewed result."
             exit 1
           fi
           echo "✅ No secrets detected"

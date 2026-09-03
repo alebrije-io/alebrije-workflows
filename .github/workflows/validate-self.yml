@@ -49,12 +49,25 @@ jobs:
 
       - name: "Check for untagged uses: statements (supply chain risk)"
         id: audit-shas
+        # Matches only real `uses:` keys (line start, optional `- `) whose ref is not a
+        # 40-hex commit, so tags, branches and short SHAs all fail. The previous pattern
+        # (`uses:.*@[vm][^@]*$` minus any line containing `#`) matched its own error
+        # message and skipped an unpinned action carrying a trailing comment (2026-09-03).
         run: |
           echo "::group::Searching for untagged uses: statements..."
-          count=$(grep -r 'uses:.*@[vm][^@]*$' .github/workflows .github/actions 2>/dev/null | grep -v '#' | wc -l)
-          if [ "$count" -gt 0 ]; then
-            echo "::error::Found $count untagged uses: statements (tags like @v4, @master, @v5 detected)"
-            grep -r 'uses:.*@[vm][^@]*$' .github/workflows .github/actions 2>/dev/null | grep -v '#' | head -10
+          # No regex intervals ({40}): mawk, Ubuntu's default awk, panics on them.
+          unpinned=$(find .github/workflows .github/actions -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 \
+            | xargs -0 awk '
+                /^[[:space:]]*-?[[:space:]]*uses:[[:space:]]*[^[:space:]#]+@/ {
+                  ref = $0; sub(/^[^@]*@/, "", ref); sub(/[[:space:]].*$/, "", ref)
+                  commit = (ref ~ /^[0-9a-f]+$/ && length(ref) == 40)
+                  digest = (ref ~ /^sha256:[0-9a-f]+$/ && length(ref) == 71)
+                  if (!commit && !digest) print FILENAME ":" FNR ": " $0
+                }')
+          if [ -n "$unpinned" ]; then
+            count=$(printf '%s\n' "$unpinned" | wc -l | tr -d ' ')
+            echo "::error::Found $count untagged uses: statements (a tag, branch or short SHA instead of a 40-hex commit)"
+            printf '%s\n' "$unpinned" | head -10
             echo "::endgroup::"
             exit 1
           fi
@@ -493,6 +506,8 @@ jobs:
       - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3  # v5.2.0
         with:
           python-version: "3.12"
+      - name: Install PyYAML
+        run: python3 -m pip install --disable-pip-version-check --quiet pyyaml==6.0.2
       - name: Check inputs have descriptions
         shell: python3 {0}
         run: |
@@ -549,6 +564,8 @@ jobs:
       - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3  # v5.2.0
         with:
           python-version: "3.12"
+      - name: Install PyYAML
+        run: python3 -m pip install --disable-pip-version-check --quiet pyyaml==6.0.2
       - name: Find jobs without timeout-minutes
         shell: python3 {0}
         run: |
