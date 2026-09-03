@@ -1,0 +1,7 @@
+# actionlint configuration — https://github.com/rhysd/actionlint/blob/main/docs/config.md
+# Self-hosted runner labels must be declared here, otherwise actionlint reports
+# `label "arc-runner-set" is unknown` on every job. The label is the ARC runner
+# scale set defined in alebrije-infra/k8s/infra/arc/values-arc-runners.yaml.
+self-hosted-runner:
+  labels:
+    - arc-runner-set

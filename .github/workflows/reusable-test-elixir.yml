@@ -64,6 +64,9 @@ on:
       GH_TOKEN:
         description: 'GitHub token for private repo access'
         required: true
+      CODECOV_TOKEN:
+        description: 'Codecov upload token (optional; passed through with secrets: inherit)'
+        required: false
 
 permissions:
   contents: read

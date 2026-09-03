@@ -253,7 +253,6 @@ jobs:
 
   publish-python:
     name: Publish to PyPI
-    timeout-minutes: 10
     needs: [determine-version, create-release]
     if: |
       inputs.publish-pypi &&
@@ -300,7 +299,6 @@ jobs:
 
   publish-elixir:
     name: Publish to Hex.pm
-    timeout-minutes: 10
     needs: [determine-version, create-release]
     if: |
       inputs.publish-hex &&
@@ -345,7 +343,6 @@ jobs:
 
   publish-npm:
     name: Publish to npm
-    timeout-minutes: 10
     needs: [determine-version, create-release]
     if: |
       inputs.publish-npm &&

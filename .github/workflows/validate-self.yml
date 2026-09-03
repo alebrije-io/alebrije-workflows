@@ -107,8 +107,8 @@ jobs:
           )
           for pattern in "${patterns[@]}"; do
             if grep -rE "$pattern" .github/workflows --include="*.yml" --include="*.yaml" 2>/dev/null; then
-              # Only error if it's NOT a variable reference (contains ${{ or similar)
-              if ! grep -rE "$pattern" .github/workflows --include="*.yml" --include="*.yaml" 2>/dev/null | grep -q '\${{'; then
+              # Only error if it's NOT a variable reference (contains an expression opener or similar)
+              if ! grep -rE "$pattern" .github/workflows --include="*.yml" --include="*.yaml" 2>/dev/null | grep -q '\$[{][{]'; then
                 echo "::warning::Possible hardcoded secret pattern found: $pattern"
               fi
             fi
@@ -384,14 +384,14 @@ jobs:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
       - name: Scan for direct context use in run steps
         run: |
-          # Check for ${{ github.event.* }} used inline in run: (injection risk)
+          # Check for github.event.* expressions used inline in run: (injection risk)
           # Safe pattern: wrapped in env: variable first
-          RISKY=$(grep -rn '\${{[[:space:]]*github\.event\.' .github/workflows/ \
+          RISKY=$(grep -rn '\$[{][{][[:space:]]*github\.event\.' .github/workflows/ \
             --include="*.yml" 2>/dev/null | grep -v '^.*#' | wc -l)
           if [ "$RISKY" -gt 0 ]; then
             echo "::warning::$RISKY potential script injection points (github.event.* in workflows)"
             echo "Recommendation: wrap in env: variable before use in run:"
-            grep -rn '\${{[[:space:]]*github\.event\.' .github/workflows/ --include="*.yml" 2>/dev/null | grep -v '^.*#' | head -5
+            grep -rn '\$[{][{][[:space:]]*github\.event\.' .github/workflows/ --include="*.yml" 2>/dev/null | grep -v '^.*#' | head -5
           else
             echo "PASS: No direct github.event context usage detected"
           fi
@@ -522,10 +522,20 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
-      - name: Run actionlint
-        uses: rhysd/actionlint@v1
+      - uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed  # v5.1.0
         with:
-          flags: -color
+          go-version: "1.23"
+          cache: false
+      # rhysd/actionlint ships no action.yml, so `uses: rhysd/actionlint@v1` could never
+      # resolve (found 2026-09-03). The tool is pinned as a Go module: integrity is
+      # enforced by sum.golang.org, the same guarantee a commit SHA gives an action.
+      # Scope of this gate: workflow validity (YAML, expressions, input/secret types,
+      # runner labels). shellcheck/pyflakes integrations stay off so it only reports
+      # defects that break a workflow at startup. Runner label: .github/actionlint.yaml
+      - name: Run actionlint (fail-closed)
+        run: |
+          go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 \
+            -no-color -shellcheck= -pyflakes= .github/workflows/*.yml
 
   # ======================================================================
   # AUDIT 15: Audit timeout-minutes coverage

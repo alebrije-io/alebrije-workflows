@@ -45,6 +45,9 @@ on:
       GH_TOKEN:
         description: 'GitHub token for private repo access'
         required: true
+      CODECOV_TOKEN:
+        description: 'Codecov upload token (optional; passed through with secrets: inherit)'
+        required: false
 
 permissions:
   contents: read
@@ -56,13 +59,13 @@ jobs:
     timeout-minutes: 30
 
     strategy:
+      fail-fast: false
       matrix:
         elixir-version: ${{ fromJson(inputs.elixir-versions) }}
         otp-version: ${{ fromJson(inputs.otp-versions) }}
-      fail-fast: false
-      include:
-        - elixir-version: '1.17'
-          otp-version: '26'
+        include:
+          - elixir-version: '1.17'
+            otp-version: '26'
 
     services:
       postgres:

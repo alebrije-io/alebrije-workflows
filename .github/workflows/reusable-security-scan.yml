@@ -97,9 +97,9 @@ on:
         default: false
         type: boolean
       codeql-languages:
-        description: "Comma-separated CodeQL languages (go,python,javascript,typescript)"
+        description: 'JSON array of CodeQL languages, e.g. ["go","python"] (valid: go, python, javascript, typescript)'
         required: false
-        default: "python"
+        default: '["python"]'
         type: string
 
 permissions:
@@ -424,7 +424,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: ${{ fromJson(format('[{0}]', join(split(inputs.codeql-languages, ','), ','))) }}
+        language: ${{ fromJson(inputs.codeql-languages) }}
     steps:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
 
