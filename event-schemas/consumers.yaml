@@ -166,6 +166,33 @@ subscriptions:
   # rewards-go / crm-go / notifications-ex as the intended cross-module consumers; add a
   # subscription here when one actually wires up to the canonical name.
 
+  # appointment.cancelled (registrado 2026-09-06, mismo criterio que #177): el
+  # productor de agenda emite event_type 'appointment.cancelled' — el literal
+  # @cancelled_stream que estampa alebrije-mod-agenda-ex
+  # EventPublisher.publish_appointment_cancelled/1 -> publish/2 -> publish/3
+  # (event_publisher.ex:28,73-74,148,172), confirmado por
+  # lifecycle_event_type("cancelled") (appointments.ex:2523). El esquema queda
+  # registrado como appointment.cancelled.v1.json. Era el UNICO de los cinco
+  # eventos de ciclo de vida de agenda sin esquema bajo su nombre real: hasta
+  # hoy el Validator lo resolvia a {:no_schema, _, :enoent} y las DOS puertas
+  # lo mapeaban a :ok (Producer.validate/1 al publicar, EventBus.SchemaGuard
+  # al consumir), o sea que estaba exento de validacion mientras sus cuatro
+  # hermanos no lo estaban.
+  # Dos caminos de publicacion, los dos pasan por Producer.publish/2 (fail-CLOSED):
+  #   1. XADD directo al stream "appointment.cancelled" (event_publisher.ex:175).
+  #   2. Outbox relay al stream canonico "events:agenda"
+  #      (outbox.ex:144 @stream_routes), cuyo publisher por defecto es
+  #      &Producer.publish/2 (alebrije_common outbox/relay.ex:99).
+  # 'agenda.appointment.cancelled' NO es ese evento: es un registro ADR-31
+  # aspiracional que ningun productor XADDea, y su forma es la enveloped
+  # (allOf envelope.v1 + data{}), incompatible con el payload plano que agenda
+  # emite de verdad — medido: ese mismo payload validado contra el nombre
+  # 'agenda.appointment.cancelled' RECHAZA.
+  # Consumidor declarado: alebrije-svc-notifications-ex lo lista en su
+  # EventCatalog (event_catalog.ex:34). No hay entrada de subscripcion aqui
+  # todavia porque ningun consumidor esta cableado al nombre canonico — igual
+  # que appointment.noshow; agregarla cuando alguno se conecte.
+
   # payments.payment.failed now has a registered schema
   # (payments.payment.failed.v1.json). Producer = alebrije-mod-payments-go
   # PublishPaymentFailed. Consumer: agentic CrossModuleEventConsumer.

@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/appointment.cancelled.v1.json",
+  "title": "appointment.cancelled v1",
+  "description": "Emitted when an appointment transitions to cancelled. Producer: alebrije-mod-agenda-ex, AlebrijeAgenda.EventPublisher.publish_appointment_cancelled/1 (event_publisher.ex:73-74) -> publish/2 (event_publisher.ex:148) -> publish/3, called from AlebrijeAgenda.Appointments (appointments.ex:2562), whose lifecycle_event_type(\"cancelled\") returns this same string (appointments.ex:2523). FLAT payload, NOT the envelope.v1 data-nested shape: publish/3 stamps the type onto the flat field map (envelope = Map.put(payload, \"event_type\", event_type), event_publisher.ex:172) before the shared AlebrijeCommon.EventBus.Producer XADDs it. The event_type EN USO on the wire is 'appointment.cancelled' -- the @cancelled_stream literal at event_publisher.ex:28, where the direct-XADD stream name IS the event_type (comment at event_publisher.ex:144). It is NOT 'agenda.appointment.cancelled': that ADR-31-style registration exists in this directory but no producer XADDs it and no consumer subscribes to it. Registered 2026-09-06 following exactly the canonicalisation #177 already applied to appointment.noshow -- the schema is named after what the producer actually publishes. Until this file existed, appointment.cancelled was the only one of the five agenda lifecycle emissions with no schema under its real name, so AlebrijeCommon.Events.Validator resolved it to {:no_schema, _, :enoent} and BOTH gates mapped that to :ok -- Producer.validate/1 on publish and EventBus.SchemaGuard.validate/1 on consume (schema_guard.ex, ADR-31 6.2). The event was structurally exempt from validation while its four siblings were not. See DEBT-FLOTA-EVENTOS-PUBLICADOS-SIN-ESQUEMA-QUE-VALIDAR. Property set: all five lifecycle publishers (created/confirmed/noshow/completed/cancelled, event_publisher.ex:53-74) share the SAME payload/1 builder (event_publisher.ex:88-112), so this event carries the identical key set as appointment.created and is documented with it, rather than with the shorter 6-key subset appointment.noshow.v1.json lists. Every field is stringified with to_string(value || \"\"), so an absent optional field arrives as an empty string, never as null. Consumers: alebrije-svc-notifications-ex lists this type in its EventCatalog (event_catalog.ex:34); no consumers.yaml subscription entry exists yet, same as appointment.noshow.",
+  "type": "object",
+  "required": ["event_type", "appointment_id", "tenant_id", "status"],
+  "properties": {
+    "event_type": {
+      "const": "appointment.cancelled",
+      "description": "Canonical event_type stamped by EventPublisher.publish/3 from @cancelled_stream (event_publisher.ex:28,172). Consumers route on this exact value."
+    },
+    "appointment_id": {
+      "type": "string",
+      "description": "UUID of the cancelled appointment, stringified from appointment.id (event_publisher.ex:90)."
+    },
+    "tenant_id": {
+      "type": "string",
+      "description": "Tenant that owns the appointment (ADR-25 tenant scoping), stringified from appointment.tenant_id (event_publisher.ex:91)."
+    },
+    "calendar_id": {
+      "type": "string",
+      "description": "Calendar the appointment belongs to (event_publisher.ex:92); empty string when absent."
+    },
+    "contact_phone": {
+      "type": "string",
+      "description": "E.164 contact phone carried on the appointment (event_publisher.ex:93); empty string when absent. This is the contact identifier the payload actually carries -- payload/1 emits no contact_id."
+    },
+    "status": {
+      "type": "string",
+      "description": "Appointment status at emit time; 'cancelled' for this event (event_publisher.ex:94)."
+    },
+    "service_type": {
+      "type": "string",
+      "description": "Service booked on the appointment. First of the five DEBT-FO-BLOQUE-C-BRIDGE keys AlebrijeFieldOps.Workers.AppointmentConsumer reads (event_publisher.ex:95-105); empty string when absent."
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Context (vertical/branch) the appointment belongs to (event_publisher.ex:106); empty string when absent."
+    },
+    "start_time": {
+      "type": "string",
+      "description": "Scheduled start, stringified from appointment.start_time (event_publisher.ex:107); empty string when absent."
+    },
+    "end_time": {
+      "type": "string",
+      "description": "Scheduled end, stringified from appointment.end_time (event_publisher.ex:108); empty string when absent."
+    },
+    "domicile_address": {
+      "type": "string",
+      "description": "Domicile address for at-home services. Always a string: stringify_domicile_address/1 (event_publisher.ex:109,139-142) passes a binary through unchanged, Jason.encode!/1's a map into JSON text, and turns nil into an empty string. On this cancelled path the raw %Appointment{} struct is passed straight from Ecto, so the value is the raw TEXT column (event_publisher.ex:127-130)."
+    },
+    "person_id": {
+      "type": "string",
+      "description": "ADR-143 B5 sub-profile anchor, omitempty: maybe_put_person_id/2 (event_publisher.ex:120-125) adds this key ONLY when the appointment is anchored to a non-titular person. A titular appointment (person_id NULL) omits the key entirely -- it is never present-and-empty."
+    }
+  },
+  "additionalProperties": true
+}
