@@ -293,6 +293,43 @@ subscriptions:
     handler: AlebrijeCampaigns.Workers.EventConsumer (Broadway)
     source: alebrije-mod-campaigns-ex/lib/alebrije_campaigns/workers/event_consumer.ex:264
 
+  # intent.escalated (registrado 2026-09-06, mismo criterio que #177 y que
+  # appointment.cancelled): el productor es alebrije-mod-agentic
+  # app.tools.escalate_human.escalate_to_human, que estampa el event_type plano
+  # 'intent.escalated' (escalate_human.py:215) y hace XADD sobre el stream
+  # settings.eventbus_stream_intent_response, cuyo default es
+  # "intent.response_ready" (config.py:43) — o sea que aqui el nombre del stream
+  # NO es el event_type, a diferencia de los publishers de agenda.
+  # A diferencia de appointment.noshow y appointment.cancelled, este SI tiene
+  # consumidor vivo y cableado: AlebrijeNotifications.Agentic.EscalationConsumer
+  # es un `use Broadway` dedicado (escalation_consumer.ex:402) leyendo
+  # @stream "intent.response_ready" (escalation_consumer.ex:417) con su propio
+  # grupo @group "notifications-ex-agentic-escalation" (escalation_consumer.ex:418).
+  # Discriminador: el stream es generico y la entrada trae DOS campos
+  # (`XADD <stream> * event escalated payload <json>`); el consumidor filtra por
+  # el campo `event` == "escalated", no por el nombre del stream
+  # (escalation_consumer.ex:29-46). Por eso este event_type comparte stream con
+  # cualquier otro que agentic publique ahi, y por eso la entrada de abajo
+  # declara stream != event_type.
+  # Este consumidor faltaba ENTERO de este mapa pese a que el encabezado dice que
+  # se derivo grepeando los Broadway reales de los *-ex — mismo caso que el
+  # result_consumer de toronja mas abajo. Encontrado al auditar el productor
+  # antes de escribir el contrato, no por un censo.
+  # Ojo: el SchemaGuard NO interviene aqui. EscalationConsumer es un Broadway
+  # propio sin SchemaGuard, y del lado productor el camino Python es fail-open
+  # por diseño (validate_or_log, phase2.py:85-93, ADR-31 Phase 2). Registrar el
+  # esquema enciende el warning y la metrica, no una puerta: nada puede quedar
+  # NAKeado a una DLQ por la existencia de este archivo.
+  # 'agentic.intent.escalated' NO es este evento: es un registro ADR-31
+  # aspiracional, de forma enveloped (allOf envelope.v1 + data{}), que ningun
+  # productor XADDea — medido el 2026-09-06: el payload real validado contra ese
+  # nombre RECHAZA con "'event_version' is a required property".
+  - service: alebrije-svc-notifications-ex
+    event_type: intent.escalated
+    stream: "intent.response_ready"  # el stream NO es el event_type; ver arriba
+    handler: AlebrijeNotifications.Agentic.EscalationConsumer (Broadway)
+    source: alebrije-svc-notifications-ex/lib/alebrije_notifications/agentic/escalation_consumer.ex:402
+
 # ── Drift NO verificado contra el registry (el workflow IGNORA esta clave) ─────
 # Suscripciones reales del código cuyo event_type o stream NO coincide con un
 # schema registrado. Cada una es un candidato a: (a) registrar el schema, o

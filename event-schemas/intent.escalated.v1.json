@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/intent.escalated.v1.json",
+  "title": "intent.escalated v1",
+  "description": "Emitted when the agent hands a conversation to a human. Producer: alebrije-mod-agentic, app.tools.escalate_human.escalate_to_human (escalate_human.py:104), which builds the flat payload at escalate_human.py:212-227 and XADDs it at escalate_human.py:235-238 as {\"event\": \"escalated\", \"payload\": json.dumps(event_payload)} onto the stream named by settings.eventbus_stream_intent_response, whose default is 'intent.response_ready' (alebrije-mod-agentic/app/config.py:43). FLAT payload, NOT the envelope.v1 data-nested shape: what gets validated is event_payload itself, passed to validate_or_log(event_payload, phase='publish') at escalate_human.py:229-233, and AlebrijeCommon.Events.Validator.load_schema resolves it by its own 'event_type' field to <schemas_dir>/intent.escalated.v1.json (alebrije-common/alebrije_common/events_registry/validator.py:102-115). The event_type EN USO on the wire is therefore 'intent.escalated', NOT 'agentic.intent.escalated': that ADR-31-style registration exists in this directory, is envelope-shaped, and matches nothing any producer emits. Registered 2026-09-06 following the same canonicalisation applied to appointment.noshow (#177) and appointment.cancelled -- the schema is named after what the producer actually publishes. Registering it changes nothing on either end today, deliberately: the Python publish path is fail-open BY DESIGN (validate_or_log, alebrije-common/alebrije_common/events_registry/phase2.py:85-93, ADR-31 Phase 2 -- 'publishers ignore it and keep calling xadd'), and on the consume side AlebrijeNotifications.Agentic.EscalationConsumer is a dedicated `use Broadway` (escalation_consumer.ex:402) with NO SchemaGuard, so nothing can be NAKed to a DLQ by this file existing. What it does turn on is a truthful warning and metric: until 2026-09-06 the Python validator resolved its schema directory to a sibling polyrepo checkout that cannot exist inside a container, so it answered SchemaNotFoundError for EVERY event_type and logged 'event schema not registered' -- naming the wrong cause, since what was missing was the whole directory (DEBT-COMMON-PY-SCHEMAS-DIR-NO-EXISTE-EN-CONTENEDOR, closed). See also DEBT-FLOTA-EVENTOS-PUBLICADOS-SIN-ESQUEMA-QUE-VALIDAR. Nullability is load-bearing here and is NOT a placeholder: tenant_id, context_id and business_name are ALWAYS present as keys and are explicitly set to None when the caller did not supply them (escalate_human.py:218-220), so they are required-and-nullable rather than optional. context_digest is the sole genuinely optional key: escalate_human.py:226-227 adds it only when truthy, so a consumer that predates it never sees the key at all -- omitted, never null. Consumer: AlebrijeNotifications.Agentic.EscalationConsumer reads payload[\"tenant_id\"], payload[\"event_id\"] and payload[\"conversation_id\"] (escalation_consumer.ex:894-896) and has an explicit branch for a nil/blank tenant_id that backfills it before merging (escalation_consumer.ex:1154-1170) -- which is why a null tenant_id is documented here as accepted rather than rejected: it is a shape the live consumer already handles, and this file records the contract in force, not the one that would be nicer.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "conversation_id",
+    "reason",
+    "escalated_at",
+    "tenant_id",
+    "context_id",
+    "business_name"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Fresh uuid4 stamped per emission (escalate_human.py:214). The consumer dedups at-least-once Broadway delivery on this value (escalation_consumer.ex:895), so it must be unique per event, never per conversation."
+    },
+    "event_type": {
+      "const": "intent.escalated",
+      "description": "Canonical event_type, a literal in the payload builder (escalate_human.py:215). It is also what the validator resolves the schema filename from, so this const and the filename must stay in lockstep."
+    },
+    "conversation_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Conversation being handed over, stringified from the UUID argument (escalate_human.py:216). REQUIRED and non-blank on the consume side too: escalation_consumer.ex:1053,1113 cross-checks it against the raw payload."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Why the conversation is being escalated. Free text produced by the agent; typed `reason: str` in the signature (escalate_human.py:105) and forwarded verbatim, never normalised."
+    },
+    "escalated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC instant of the escalation: datetime.now(UTC).isoformat() (escalate_human.py:217). ISO-8601 with offset, not epoch."
+    },
+    "tenant_id": {
+      "type": ["string", "null"],
+      "description": "Tenant that owns the conversation (ADR-25 scoping). Present ALWAYS; null when the caller did not supply one -- str(tenant_id) if tenant_id is not None else None (escalate_human.py:218), and the parameter itself defaults to None (escalate_human.py:110). The consumer needs it to bind the per-tenant TenantRepo seam (M223: without it, it cannot pick the shared-vs-enterprise pool and therefore cannot resolve recipients), which is why it does not simply drop a null but takes an explicit backfill branch (escalation_consumer.ex:1154-1170)."
+    },
+    "context_id": {
+      "type": ["string", "null"],
+      "description": "Context (vertical/branch) the conversation belongs to. Present ALWAYS; null when falsy -- str(context_id) if context_id else None (escalate_human.py:219). Note the truthiness test, not an `is not None` test: an empty string collapses to null here, unlike tenant_id."
+    },
+    "business_name": {
+      "type": ["string", "null"],
+      "description": "Tenant's configured business name, forwarded best-effort for the alert template ({{business_name}}). Present ALWAYS; null when empty -- `business_name or None` over a parameter that defaults to \"\" (escalate_human.py:108,220). Never invented by the producer."
+    },
+    "context_digest": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "OPTIONAL and the only key that is genuinely absent rather than null: added solely when truthy (escalate_human.py:226-227), so a consumer predating this field never sees it. It is an OBJECT, not a string -- the parameter is typed `context_digest: dict[str, Any] | None` (escalate_human.py:113)."
+    }
+  },
+  "additionalProperties": true
+}
