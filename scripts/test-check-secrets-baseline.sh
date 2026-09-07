@@ -22,6 +22,7 @@
 #  10. no committed baseline                                      → exit 2, never created
 #  11. missing argument / not a git repo / no commits             → exit 2
 #  12. detect-secrets binary missing                              → exit 2
+#  13. the scan is hermetic: --no-verify is really passed        → exit 0, argv proves it
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,7 +57,7 @@ commit_all() {
 # Baseline the fixture's current tree the way the guard expects it: same flags,
 # then mark every entry as an audited false positive (is_secret: false).
 make_baseline() {
-  (cd "$FIXTURE_DIR" && detect-secrets scan --all-files \
+  (cd "$FIXTURE_DIR" && detect-secrets scan --all-files --no-verify \
       --exclude-files ".secrets.baseline" --exclude-files ".git/.*" > .secrets.baseline)
   python3 - "$FIXTURE_DIR/.secrets.baseline" <<'PY'
 import json, sys
@@ -216,6 +217,34 @@ printf '# x\n' > "$FIXTURE_DIR/README.md"
 commit_all "init"
 rc=0; out=$(CHECK_SECRETS_DETECT_BIN=/nonexistent/detect-secrets bash "$GUARD" "$FIXTURE_DIR" 2>&1) || rc=$?
 if [ "$rc" -eq 2 ] && grep -q "detect-secrets not found" <<<"$out"; then ok "error: tool missing is exit 2"; else fail "expected exit 2 + message when detect-secrets is missing, got $rc"; fi
+
+# -- 13. hermetic scan -------------------------------------------------------
+# Behavioural, not textual: grepping the guard for the flag would still pass on
+# a guard that assembled its argv somewhere else. This shims $DS_BIN through the
+# same CHECK_SECRETS_DETECT_BIN seam case 12 uses, records the real argv, and
+# still execs detect-secrets, so the guard runs end to end and must ALSO exit 0.
+run_case "the guard scans hermetically (--no-verify, no network verification)"
+new_fixture
+mkdir -p "$FIXTURE_DIR/app"
+printf 'db_password = "%s"\n' "$SECRET_A" > "$FIXTURE_DIR/app/settings.py"
+commit_all "code"
+make_baseline
+commit_all "baseline"
+ARGV_LOG="$(mktemp)"
+SHIM="$(mktemp)"
+cat > "$SHIM" <<SHIMEOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$ARGV_LOG"
+exec detect-secrets "\$@"
+SHIMEOF
+chmod +x "$SHIM"
+rc=0; out=$(CHECK_SECRETS_DETECT_BIN="$SHIM" bash "$GUARD" "$FIXTURE_DIR" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ] && grep -q -e '--no-verify' "$ARGV_LOG"; then
+  ok "scan argv carries --no-verify; nothing is sent to a third party"
+else
+  fail "expected exit 0 and --no-verify in the scan argv, got rc=$rc argv=[$(tr '\n' ';' < "$ARGV_LOG")]"
+fi
+rm -f "$SHIM" "$ARGV_LOG"
 
 echo ""
 echo "check-secrets-baseline self-test: $PASS passed, $FAIL failed, $TESTS_RUN cases"

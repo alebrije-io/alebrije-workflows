@@ -32,7 +32,7 @@
 #
 # NEVER auto-creates or refreshes the baseline: a gate that heals itself on
 # retry is not a gate. On drift, review each finding, then — deliberately —
-#     detect-secrets scan --baseline .secrets.baseline   # in-place, keeps audit flags
+#     detect-secrets scan --no-verify --baseline .secrets.baseline   # in-place, keeps flags
 #     detect-secrets audit .secrets.baseline             # mark new entries
 # and commit the result separately. Never `scan … > .secrets.baseline` on an
 # existing baseline: it rewrites the file and drops every is_secret flag.
@@ -89,15 +89,24 @@ fi
 if [ ! -f "$TREE/.secrets.baseline" ]; then
   echo "❌ check-secrets-baseline: no committed .secrets.baseline in HEAD." >&2
   echo "   The gate cannot run without one and will NOT create it. Create it once, on purpose:" >&2
-  echo "     detect-secrets scan --exclude-files '.secrets.baseline' --exclude-files '.git/.*' > .secrets.baseline" >&2
+  echo "     detect-secrets scan --no-verify --exclude-files '.secrets.baseline' --exclude-files '.git/.*' > .secrets.baseline" >&2
   echo "     detect-secrets audit .secrets.baseline     # review EVERY entry; only false positives may stay" >&2
   echo "   then commit it." >&2
   exit 2
 fi
 
-# 2. Fresh scan, same flags as the CI workflow (plus --all-files: the archive is not a git repo).
+# 2. Fresh scan (--all-files: the archive is not a git repo).
+#    --no-verify is NOT optional and NOT a relaxation. Without it detect-secrets
+#    "verifies" candidates by POSTing them to third-party endpoints -- 9 of its
+#    plugins do (aws, cloudant, ibm_cloud_iam, ibm_cos_hmac, mailchimp, slack,
+#    softlayer, stripe, telegram_token), every one of them with NO timeout. That
+#    made this gate (a) leak candidate strings out of the repo, (b) hang forever
+#    on a stalled connection, and (c) non-deterministic: a non-200 answer makes
+#    detect-secrets DROP the finding, so what lands in the baseline depended on a
+#    remote server's mood. Verification only ever deletes findings, never adds
+#    one, so scanning hermetically is strictly MORE conservative.
 CURRENT="$WORK/current.json"
-if ! (cd "$TREE" && "$DS_BIN" scan --all-files \
+if ! (cd "$TREE" && "$DS_BIN" scan --all-files --no-verify \
         --exclude-files ".secrets.baseline" --exclude-files ".git/.*" > "$CURRENT" 2> "$WORK/scan.err"); then
   echo "check-secrets-baseline: detect-secrets scan failed:" >&2
   sed 's/^/    /' "$WORK/scan.err" >&2
@@ -180,7 +189,7 @@ if json.dumps(old, sort_keys=True) != json.dumps(new, sort_keys=True):
         print("   Line drift only (same files, same hashes). Refresh IN-PLACE, deliberately, and commit separately:")
     else:
         print("   After review, refresh IN-PLACE (keeps audit flags) and commit separately:")
-    print("     detect-secrets scan --baseline .secrets.baseline && detect-secrets audit .secrets.baseline")
+    print("     detect-secrets scan --no-verify --baseline .secrets.baseline && detect-secrets audit .secrets.baseline")
     print("   NO automatic refresh — a gate that heals itself on retry is not a gate.")
     print("   NEVER `scan … > .secrets.baseline` on an existing baseline: it drops every is_secret flag.")
 
