@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/catalog.quote_created.v1.json",
+  "title": "catalog.quote_created v1",
+  "description": "Emitted when alebrije-mod-catalog-go persists a NEW catalog.quotes row for a contact whose phone is known (LEY DE ADMISIÓN, F1-evento-cotizacion-catalog) — a contact with no phone, or no contact at all (e.g. the staff-facing POST /catalog/quote route), never emits this event; the quote itself is still persisted either way, only the event is omitted. Source publisher: alebrije-mod-catalog-go OutboxPublisher.EmitQuoteCreated (internal/service/outbox_publisher.go, outboxQuotePayload), called from GenerateQuote's persist transaction (internal/service/service.go) — SAME tx as the catalog.quotes INSERT, so a committed quote and its event can never diverge (ADR-117 §9.B transactional outbox). Stream/event_type default 'catalog.quote_created' (config.go StreamQuoteCreated, env EVENTBUS_STREAM_CATALOG_QUOTE_CREATED) — this event has NO direct-XADD producer, only the outbox+poller path, so — UNLIKE catalog.item_created.v1.json's 'FLAT payload' shape (written for that event's now-secondary direct RedisPublisher path) — every field below travels nested under the envelope's `data` (outbox_poller.go's buildOutboxEnvelope wraps every outbox payload that way; envelope.v1.json's own `data` property doc: 'Shape is defined by the per-event schema that refs this envelope'). First real consumer: alebrije-mod-cadences-ex lib/alebrije_cadences/workers/enrollment_consumer.ex — process_event/1's `data.contact_id` clause and process_enrollment/3's `event[\"context_id\"]` / `event[\"phone\"]` reads (both read off the envelope+data map merged via `Map.merge(event, data)`) fixed the field NAMES below: contact_id/context_id/phone, NOT contact_phone (the name this unit's own originating brief proposed before the real consumer was read).",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "catalog.quote_created" },
+        "data": {
+          "type": "object",
+          "required": [
+            "quote_id",
+            "tenant_id",
+            "context_id",
+            "contact_id",
+            "phone",
+            "status",
+            "total",
+            "currency",
+            "item_ids",
+            "occurred_at"
+          ],
+          "properties": {
+            "quote_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the persisted catalog.quotes row (q.ID.String(), outboxQuotePayload)."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Owning tenant (q.TenantID.String()), redundant with the envelope-level tenant_id by the same convention outboxItemPayload already follows for catalog.item_created (ADR-25)."
+            },
+            "context_id": {
+              "type": "string",
+              "maxLength": 36,
+              "description": "Sucursal/branch dimension (ADR-25) the quote was generated under (q.ContextID) — DISTINCT from the envelope-level context_id (that one is the routing context; this one is the business dimension F6's per-sucursal cadence_enrollment_rules match against, per F1's own design doc). May be an empty string (a staff/platform request with no resolved sucursal) — always present as a key, never absent, since Go's ContextID field is a plain string (never nil)."
+            },
+            "contact_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "CRM contact this quote belongs to (q.ContactID.String()). Always a well-formed, non-blank UUID on a REAL emitted row: GenerateQuote (service.go) never calls EmitQuoteCreated unless ContactID is non-nil — LEY DE ADMISIÓN's gate lives in the producer, not here."
+            },
+            "phone": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The contact's WhatsApp line phone number, exactly as GenerateQuote received it (QuoteRequest.ContactPhone, trimmed) — travels ONLY in this event, NEVER persisted onto catalog.quotes (that table has no phone column and does not get one; see models.Quote's own doc comment). Always non-blank on a real emitted row, same admission-gate guarantee as contact_id above. Field name is 'phone', NOT 'contact_phone' — verified against the real consumer (enrollment_consumer.ex `event[\"phone\"]`) before choosing this name."
+            },
+            "status": {
+              "type": "string",
+              "enum": ["draft", "sent", "confirmed", "paid", "expired"],
+              "description": "Quote lifecycle status at the instant of persistence (q.Status) — migration 038's five-state graph (quote_lifecycle.go). Always 'draft' for THIS event in practice (GenerateQuote's INSERT relies on catalog.quotes' own `status NOT NULL DEFAULT 'draft'`, quotes_repo.go's Create), listed as the full enum rather than a const so a future producer of the same event_type for a later transition is not rejected by this schema without a version bump."
+            },
+            "total": {
+              "type": "string",
+              "pattern": "^\\d+\\.\\d{2}$",
+              "description": "Pre-tax total (subtotal - discount_amount) as a Money string (q.Total) — same string-not-float convention every other money field in this module's payloads uses (never compared by raw equality; see models.Money.Equal's own doc for why)."
+            },
+            "currency": {
+              "type": "string",
+              "description": "ISO 4217 currency code (q.Currency, e.g. 'MXN')."
+            },
+            "item_ids": {
+              "type": "array",
+              "items": { "type": "string", "format": "uuid" },
+              "description": "UUIDs of the catalog items in the quoted basket (q.Items[].ItemID) — may be empty in the degenerate case of a zero-item quote, though GenerateQuote's own validation rejects an empty basket before persistence is ever reached in practice."
+            },
+            "occurred_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "UTC timestamp this payload was built (time.Now().UTC().Format(time.RFC3339), outboxQuotePayload) — kept for ordering/audit, same convention outboxItemPayload already uses for catalog.item_created/updated/deactivated."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}
