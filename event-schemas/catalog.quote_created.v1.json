@@ -68,6 +68,11 @@
               "items": { "type": "string", "format": "uuid" },
               "description": "UUIDs of the catalog items in the quoted basket (q.Items[].ItemID) — may be empty in the degenerate case of a zero-item quote, though GenerateQuote's own validation rejects an empty basket before persistence is ever reached in practice."
             },
+            "valid_until": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Optional (C11, 2026-09-24): created_at + the tenant's effective commercial validity (catalog.quote_config override, else config QuoteValidityDays), stamped by EmitQuoteCreated when the publisher is built from config. Expiry itself never emits an event (computed lazily), so this is how a consumer knows when an unanswered quote lapsed."
+            },
             "occurred_at": {
               "type": "string",
               "format": "date-time",

@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/payment.link_cancelled.v1.json",
+  "title": "payment.link_cancelled v1",
+  "description": "Emitted by alebrije-mod-payments-go when a payment link moves from an open status to 'cancelled' — PaymentsService.UpdatePaymentLink (internal/service/payments.go) via publishLinkCancelled, which covers every cancel path: the PATCH /links/{id} soft-cancel, the internal S2S cancel used by agentic, and link_expiry_worker (an expired or orphaned link is cancelled, never left as a separate 'expired' status). Re-cancelling an already-cancelled link emits nothing. Published post-persist, best-effort, direct XADD (RedisEventPublisher.PublishPaymentLinkCancelled) exactly like payment.link_generated — the cancel is a plain UpdateFields with no transaction to ride — so a failed publish is logged at Error level with the link id. Stream default 'payment.link_cancelled' (config StreamPaymentLinkCancelled, env EVENTBUS_STREAM_PAYMENT_LINK_CANCELLED). Canonical envelope under a single 'payload' field, fields nested in `data`. First consumer: alebrije-mod-crm-go TimelineConsumer (C11: the 'fin' mark of a payment episode whose 'inicio' was payment.link_generated with the same link_id).",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "payment.link_cancelled" },
+        "data": {
+          "type": "object",
+          "required": ["link_id", "tenant_id", "contact_phone", "amount", "status", "occurred_at"],
+          "properties": {
+            "link_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The cancelled payments.payment_links row — the same link_id payment.link_generated carried."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Owning tenant, redundant with the envelope-level tenant_id."
+            },
+            "contact_phone": {
+              "type": "string",
+              "description": "The link's contact phone as stored on the row (the payer's WhatsApp line); the consumer's admission key."
+            },
+            "amount": {
+              "type": "string",
+              "description": "Link amount as stored (Money string)."
+            },
+            "currency": {
+              "type": "string",
+              "description": "ISO currency code of the link."
+            },
+            "status": {
+              "type": "string",
+              "const": "cancelled",
+              "description": "The status UpdateFields just wrote."
+            },
+            "appointment_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Present when the link was a deposit for an agenda appointment."
+            },
+            "reference_type": {
+              "type": "string",
+              "description": "Polymorphic reference kind (e.g. 'appointment', 'catalog_payment_offer') when the link was charging a specific entity."
+            },
+            "reference_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Id of the referenced entity, paired with reference_type."
+            },
+            "occurred_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "UTC time the event was built, RFC3339 with nanoseconds."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

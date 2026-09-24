@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/catalog.quote_status_changed.v1.json",
+  "title": "catalog.quote_status_changed v1",
+  "description": "Emitted by alebrije-mod-catalog-go every time a catalog.quotes row moves through its lifecycle (draft->sent->confirmed->paid) — OutboxPublisher.EmitQuoteStatusChanged (internal/service/outbox_publisher.go, outboxQuoteStatusPayload), called by emitQuoteStatusChanged (quote_lifecycle.go) in the SAME tx as the successful QuotesRepo.Transition, from QuoteLifecycleService (MarkSent/ConfirmQuote/MarkQuotePaid) and PaymentOffersService (CreateOffer's draft->sent->confirmed, MarkPaid's confirmed->paid). One event per transition: the outbox idempotency key is '<event_type>:<quote_id>:<status>'. 'expired' is NEVER emitted — expiry is computed lazily (effectiveQuoteStatus); consumers derive it from valid_until. Carries no phone (catalog.quotes has none): consumers tie the move to the contact through the catalog.quote_created event of the same quote_id. Stream/event_type default 'catalog.quote_status_changed' (config.go StreamQuoteStatusChanged, env EVENTBUS_STREAM_CATALOG_QUOTE_STATUS_CHANGED); outbox-only, so fields travel nested under the envelope's `data`. First consumer: alebrije-mod-crm-go TimelineConsumer (C11 episode marks: sent/confirmed = avance, paid = fin).",
+  "allOf": [
+    { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "catalog.quote_status_changed" },
+        "data": {
+          "type": "object",
+          "required": [
+            "quote_id",
+            "tenant_id",
+            "context_id",
+            "contact_id",
+            "status",
+            "total",
+            "currency",
+            "occurred_at"
+          ],
+          "properties": {
+            "quote_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the catalog.quotes row that moved (q.ID.String())."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Owning tenant (q.TenantID.String()), redundant with the envelope-level tenant_id, same convention as catalog.quote_created."
+            },
+            "context_id": {
+              "type": "string",
+              "maxLength": 36,
+              "description": "Sucursal/branch dimension the quote was generated under (q.ContextID); may be an empty string, always present."
+            },
+            "contact_id": {
+              "type": "string",
+              "description": "The quote's contact id as stored on catalog.quotes (q.ContactID), or an empty string when the quote has none. It is the caller-side (omnichannel) contact id, not a crm.contacts id."
+            },
+            "status": {
+              "type": "string",
+              "enum": ["sent", "confirmed", "paid"],
+              "description": "The NEW status the transition wrote (the row QuotesRepo.Transition RETURNED)."
+            },
+            "payment_choice": {
+              "type": "string",
+              "enum": ["branch", "online"],
+              "description": "Present once the quote was confirmed with a stated payment intent (q.PaymentChoice)."
+            },
+            "total": {
+              "type": "string",
+              "pattern": "^\\d+\\.\\d{2}$",
+              "description": "Pre-tax total as a Money string (q.Total)."
+            },
+            "currency": {
+              "type": "string",
+              "description": "ISO currency code (q.Currency)."
+            },
+            "valid_until": {
+              "type": "string",
+              "format": "date-time",
+              "description": "created_at + the validity window the transition itself evaluated — the instant the quote lapses if it never reaches 'paid'."
+            },
+            "occurred_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "UTC time the payload was built, RFC3339 with nanoseconds: CreateOffer writes sent and confirmed in one tx (same created_at), and this field keeps their real order."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}
