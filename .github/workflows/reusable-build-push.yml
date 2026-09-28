@@ -171,6 +171,10 @@ jobs:
           )
 
           content = dockerfile.read_text(errors="replace")
+          # Docker joins a line ending in "\" with the next one: a continuation line
+          # (e.g. `from playwright.sync_api import ...` inside a RUN) is never an
+          # instruction, so join them before matching ^FROM (2026-09-28).
+          content = re.sub(r"\\\r?\n", " ", content)
           stage_names = {m.group(2).lower() for m in FROM_RE.finditer(content) if m.group(2)}
 
           violations = []

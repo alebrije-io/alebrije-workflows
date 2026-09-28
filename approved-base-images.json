@@ -22,7 +22,9 @@
       "name": "golang",
       "approved_tags": [
         "1.26.3-alpine",
-        "1.26.3-bookworm"
+        "1.26.3-bookworm",
+        "1.26.6-alpine",
+        "1.26.6-bookworm"
       ],
       "use_case": "Go build stage CI (catalog, payments, crm, rewards, mcp, api-gateway, explosivos, proyectos, status)"
     },
@@ -88,6 +90,68 @@
         "6-alpine"
       ],
       "use_case": "CI service container for integration tests"
+    },
+    {
+      "name": "temporalio/server",
+      "approved_tags": [
+        "1.30.3"
+      ],
+      "kind": "runtime",
+      "use_case": "Temporal server (frontend/history/matching/worker), ns temporal — alebrije-infra/k8s/prod/temporal/values-temporal.yaml (chart privado temporal-helm)",
+      "deployed": "1.30.3",
+      "upstream_latest_same_minor": "1.30.7",
+      "upstream_latest": "1.32.0",
+      "upstream_checked": "2026-09-28",
+      "drift_note": "1.30.3 tiene CVE-2026-5724; parche 1.30.7 = ADR-158 E3 (precondicion: respaldo de temporal-postgres). 1.32.x = ADR-158 Ola 1-bis (autorizador JWT)."
+    },
+    {
+      "name": "temporalio/admin-tools",
+      "approved_tags": [
+        "1.30.3"
+      ],
+      "kind": "runtime",
+      "use_case": "Temporal admin-tools (CLI temporal/tctl), ns temporal — mismo chart",
+      "deployed": "1.30.3",
+      "upstream_latest_same_minor": "1.30.7",
+      "upstream_latest": "1.32.0",
+      "upstream_checked": "2026-09-28",
+      "drift_note": "Sube junto con temporalio/server (misma version)."
+    },
+    {
+      "name": "temporalio/ui",
+      "approved_tags": [
+        "2.41.0"
+      ],
+      "kind": "runtime",
+      "use_case": "Temporal Web UI, ns temporal (no publicada; temporal-helm ADR-006)",
+      "deployed": "2.41.0",
+      "upstream_latest": "2.54.1",
+      "upstream_checked": "2026-09-28",
+      "drift_note": "Se sube en el mismo paso que el parche de server solo si el diff del chart es limpio (ADR-158 E3)."
+    },
+    {
+      "name": "postgres",
+      "approved_tags": [
+        "16.3-alpine"
+      ],
+      "kind": "runtime",
+      "use_case": "temporal-postgres (StatefulSet del chart temporal-helm, ns temporal). Entrada separada de la de CI: esta es la base viva de Temporal",
+      "deployed": "16.3-alpine",
+      "upstream_latest_same_minor": "16.15-alpine",
+      "upstream_checked": "2026-09-28",
+      "drift_note": "12 parches menores atras; subir despues del primer respaldo verificado (temporal-postgres-dump-daily)."
+    },
+    {
+      "name": "ghcr.io/paperclipai/paperclip",
+      "approved_tags": [
+        "v2026.916.1"
+      ],
+      "kind": "runtime",
+      "use_case": "Paperclip (motor de agentes de alebrije-adapt-paperclip), ns platform",
+      "deployed": "latest (digest a02ac35..., CrashLoopBackOff, no se levanta por orden del dueno)",
+      "upstream_latest": "v2026.916.1",
+      "upstream_checked": "2026-09-28",
+      "drift_note": "Hoy corre :latest, que ni esta aprobado: al levantarlo (ADR-158 D9/M13) se fija por digest de la etiqueta aprobada."
     }
   ],
   "scanning_policy": {
@@ -96,5 +160,5 @@
     "ignore_unfixed": true,
     "tool": "trivy"
   },
-  "notes": "Always use slim/bookworm-slim/alpine/distroless variants. Prefer distroless static for Go runtime stages. Never use :latest in production Dockerfiles. Tags are validated against the real fleet Dockerfiles; update both together when bumping a base image (see go-version.json / elixir-version.json for the canonical language versions)."
+  "notes": "Always use slim/bookworm-slim/alpine/distroless variants. Prefer distroless static for Go runtime stages. Never use :latest in production Dockerfiles. Tags are validated against the real fleet Dockerfiles; update both together when bumping a base image (see go-version.json / elixir-version.json for the canonical language versions). Entries with \"kind\": \"runtime\" are third-party images deployed by manifest/Helm, not Dockerfile bases: \"approved_tags\" is the tag that should run, \"deployed\" what runs (measured on \"upstream_checked\"), and \"upstream_latest*\" the newest release. ADR-158 M11: the weekly platform check compares the three."
 }

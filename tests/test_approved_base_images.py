@@ -66,6 +66,9 @@ def load_approved():
 
 def violations_in(content, approved):
     """Exact re-implementation of the workflow matcher (tag-exact)."""
+    # Same continuation join as the workflows: a line ending in "\" continues
+    # the previous instruction and can never be a FROM of its own.
+    content = re.sub(r"\\\r?\n", " ", content)
     stage_names = {m.group(2).lower() for m in FROM_RE.finditer(content) if m.group(2)}
     out = []
     for match in FROM_RE.finditer(content):
@@ -178,6 +181,27 @@ def test_templated_and_scratch_and_stage_refs_are_skipped():
     assert not violations_in(multistage, approved), (
         "intra-Dockerfile stage reference must not be treated as a base image"
     )
+
+
+def test_continuation_lines_are_not_from_instructions():
+    """2026-09-28: alebrije-adapt-toronja's Dockerfile has a RUN whose continued
+    line starts with `from playwright.sync_api import ...`; the case-insensitive
+    ^FROM matched it and reported `playwright.sync_api` as an unapproved image."""
+    _, approved = load_approved()
+    run_with_python = (
+        "FROM python:3.12-slim\n"
+        'RUN python -c "\\\n'
+        "from playwright.sync_api import sync_playwright; \\\n"
+        'p = sync_playwright().start()"\n'
+    )
+    assert not violations_in(run_with_python, approved)
+
+
+def test_control_negative_a_continued_from_is_still_enforced():
+    """The join must not hide a real FROM split across lines."""
+    _, approved = load_approved()
+    split_from = "FROM --platform=linux/amd64 \\\n    golang:9.9-evil AS builder\n"
+    assert violations_in(split_from, approved) == ["golang:9.9-evil"]
 
 
 def test_json_parses_and_blocks_critical():

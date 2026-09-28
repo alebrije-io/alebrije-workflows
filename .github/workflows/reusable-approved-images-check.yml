@@ -110,6 +110,9 @@ jobs:
           violations = []
           for df in dockerfiles:
               content = df.read_text(errors="replace")
+              # Docker joins a line ending in "\" with the next one: a continuation
+              # line is never an instruction, so join before matching ^FROM (2026-09-28).
+              content = re.sub(r"\\\r?\n", " ", content)
               # First pass: collect named build stages declared in THIS Dockerfile.
               # `FROM golang:1.26-alpine AS builder` makes `builder` a valid base for
               # a later `FROM builder` / `COPY --from=builder` — not a registry image.
