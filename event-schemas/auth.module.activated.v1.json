@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/auth.module.activated.v1.json",
+  "title": "auth.module.activated v1",
+  "description": "A module was activated (or reactivated) for a tenant: by an operator (POST /api/v1/tenants/{id}/modules), by creating a tenant on a plan, or by a plan change that (re)activates it. Emitted by svc-auth through the transactional outbox (app/services/module_lifecycle_events.py) in the SAME commit as the write that caused it, and published by EventOutboxRelayWorker as {\"message\": json.dumps(payload)} on stream alebrije:events:auth (at least once). ADR-115 Addendum D6: it is a NUDGE, not the state — a consumer re-reads the roster GET /api/v1/internal/modules/{module_id}/tenants (the single source) before acting, so a late, repeated or reordered event converges to the truth, and keeps its own periodic reconciler for an event that never arrives. FLAT payload (does NOT use the envelope.v1 data-nested shape), with schema_version, like auth.dsr.erasure_approved.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "schema_version",
+    "tenant_id",
+    "module_id",
+    "activo"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID4 of this event, equal to auth.event_outbox.event_id (UNIQUE there). Consumer-side dedup key."
+    },
+    "event_type": {
+      "const": "auth.module.activated",
+      "description": "Canonical event type. Consumers route on this exact value."
+    },
+    "schema_version": {
+      "type": "string",
+      "description": "Producer-emitted schema version. Currently '1'."
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Tenant whose module state changed (shared.tenants.id). The consumer re-checks THIS tenant against the roster."
+    },
+    "module_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Module whose activation changed (shared.modules.id, e.g. 'paperclip'). A consumer ignores events for modules it does not run."
+    },
+    "activo": {
+      "const": true,
+      "description": "The new value of shared.tenant_modules.activo for this row."
+    },
+    "context_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Sucursal (shared.contexts.id) when the row is a per-context override (ADR-115 §2.1); null for the tenant-wide baseline."
+    }
+  },
+  "additionalProperties": true
+}
