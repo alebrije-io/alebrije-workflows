@@ -445,6 +445,38 @@ def test_field_ops_settlement_closed_validates_and_rejects_impossible_days():
         assert list(v.iter_errors(_field_ops_envelope("field_ops.settlement.closed", bad))), bad
 
 
+def test_appointment_rescheduled_validates_and_requires_the_new_place():
+    """ADR-37 §18.3: the flat envelope agenda's Outbox.envelope_for/2 stages
+    when an appointment's time or home address changes (agenda 0.0.239)."""
+    v = _validator_for("appointment.rescheduled.v1.json")
+    event = {
+        "event_type": "appointment.rescheduled",
+        "appointment_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "tenant_id": "22222222-2222-2222-2222-222222222222",
+        "calendar_id": "33333333-3333-3333-3333-333333333333",
+        "contact_id": "44444444-4444-4444-4444-444444444444",
+        "contact_phone": "+525555500990",
+        "status": "scheduled",
+        "start_time": "2026-10-21T16:00:00.000000Z",
+        "end_time": "2026-10-21T16:20:00.000000Z",
+        "domicile_address": '{"city":"CDMX","street":"Calle Pruebas 12"}',
+        "service_type": "lab_domicile",
+        "context_id": "",
+    }
+    assert [e.message for e in v.iter_errors(event)] == []
+    # No home address travels as an empty string, never null.
+    assert [e.message for e in v.iter_errors(dict(event, domicile_address=""))] == []
+
+    for bad in (
+        dict(event, event_type="appointment.cancelled"),
+        dict(event, domicile_address=None),
+        {k: val for k, val in event.items() if k != "start_time"},
+        {k: val for k, val in event.items() if k != "end_time"},
+        {k: val for k, val in event.items() if k != "appointment_id"},
+    ):
+        assert list(v.iter_errors(bad)), bad
+
+
 def test_all_event_schemas_still_structurally_valid():
     """Regression of validate-self.yml AUDIT 11 (no schema broken by the edit).
 

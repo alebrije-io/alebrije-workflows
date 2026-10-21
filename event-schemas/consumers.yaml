@@ -214,6 +214,24 @@ subscriptions:
   # EventCatalog (event_catalog.ex:34). No hay entrada de subscripcion aqui
   # todavia porque ningun consumidor esta cableado al nombre canonico — igual
   # que appointment.noshow; agregarla cuando alguno se conecte.
+  # 2026-10-21: ya hay uno, field-ops (entrada de abajo).
+
+  # ADR-37 §18.3 (2026-10-21): field-ops lee los dos nombres canonicos de agenda
+  # en events:agenda. AgendaCancellationConsumer (grupo field-ops-ex-agenda)
+  # cancela la orden de una toma a domicilio cancelada y mueve la de una
+  # reprogramada. appointment.rescheduled lo escribe el outbox de agenda desde
+  # 0.0.239 (update_with_outbox/2), cuando cambian la hora o el domicilio.
+  - service: alebrije-mod-field-ops-ex
+    event_type: appointment.cancelled
+    stream: "events:agenda"
+    handler: Workers.AgendaCancellationConsumer (Broadway)
+    source: alebrije-mod-field-ops-ex/lib/alebrije_field_ops/workers/agenda_cancellation_consumer.ex:96
+
+  - service: alebrije-mod-field-ops-ex
+    event_type: appointment.rescheduled
+    stream: "events:agenda"
+    handler: Workers.AgendaCancellationConsumer (Broadway)
+    source: alebrije-mod-field-ops-ex/lib/alebrije_field_ops/workers/agenda_cancellation_consumer.ex:108
 
   # payments.payment.failed now has a registered schema
   # (payments.payment.failed.v1.json). Producer = alebrije-mod-payments-go

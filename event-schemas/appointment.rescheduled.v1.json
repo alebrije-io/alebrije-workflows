@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/appointment.rescheduled.v1.json",
+  "title": "appointment.rescheduled v1",
+  "description": "FLAT payload (does NOT use the envelope.v1 data-nested shape) — fields are top-level, matching the real producer. Emitted when an appointment's time window or home address changes while the appointment is still live (ADR-37 §18.3, LEY DE CONVERGENCIA; alebrije-mod-agenda-ex 0.0.239, 2026-10-21). Producer: AlebrijeAgenda.Appointments update_with_outbox/2, the single update funnel (both reschedule branches, the panel PUT and the agent's tools go through it), stages the row with AlebrijeAgenda.Outbox.emit/3 in the SAME transaction as the write, only when start_time, end_time or domicile_address changed and the resulting status is not terminal (a write that also cancels, completes or marks noshow stages only its lifecycle event). Only the outbox relay publishes it — there is no direct XADD for this event — to the canonical stream 'events:agenda' (Outbox @stream_routes). The envelope is Outbox.envelope_for/2: the base keys every outbox appointment event carries (event_type, appointment_id, tenant_id, calendar_id, contact_phone, status, plus contact_id and person_id only when not blank) and, for this event only, start_time, end_time, domicile_address, service_type and context_id. Idempotency key on the outbox row: 'appointment.rescheduled:<appointment_id>:<updated_at ISO 8601>', one event per write. Consumer: alebrije-mod-field-ops-ex AgendaCancellationConsumer (group field-ops-ex-agenda) moves the home-draw order to the new time and address (Mirrors.Appointments.follow_order/3); its reconciler converges anything the live path missed within 30 minutes.",
+  "type": "object",
+  "required": [
+    "event_type",
+    "appointment_id",
+    "tenant_id",
+    "status",
+    "start_time",
+    "end_time",
+    "domicile_address"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "appointment.rescheduled",
+      "description": "Canonical event_type stamped by Outbox.envelope_for/2. Consumers route on this exact value."
+    },
+    "appointment_id": {
+      "type": "string",
+      "description": "UUID of the moved appointment, stringified from appointment.id."
+    },
+    "tenant_id": {
+      "type": "string",
+      "description": "Tenant that owns the appointment (ADR-25 tenant scoping)."
+    },
+    "calendar_id": {
+      "type": "string",
+      "description": "Calendar the appointment belongs to; empty string when absent."
+    },
+    "contact_id": {
+      "type": "string",
+      "description": "CRM contact the appointment is for. Omitted (never present-and-empty) when the appointment has no contact."
+    },
+    "contact_phone": {
+      "type": "string",
+      "description": "E.164 contact phone carried on the appointment; empty string when absent."
+    },
+    "person_id": {
+      "type": "string",
+      "description": "ADR-143 B5 sub-profile anchor. Present only when the appointment is anchored to a non-titular person."
+    },
+    "status": {
+      "type": "string",
+      "description": "Appointment status after the write. Never cancelled, completed or noshow: those writes stage only their lifecycle event."
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "New scheduled start, ISO 8601 with offset (DateTime.to_iso8601/1), e.g. 2026-10-21T16:00:00.000000Z."
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "New scheduled end, ISO 8601 with offset. Reschedule keeps the appointment's own duration."
+    },
+    "domicile_address": {
+      "type": "string",
+      "description": "Home address as agenda stores it: JSON text (a decoded map is encoded back), or an empty string when the appointment has none. Consumers compare it by content, not by key order."
+    },
+    "service_type": {
+      "type": "string",
+      "description": "Service booked on the appointment (e.g. lab_domicile); empty string when absent."
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Context (vertical/branch) the appointment belongs to; empty string when absent."
+    }
+  },
+  "additionalProperties": true
+}
