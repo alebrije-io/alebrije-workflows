@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/field_ops.settlement.closed.v1.json",
+  "title": "field_ops.settlement.closed v1",
+  "description": "The end-of-day settlement of one person in the field was closed (ADR-37 §18.4 \"Corte del día\"): what was expected for their local day — the day's cash in the collections book collected by them, the balance of their truck in the inventory book — against what they declared, within the tenant's settlement_tolerance. Closing wrote each stock difference to the inventory book as an adjustment of document settlement (one field_ops.inventory.moved each) and marked the day's delivered sales of the seller settled. A settlement above the tolerance waits for an authorization and is never announced until it closes. Emitted once per settlement AFTER the transaction that closed it commits; closing again is not announced again. A closed settlement is never edited: a later correction is a movement on the day it happens. Source publisher: alebrije-mod-field-ops-ex Workers.EventPublisher, relaying the [:alebrije_field_ops, :settlement, :closed] telemetry event that AlebrijeFieldOps.Settlements fires. The envelope is built by AlebrijeCommon.Events.Publish.build_envelope/3, so every field below lives under `data` (telemetry metadata stringified, measurements prefixed with m_). Amounts are decimal strings with at most two decimals, never floats; differences are signed (negative = missing).",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "field_ops.settlement.closed"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "settlement_id",
+            "tenant_id",
+            "seller_id",
+            "business_date",
+            "currency",
+            "expected_cash",
+            "declared_cash",
+            "cash_difference",
+            "stock_difference_value",
+            "total_difference",
+            "sales_count",
+            "closed_at"
+          ],
+          "properties": {
+            "settlement_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The field_ops.settlements row. Stable: a consumer dedups on it."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Tenant that owns the settlement (ADR-25). Repeated inside data because the producer copies the telemetry metadata verbatim."
+            },
+            "context_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 36,
+              "description": "Branch (context) the settlement was declared in, when known."
+            },
+            "seller_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The person in the field (a field technician): their truck and their cash."
+            },
+            "business_date": {
+              "type": "string",
+              "format": "date",
+              "description": "Their local day (branch timezone, else the tenant's) the settlement covers."
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "ISO 4217 code of every amount below."
+            },
+            "expected_cash": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d{1,2})?$",
+              "description": "The day's cash collected by them in the collections book, reversals included (negative only if they returned more than they collected)."
+            },
+            "declared_cash": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d{1,2})?$",
+              "description": "The cash they counted."
+            },
+            "cash_difference": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d{1,2})?$",
+              "description": "declared_cash − expected_cash."
+            },
+            "card_total": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d{1,2})?$",
+              "description": "The day's money by card confirmed by payments-go, for the record."
+            },
+            "transfer_total": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d{1,2})?$",
+              "description": "The day's money by transfer confirmed by payments-go, for the record."
+            },
+            "credit_total": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d{1,2})?$",
+              "description": "The balances they left on credit that day, for the record."
+            },
+            "stock_difference_value": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d{1,2})?$",
+              "description": "Σ (counted − book balance) × catalog-copy price over the truck's parts; negative = missing product."
+            },
+            "total_difference": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d{1,2})?$",
+              "description": "cash_difference + stock_difference_value; within the tenant's tolerance, or it would not have closed."
+            },
+            "sales_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Delivered sales of the day that this close marked settled."
+            },
+            "closed_at": {
+              "type": "string",
+              "description": "When it was closed (ISO-8601, UTC)."
+            },
+            "m_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Telemetry measurement, always 1."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

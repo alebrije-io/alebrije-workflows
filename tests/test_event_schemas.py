@@ -410,6 +410,41 @@ def test_field_ops_sale_cancelled_validates_and_requires_its_reason():
         assert list(v.iter_errors(_field_ops_envelope("field_ops.sale.cancelled", bad))), bad
 
 
+def test_field_ops_settlement_closed_validates_and_rejects_impossible_days():
+    """ADR-37 §18.4: a closed end-of-day settlement, as EventPublisher relays it."""
+    v = _validator_for("field_ops.settlement.closed.v1.json")
+    data = {
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
+        "context_id": None,
+        "settlement_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "seller_id": "55555555-5555-5555-5555-555555555555",
+        "business_date": "2026-10-21",
+        "currency": "MXN",
+        "expected_cash": "30.00",
+        "declared_cash": "28.00",
+        "cash_difference": "-2.00",
+        "card_total": "0.00",
+        "transfer_total": "0.00",
+        "credit_total": "20.00",
+        "stock_difference_value": "-10.00",
+        "total_difference": "-12.00",
+        "sales_count": 2,
+        "closed_at": "2026-10-21T23:10:00.000000Z",
+        "m_count": 1,
+    }
+    event = _field_ops_envelope("field_ops.settlement.closed", data)
+    assert [e.message for e in v.iter_errors(event)] == []
+
+    for bad in (
+        dict(data, declared_cash="-1.00"),
+        dict(data, total_difference=-12.0),
+        dict(data, cash_difference="-2.005"),
+        dict(data, sales_count=-1),
+        {k: val for k, val in data.items() if k != "settlement_id"},
+    ):
+        assert list(v.iter_errors(_field_ops_envelope("field_ops.settlement.closed", bad))), bad
+
+
 def test_all_event_schemas_still_structurally_valid():
     """Regression of validate-self.yml AUDIT 11 (no schema broken by the edit).
 
