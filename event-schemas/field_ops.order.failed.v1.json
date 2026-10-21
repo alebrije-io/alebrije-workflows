@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/field_ops.order.failed.v1.json",
+  "title": "field_ops.order.failed v1",
+  "description": "Emitted when a field order moves to status='failed': the technician could not do the work (customer absent, refused, no access...) and recorded why (ADR-37 §18.3). The attempt is also written as a visit with outcome 'failed' in the same transaction. A failed order can be re-assigned (a new attempt, attempt_count + 1, emitted as field_ops.order.assigned with previous_status 'failed') or cancelled. Source publisher: alebrije-mod-field-ops-ex Workers.EventPublisher, relaying the [:alebrije_field_ops, :order, :failed] telemetry event that Orders.emit_status_event/2 fires after the transition commits. The envelope is built by AlebrijeCommon.Events.Publish.build_envelope/3, so every field below lives under `data` (telemetry metadata stringified, measurements prefixed with m_). The technician's free-text notes are NOT published: they stay on the order and its visit.",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "field_ops.order.failed"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "order_id",
+            "tenant_id",
+            "status",
+            "failure_reason"
+          ],
+          "properties": {
+            "order_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "field_orders row whose attempt failed."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Tenant that owns the order (ADR-25). Repeated inside data because the producer copies the telemetry metadata verbatim."
+            },
+            "context_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 36
+            },
+            "kind": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Order kind. Configurable per tenant and context (ADR-127, KindConfigCache), so it is NOT a closed enum."
+            },
+            "status": {
+              "type": "string",
+              "description": "New status, always 'failed' for this event."
+            },
+            "previous_status": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Status before the transition: 'in_transit' or 'in_progress'."
+            },
+            "failure_reason": {
+              "type": "string",
+              "description": "Code from the failure catalog of the order's kind definition (ADR-37 §18.3); without a definition, the platform default catalog: customer_absent, refused, wrong_address, no_access, rescheduled_by_customer, other. Tenants define their own codes, so consumers must tolerate any snake_case value."
+            },
+            "attempt_count": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1,
+              "description": "Which attempt failed (1 = the first visit). A retry re-assigns the order and adds 1."
+            },
+            "kind_definition_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid",
+              "description": "Kind definition version the order was created under (its snapshot). Null when the kind had no definition."
+            },
+            "assigned_technician_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            },
+            "customer_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            },
+            "share_token": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Public tracking token. It is a credential for the tracking page: consumers must not log it."
+            },
+            "tracking_link": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Public tracking URL built from share_token."
+            },
+            "completed_at": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Always null for this event (the order was not completed)."
+            },
+            "m_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Telemetry measurement, always 1."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}
