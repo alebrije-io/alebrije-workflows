@@ -345,6 +345,71 @@ def test_field_ops_inventory_moved_validates_and_rejects_impossible_movements():
         assert list(v.iter_errors(_field_ops_envelope("field_ops.inventory.moved", bad))), bad
 
 
+def _sale_metadata(**overrides) -> dict:
+    """The telemetry metadata AlebrijeFieldOps.Sales.emit/2 sends for both sale events."""
+    data = {
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
+        "context_id": None,
+        "sale_id": "88888888-8888-8888-8888-888888888888",
+        "seller_id": "55555555-5555-5555-5555-555555555555",
+        "folio": 7,
+        "customer_crm_contact_id": "99999999-9999-9999-9999-999999999999",
+        "modality": "autosale",
+        "status": "delivered",
+        "currency": "MXN",
+        "subtotal": "30.00",
+        "discount_total": "2.00",
+        "tax_total": "4.48",
+        "total": "32.48",
+        "line_count": 1,
+        "business_date": "2026-10-21",
+        "confirmed_at": "2026-10-21T09:00:00.000000Z",
+        "cancel_reason": None,
+        "m_count": 1,
+    }
+    data.update(overrides)
+    return data
+
+
+def test_field_ops_sale_confirmed_validates_and_rejects_impossible_sales():
+    """ADR-37 §18.4: a confirmed route sale, as EventPublisher relays it."""
+    v = _validator_for("field_ops.sale.confirmed.v1.json")
+    data = _sale_metadata()
+    assert [e.message for e in v.iter_errors(_field_ops_envelope("field_ops.sale.confirmed", data))] == []
+
+    presale = dict(data, modality="presale", status="confirmed", discount_total="0")
+    assert [e.message for e in v.iter_errors(_field_ops_envelope("field_ops.sale.confirmed", presale))] == []
+
+    for bad in (
+        dict(data, folio=0),
+        dict(data, total=32.48),
+        dict(data, total="32.485"),
+        dict(data, status="pending_authorization"),
+        dict(data, status="cancelled"),
+        dict(data, modality="consignment"),
+        dict(data, cancel_reason="no"),
+        dict(data, line_count=0),
+        {k: val for k, val in data.items() if k != "folio"},
+    ):
+        assert list(v.iter_errors(_field_ops_envelope("field_ops.sale.confirmed", bad))), bad
+
+
+def test_field_ops_sale_cancelled_validates_and_requires_its_reason():
+    """ADR-37 §18.4: a cancelled sale that had a folio, as EventPublisher relays it."""
+    v = _validator_for("field_ops.sale.cancelled.v1.json")
+    data = _sale_metadata(status="cancelled", cancel_reason="devolución")
+    assert [e.message for e in v.iter_errors(_field_ops_envelope("field_ops.sale.cancelled", data))] == []
+
+    for bad in (
+        dict(data, cancel_reason=None),
+        dict(data, cancel_reason=""),
+        dict(data, status="delivered"),
+        dict(data, folio=None),
+        {k: val for k, val in data.items() if k != "cancel_reason"},
+    ):
+        assert list(v.iter_errors(_field_ops_envelope("field_ops.sale.cancelled", bad))), bad
+
+
 def test_all_event_schemas_still_structurally_valid():
     """Regression of validate-self.yml AUDIT 11 (no schema broken by the edit).
 

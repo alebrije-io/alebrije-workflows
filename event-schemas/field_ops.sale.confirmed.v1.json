@@ -1,0 +1,139 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/field_ops.sale.confirmed.v1.json",
+  "title": "field_ops.sale.confirmed v1",
+  "description": "A route sale was confirmed (ADR-37 §18.4): its folio was assigned, its lines frozen with the price, tax and name of the catalog copy, and — for an autosale — its stock left the seller's truck in the same transaction (one field_ops.inventory.moved per line). A presale is confirmed with status confirmed and delivered later; an autosale is confirmed already delivered. A sale whose discount exceeds what is left of the seller's daily allowance is NOT confirmed (it waits as pending_authorization) and emits nothing. Emitted once per sale AFTER the transaction that confirmed it commits; confirming again, or a retried create with the same client_change_id, is not announced again. Source publisher: alebrije-mod-field-ops-ex Workers.EventPublisher, relaying the [:alebrije_field_ops, :sale, :confirmed] telemetry event that AlebrijeFieldOps.Sales fires. The envelope is built by AlebrijeCommon.Events.Publish.build_envelope/3, so every field below lives under `data` (telemetry metadata stringified, measurements prefixed with m_). Amounts are decimal strings with at most two decimals, never floats.",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "field_ops.sale.confirmed"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "sale_id",
+            "tenant_id",
+            "seller_id",
+            "folio",
+            "customer_crm_contact_id",
+            "modality",
+            "status",
+            "currency",
+            "subtotal",
+            "discount_total",
+            "tax_total",
+            "total",
+            "line_count",
+            "business_date",
+            "confirmed_at"
+          ],
+          "properties": {
+            "sale_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The field_ops.sales row. Stable: a consumer dedups on it."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Tenant that owns the sale (ADR-25). Repeated inside data because the producer copies the telemetry metadata verbatim."
+            },
+            "context_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 36,
+              "description": "Branch (context) the sale was made in, when known."
+            },
+            "seller_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The salesperson (a field technician) whose folio series the sale belongs to."
+            },
+            "folio": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Consecutive per seller, assigned on confirmation: confirmed sales of one seller never leave a gap."
+            },
+            "customer_crm_contact_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The customer, a CRM contact WITH a phone (LEY DE ADMISIÓN); a merged contact resolves to its survivor before the sale is written."
+            },
+            "modality": {
+              "type": "string",
+              "enum": [
+                "presale",
+                "autosale"
+              ],
+              "description": "presale: ordered now, delivered later (field_ops.inventory.moved when delivered). autosale: sold and handed over from the seller's truck at once."
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "confirmed",
+                "delivered"
+              ],
+              "description": "confirmed for a presale, delivered for an autosale."
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "ISO 4217 code of every amount below."
+            },
+            "subtotal": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d{1,2})?$",
+              "description": "Σ price × quantity of the lines, before discount and tax."
+            },
+            "discount_total": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d{1,2})?$",
+              "description": "Σ line discounts — all inside the seller's pre-authorized daily allowance (each line records it as discount_authorization: allowance)."
+            },
+            "tax_total": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d{1,2})?$",
+              "description": "Σ line taxes: each rate Catálogo assigns to the item, on the line's base (price × quantity − discount), rounded half-up to cents per line."
+            },
+            "total": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d{1,2})?$",
+              "description": "subtotal − discount_total + tax_total."
+            },
+            "line_count": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Number of lines of the sale."
+            },
+            "business_date": {
+              "type": "string",
+              "format": "date",
+              "description": "The tenant-local day the sale was confirmed in (branch timezone, else the tenant's): the day the allowance and the settlement count it against."
+            },
+            "confirmed_at": {
+              "type": "string",
+              "description": "When it was confirmed (ISO-8601, UTC)."
+            },
+            "cancel_reason": {
+              "type": "null",
+              "description": "Always null on confirmation; present because the producer emits one metadata shape for both sale events."
+            },
+            "m_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Telemetry measurement, always 1."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

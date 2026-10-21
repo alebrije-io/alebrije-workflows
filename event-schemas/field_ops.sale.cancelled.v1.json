@@ -1,0 +1,134 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/field_ops.sale.cancelled.v1.json",
+  "title": "field_ops.sale.cancelled v1",
+  "description": "A confirmed route sale was cancelled (ADR-37 §18.4), with its reason. Stock that had already left a truck went back to it in the same transaction (one field_ops.inventory.moved of kind sale_cancelled per line). Only a sale that had a folio is announced: a draft or a sale still waiting for an authorization never reached any consumer, so cancelling it emits nothing. A settled sale is not cancelled — a settlement is corrected with movements. Emitted once per sale AFTER the transaction that cancelled it commits; cancelling again is not announced again. Source publisher: alebrije-mod-field-ops-ex Workers.EventPublisher, relaying the [:alebrije_field_ops, :sale, :cancelled] telemetry event that AlebrijeFieldOps.Sales fires. The envelope is built by AlebrijeCommon.Events.Publish.build_envelope/3, so every field below lives under `data` (telemetry metadata stringified, measurements prefixed with m_). Amounts are decimal strings with at most two decimals, never floats.",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "field_ops.sale.cancelled"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "sale_id",
+            "tenant_id",
+            "seller_id",
+            "folio",
+            "customer_crm_contact_id",
+            "modality",
+            "status",
+            "currency",
+            "total",
+            "cancel_reason"
+          ],
+          "properties": {
+            "sale_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The field_ops.sales row; the same sale_id its field_ops.sale.confirmed carried."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Tenant that owns the sale (ADR-25). Repeated inside data because the producer copies the telemetry metadata verbatim."
+            },
+            "context_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 36,
+              "description": "Branch (context) the sale was made in, when known."
+            },
+            "seller_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The salesperson whose folio series the sale belongs to."
+            },
+            "folio": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "The folio the sale was confirmed with; it is not reused."
+            },
+            "customer_crm_contact_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The customer, a CRM contact with a phone (LEY DE ADMISIÓN)."
+            },
+            "modality": {
+              "type": "string",
+              "enum": [
+                "presale",
+                "autosale"
+              ],
+              "description": "The modality the sale was confirmed with; an autosale (or a delivered presale) gave its stock back to the truck that handed it over."
+            },
+            "status": {
+              "const": "cancelled",
+              "description": "Always cancelled."
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "ISO 4217 code of every amount below."
+            },
+            "subtotal": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d{1,2})?$"
+            },
+            "discount_total": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d{1,2})?$"
+            },
+            "tax_total": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d{1,2})?$"
+            },
+            "total": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d{1,2})?$",
+              "description": "The total of the sale that no longer counts (the confirmed amount it reverses)."
+            },
+            "line_count": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "business_date": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date",
+              "description": "The tenant-local day the sale had been confirmed in."
+            },
+            "confirmed_at": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "When it had been confirmed (ISO-8601, UTC)."
+            },
+            "cancel_reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "description": "Why it was cancelled; required to cancel."
+            },
+            "m_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Telemetry measurement, always 1."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}
