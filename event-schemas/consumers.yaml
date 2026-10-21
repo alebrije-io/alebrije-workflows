@@ -111,6 +111,28 @@ subscriptions:
     stream: "alebrije:events:auth"
     handler: EventsConsumer
     source: alebrije-mod-rewards-go/internal/service/events_consumer.go:48
+
+  # ADR-001 v2 de rewards (2026-10-20). D3: la cita atendida acumula puntos;
+  # agenda la publica por su outbox en events:campaigns. D4: el ciclo de vida
+  # del módulo refresca el padrón de rewards al momento. rewards lee el cuerpo
+  # de alebrije:events:auth en el campo "message" del relay de svc-auth.
+  - service: alebrije-mod-rewards-go
+    event_type: appointment.completed
+    stream: "events:campaigns"
+    handler: EventsConsumer (DefaultSubscriptions)
+    source: alebrije-mod-rewards-go/internal/service/events_consumer.go:249
+
+  - service: alebrije-mod-rewards-go
+    event_type: auth.module.activated
+    stream: "alebrije:events:auth"
+    handler: EventsConsumer (handleModuleLifecycle)
+    source: alebrije-mod-rewards-go/internal/service/events_consumer.go:250
+
+  - service: alebrije-mod-rewards-go
+    event_type: auth.module.deactivated
+    stream: "alebrije:events:auth"
+    handler: EventsConsumer (handleModuleLifecycle)
+    source: alebrije-mod-rewards-go/internal/service/events_consumer.go:250
   - service: alebrije-mod-crm-go
     event_type: auth.dsr.erasure_approved
     stream: "alebrije:events:auth"

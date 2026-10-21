@@ -272,6 +272,35 @@ def test_rewards_redeemed_validates_against_real_outbox_envelope_shape():
     assert errors == [], f"real rewards.redeemed outbox event rejected: {errors}"
 
 
+def test_rewards_points_expiring_soon_validates_against_real_outbox_envelope_shape():
+    """ADR-001 v2 of rewards (D2, fase 1.6): the notice leaves through the outbox
+    with the member's subject; contact fields are optional, the expiry is not."""
+    v = _validator_for("rewards.points.expiring_soon.v1.json")
+    data = {
+        "event_type": "rewards.points.expiring_soon",
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
+        "user_id": "22222222-2222-2222-2222-222222222222",
+        "contact_id": "33333333-3333-3333-3333-333333333333",
+        "contact_phone": "525555501941",
+        "amount": 140,
+        "reason": "expiring_soon",
+        "metadata": {"expires_at": "2026-10-24T03:00:00Z", "expires_on": "2026-10-24"},
+        "occurred_at": "2026-10-21T06:00:00Z",
+    }
+    errors = [e.message for e in v.iter_errors(_outbox_envelope("rewards.points.expiring_soon", data))]
+    assert errors == [], f"real rewards.points.expiring_soon outbox event rejected: {errors}"
+
+    no_subject = {k: val for k, val in data.items() if k not in ("contact_id", "contact_phone")}
+    assert [e.message for e in v.iter_errors(_outbox_envelope("rewards.points.expiring_soon", no_subject))] == []
+
+    bad_phone = dict(data, contact_phone="+52 55 5550 1941")
+    assert list(v.iter_errors(_outbox_envelope("rewards.points.expiring_soon", bad_phone))), \
+        "a non-canonical phone must be rejected (ADR-142)"
+    no_expiry = dict(data, metadata={})
+    assert list(v.iter_errors(_outbox_envelope("rewards.points.expiring_soon", no_expiry))), \
+        "the expiry is required"
+
+
 def test_all_event_schemas_still_structurally_valid():
     """Regression of validate-self.yml AUDIT 11 (no schema broken by the edit).
 

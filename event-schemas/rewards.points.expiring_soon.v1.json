@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/rewards.points.expiring_soon.v1.json",
+  "title": "rewards.points.expiring_soon v1",
+  "description": "Notice that a member's points will expire soon (ADR-001 v2 of alebrije-mod-rewards-go, D2, fase 1.6). Source: alebrije-mod-rewards-go, ExpirationWorker.sweepRepo -> repo.NotifyExpiringPoints (internal/repo/expiry_notices.go) -> emitExpiringSoon (internal/service/expiration.go), written to the rewards outbox in the SAME transaction as the rewards.points_expiry_notices row (migration 0028), and relayed by the alebrije-common-go outbox poller onto the enveloped events:rewards domain stream -- the shape this schema describes. One notice per member for the nearest expiry inside the tenant's window (rewards.tenant_settings.expiry_warning_days, default 7, 0 = off); idempotency key rewards.points.expiring_soon:<user_id>:<expires_on>. rewards sends no message itself: each tenant's cadences (alebrije-mod-cadences-ex, consumer group cadences-ex-enrollment-rewards) decide what to say, with the tenant's Meta template (ADR-152). contact_id / contact_phone are the member's CRM contact and canonical phone (ADR-142), present when known; cadences enrols by contact_id, or by phone when there is no contact_id.",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "rewards.points.expiring_soon"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "user_id",
+            "amount",
+            "metadata"
+          ],
+          "properties": {
+            "event_type": {
+              "const": "rewards.points.expiring_soon"
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "user_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Rewards member id (points_accounts.user_id = rewards.members.id, ADR-001 v2 D1)."
+            },
+            "contact_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The member's CRM contact, when the member is linked to one. Absent otherwise."
+            },
+            "contact_phone": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{6,14}$",
+              "description": "The member's canonical phone (ADR-142, E.164 digits without '+'). Absent when unknown."
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Points that expire inside the warning window, capped at the member's available balance (the same cap the FIFO expiry applies when it revokes them)."
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Always 'expiring_soon' for this producer."
+            },
+            "metadata": {
+              "type": "object",
+              "description": "When the points expire: expires_at to show (in the tenant's timezone), expires_on to dedup.",
+              "additionalProperties": true,
+              "required": [
+                "expires_at",
+                "expires_on"
+              ],
+              "properties": {
+                "expires_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "RFC3339 UTC instant the nearest of these points expire. Format it in the tenant's timezone before showing it to the member."
+                },
+                "expires_on": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "UTC date of expires_at: the dedup key of the notice, not a display value."
+                }
+              }
+            },
+            "occurred_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When the sweep that emitted the notice ran."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}
