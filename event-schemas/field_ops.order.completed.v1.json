@@ -18,6 +18,11 @@
               "format": "uuid",
               "description": "field_orders row that was completed."
             },
+            "appointment_id": {
+              "type": ["string", "null"],
+              "format": "uuid",
+              "description": "The agenda appointment the order came from (agenda-ex creates a pickup_sample order from a lab_domicile appointment); null for any other order. Agenda closes its appointment on this event (ADR-37 §18.3 «Cierre con el módulo de origen»). Added 2026-10-21, field-ops 0.0.128, additive."
+            },
             "kind": {
               "type": "string",
               "description": "Work type. Configurable per tenant and context (ADR-127, KindConfigCache); the platform defaults are pickup_sample, delivery, inspection and service_call, but consumers must tolerate any value."
