@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/field_ops.inventory.moved.v1.json",
+  "title": "field_ops.inventory.moved v1",
+  "description": "One movement of the inventory book of a truck (ADR-37 §18.4): stock loaded, sold, returned, lost, transferred between trucks, counted, or used on a field order. The book (field_ops.inventory_movements) is append-only and the truck's stock (field_ops.truck_inventory) is its projection, moved in the same transaction. Emitted once per movement AFTER the transaction that wrote it commits; a retried write (same client_change_id) is not announced again. Source publisher: alebrije-mod-field-ops-ex Workers.EventPublisher, relaying the [:alebrije_field_ops, :inventory, :moved] telemetry event that InventoryLedger.announce/1 fires. The envelope is built by AlebrijeCommon.Events.Publish.build_envelope/3, so every field below lives under `data` (telemetry metadata stringified, measurements prefixed with m_).",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "field_ops.inventory.moved"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "movement_id",
+            "tenant_id",
+            "technician_id",
+            "part_id",
+            "kind",
+            "quantity_delta",
+            "balance_after"
+          ],
+          "properties": {
+            "movement_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The field_ops.inventory_movements row. Stable: a consumer dedups on it."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Tenant that owns the truck (ADR-25). Repeated inside data because the producer copies the telemetry metadata verbatim."
+            },
+            "context_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 36,
+              "description": "Branch (context) the movement was recorded in, when known."
+            },
+            "technician_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Whose truck: the field technician or salesperson that carries the stock."
+            },
+            "part_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "field_ops.parts_catalog row (a copy of a Catálogo item when the tenant uses Catálogo, ADR-37 §18.6)."
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "opening",
+                "load",
+                "unload",
+                "sale",
+                "sale_cancelled",
+                "customer_return",
+                "shrink",
+                "transfer_out",
+                "transfer_in",
+                "adjustment",
+                "part_used"
+              ],
+              "description": "What happened. Positive kinds: opening, load, sale_cancelled, customer_return, transfer_in. Negative kinds: unload, sale, shrink, transfer_out, part_used. adjustment (a physical count) can go either way."
+            },
+            "quantity_delta": {
+              "type": "integer",
+              "not": {
+                "const": 0
+              },
+              "description": "Units added (positive) or taken (negative); never zero. Its sign matches the kind."
+            },
+            "balance_after": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "The truck's balance of this part right after the movement; never negative."
+            },
+            "document_type": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "What caused it: sale, settlement, field_order, transfer, manual, migration (the opening balance) or direct_write (a write to the projection made outside the book, captured by a database trigger)."
+            },
+            "document_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid",
+              "description": "The document's id (the sale, the field order, the transfer...)."
+            },
+            "transfer_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid",
+              "description": "Pairs the transfer_out and transfer_in of one transfer between trucks."
+            },
+            "occurred_at": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "When it happened (ISO-8601). From the phone when captured offline; the server's time otherwise."
+            },
+            "m_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Telemetry measurement, always 1."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -301,6 +301,50 @@ def test_rewards_points_expiring_soon_validates_against_real_outbox_envelope_sha
         "the expiry is required"
 
 
+def _field_ops_envelope(event_type: str, data: dict) -> dict:
+    """Mirrors AlebrijeCommon.Events.Publish.build_envelope/3 as field-ops'
+    Workers.EventPublisher calls it (telemetry metadata under data)."""
+    return {
+        "event_id": "0190b8c0-3333-7a4b-9c2d-3e4f5a6b7c8d",
+        "event_type": event_type,
+        "event_version": "1.0",
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
+        "timestamp": "2026-10-21T08:40:00Z",
+        "producer": {"service": "alebrije-mod-field-ops-ex", "version": "0.0.118"},
+        "data": data,
+    }
+
+
+def test_field_ops_inventory_moved_validates_and_rejects_impossible_movements():
+    """ADR-37 §18.4: one movement of the inventory book, as EventPublisher relays it."""
+    v = _validator_for("field_ops.inventory.moved.v1.json")
+    data = {
+        "movement_id": "44444444-4444-4444-4444-444444444444",
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
+        "context_id": None,
+        "technician_id": "55555555-5555-5555-5555-555555555555",
+        "part_id": "66666666-6666-6666-6666-666666666666",
+        "kind": "sale",
+        "quantity_delta": -3,
+        "balance_after": 9,
+        "document_type": "sale",
+        "document_id": "77777777-7777-7777-7777-777777777777",
+        "transfer_id": None,
+        "occurred_at": "2026-10-21T08:39:00Z",
+        "m_count": 1,
+    }
+    event = _field_ops_envelope("field_ops.inventory.moved", data)
+    assert [e.message for e in v.iter_errors(event)] == []
+
+    for bad in (
+        dict(data, quantity_delta=0),
+        dict(data, balance_after=-1),
+        dict(data, kind="teleport"),
+        {k: val for k, val in data.items() if k != "movement_id"},
+    ):
+        assert list(v.iter_errors(_field_ops_envelope("field_ops.inventory.moved", bad))), bad
+
+
 def test_all_event_schemas_still_structurally_valid():
     """Regression of validate-self.yml AUDIT 11 (no schema broken by the edit).
 
