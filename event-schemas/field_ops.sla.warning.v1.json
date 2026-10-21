@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/field_ops.sla.warning.v1.json",
+  "title": "field_ops.sla.warning v1",
+  "description": "Emitted when a field order approaches its SLA target and a SlaBreachLog row with event='warning' is inserted. Source publisher: alebrije-mod-field-ops-ex Workers.EventPublisher, relaying the [:alebrije_field_ops, :sla, :warning] telemetry event from Slas.log_event. Fields live under `data` (build_envelope/3); the elapsed-minutes measurement arrives as m_elapsed_minutes.",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "field_ops.sla.warning"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "order_id",
+            "sla_id",
+            "tenant_id"
+          ],
+          "properties": {
+            "order_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "field_orders row the event is about (UUID)."
+            },
+            "sla_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Sla definition the order is measured against (UUID)."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Tenant that owns the order (ADR-25). Repeated inside data because the producer copies the telemetry metadata verbatim."
+            },
+            "context_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 36
+            },
+            "sla_name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "target_minutes": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "event": {
+              "type": "string",
+              "description": "Always 'warning' for this event."
+            },
+            "m_elapsed_minutes": {
+              "type": [
+                "integer",
+                "number"
+              ],
+              "minimum": 0
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

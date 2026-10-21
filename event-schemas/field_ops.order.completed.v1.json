@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://alebrije.io/schemas/field_ops.order.completed.v1.json",
   "title": "field_ops.order.completed v1",
-  "description": "Emitted when a field order moves to status='completed' after the technician closes custody. Source publisher: alebrije-mod-field-ops-ex.",
+  "description": "Emitted when a field order moves to status='completed' after the technician closes custody. Source publisher: alebrije-mod-field-ops-ex Workers.EventPublisher, relaying the [:alebrije_field_ops, :order, :completed] telemetry event from Orders.emit_status_event/2; fields live under `data` (build_envelope/3). 2026-10-20, additive (README §6, relaxing constraints): `kind` is no longer a closed enum because kinds are configurable per tenant (ADR-127, KindConfigCache), and `completed_at` is optional because producers before field-ops 0.0.114 did not send it; status, previous_status, context_id, share_token, tracking_link and m_count are documented.",
   "allOf": [
     { "$ref": "https://alebrije.io/schemas/envelope.v1.json" },
     {
@@ -11,7 +11,7 @@
         "event_type": { "const": "field_ops.order.completed" },
         "data": {
           "type": "object",
-          "required": ["order_id", "kind", "completed_at"],
+          "required": ["order_id", "kind"],
           "properties": {
             "order_id": {
               "type": "string",
@@ -20,9 +20,14 @@
             },
             "kind": {
               "type": "string",
-              "enum": ["pickup_sample", "delivery", "inspection", "service_call"],
-              "description": "Work type (matches field_orders.kind enum)."
+              "description": "Work type. Configurable per tenant and context (ADR-127, KindConfigCache); the platform defaults are pickup_sample, delivery, inspection and service_call, but consumers must tolerate any value."
             },
+            "status": { "type": ["string", "null"], "description": "Always 'completed' for this event." },
+            "previous_status": { "type": ["string", "null"] },
+            "context_id": { "type": ["string", "null"], "maxLength": 36 },
+            "share_token": { "type": ["string", "null"], "description": "Public tracking token (a credential: do not log)." },
+            "tracking_link": { "type": ["string", "null"] },
+            "m_count": { "type": "integer", "minimum": 0 },
             "assigned_technician_id": {
               "type": ["string", "null"],
               "format": "uuid"

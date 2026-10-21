@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/field_ops.mobile_sync.change_recorded.v1.json",
+  "title": "field_ops.mobile_sync.change_recorded v1",
+  "description": "Emitted for every genuinely new (non-replay) field_ops.change_logs row, so a mobile-push bridge can react without polling the pull endpoint (DEBT-FO-005). Source publisher: alebrije-mod-field-ops-ex Workers.EventPublisher, relaying the [:alebrije_field_ops, :mobile_sync, :change_recorded] telemetry event from MobileSync.record_change. Fields live under `data` (build_envelope/3).",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "field_ops.mobile_sync.change_recorded"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "tenant_id",
+            "change_log_id",
+            "entity_type",
+            "entity_id",
+            "operation",
+            "seq"
+          ],
+          "properties": {
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Tenant that owns the order (ADR-25). Repeated inside data because the producer copies the telemetry metadata verbatim."
+            },
+            "change_log_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "field_ops.change_logs row that was recorded (UUID)."
+            },
+            "entity_type": {
+              "type": "string",
+              "description": "Entity that changed (ChangeLog @entity_types, for example field_order, time_entry, truck_inventory). Consumers must tolerate new values."
+            },
+            "entity_id": {
+              "type": "string",
+              "description": "Id of the entity that changed (UUID for every current entity type)."
+            },
+            "operation": {
+              "type": "string",
+              "enum": [
+                "created",
+                "updated",
+                "deleted"
+              ],
+              "description": "What happened to the entity: created, updated or deleted."
+            },
+            "seq": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Monotonic sequence the device uses as its pull cursor."
+            },
+            "m_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

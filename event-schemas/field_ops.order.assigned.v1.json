@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/field_ops.order.assigned.v1.json",
+  "title": "field_ops.order.assigned v1",
+  "description": "Emitted when a field order moves to status='assigned' (a technician was assigned or re-assigned after a failed attempt). Source publisher: alebrije-mod-field-ops-ex Workers.EventPublisher, relaying the [:alebrije_field_ops, :order, :assigned] telemetry event that Orders.emit_status_event/2 fires after the transition commits. The envelope is built by AlebrijeCommon.Events.Publish.build_envelope/3, so every field below lives under `data` (telemetry metadata stringified, measurements prefixed with m_).",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "field_ops.order.assigned"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "order_id",
+            "tenant_id",
+            "status"
+          ],
+          "properties": {
+            "order_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "field_orders row that was assigned."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Tenant that owns the order (ADR-25). Repeated inside data because the producer copies the telemetry metadata verbatim."
+            },
+            "context_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 36
+            },
+            "kind": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Order kind. Configurable per tenant and context (ADR-127, KindConfigCache), so it is NOT a closed enum."
+            },
+            "status": {
+              "type": "string",
+              "description": "New status, always 'assigned' for this event."
+            },
+            "previous_status": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Status before the transition ('created', or 'failed' on a retry)."
+            },
+            "assigned_technician_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            },
+            "customer_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            },
+            "share_token": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Public tracking token. It is a credential for the tracking page: consumers must not log it."
+            },
+            "tracking_link": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Public tracking URL built from share_token."
+            },
+            "m_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Telemetry measurement, always 1."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

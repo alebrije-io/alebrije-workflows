@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/field_ops.custody.delivered.v1.json",
+  "title": "field_ops.custody.delivered v1",
+  "description": "Emitted when a custody event closes the delivery of a lab-delivery order (the kind configured as the tenant's lab delivery kind). Source publisher: alebrije-mod-field-ops-ex Workers.EventPublisher, relaying the [:alebrije_field_ops, :custody, :delivered] telemetry event from Custody.maybe_emit_delivered. The module that originated the order (for example Agenda, for a home sample collection) consumes it to close its own record. Fields live under `data` (build_envelope/3).",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "field_ops.custody.delivered"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "event_id",
+            "field_order_id",
+            "tenant_id",
+            "delivered_at"
+          ],
+          "properties": {
+            "event_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "custody_events row that closed the delivery."
+            },
+            "field_order_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "field_orders row whose custody was delivered (UUID)."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Tenant that owns the order (ADR-25). Repeated inside data because the producer copies the telemetry metadata verbatim."
+            },
+            "context_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 36
+            },
+            "delivered_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Timestamp of the custody event that closed the delivery (ISO 8601)."
+            },
+            "actor_user_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            },
+            "attachments": {
+              "type": "array",
+              "items": {
+                "type": [
+                  "string",
+                  "object"
+                ]
+              },
+              "description": "Evidence attached to the delivery (download URLs or descriptors)."
+            },
+            "external_ref": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Upstream reference of the order (for example the appointment or exam id)."
+            },
+            "customer_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            },
+            "share_token": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Public tracking token (a credential: do not log)."
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "The order's free metadata map (appointment_id lives here for orders created from Agenda)."
+            },
+            "m_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

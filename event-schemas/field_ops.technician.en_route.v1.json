@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/field_ops.technician.en_route.v1.json",
+  "title": "field_ops.technician.en_route v1",
+  "description": "Emitted when a field order moves to status='in_transit' (the technician started the trip). Source publisher: alebrije-mod-field-ops-ex Workers.EventPublisher, relaying the [:alebrije_field_ops, :order, :en_route] telemetry event from Orders.emit_status_event/2. Fields live under `data` (build_envelope/3).",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "field_ops.technician.en_route"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "order_id",
+            "tenant_id",
+            "status"
+          ],
+          "properties": {
+            "order_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "field_orders row the event is about (UUID)."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Tenant that owns the order (ADR-25). Repeated inside data because the producer copies the telemetry metadata verbatim."
+            },
+            "context_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 36
+            },
+            "kind": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Order kind, configurable per tenant (ADR-127); not a closed enum."
+            },
+            "status": {
+              "type": "string",
+              "description": "Always 'in_transit' for this event."
+            },
+            "previous_status": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "assigned_technician_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            },
+            "customer_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            },
+            "share_token": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Public tracking token (a credential: do not log)."
+            },
+            "tracking_link": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "m_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

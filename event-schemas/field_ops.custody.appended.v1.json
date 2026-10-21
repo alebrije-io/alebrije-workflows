@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/field_ops.custody.appended.v1.json",
+  "title": "field_ops.custody.appended v1",
+  "description": "Emitted for every row appended to the field_ops.custody_events ledger (chain of custody, append-only). Source publisher: alebrije-mod-field-ops-ex Workers.CustodyBroadcaster, relaying the [:alebrije_field_ops, :custody, :appended] telemetry event from Custody.append_event. Only the telemetry metadata travels (no measurements); fields live under `data` (build_envelope/3). Note that `data.event_type` is the CUSTODY event type, not the envelope event_type.",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "field_ops.custody.appended"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "event_id",
+            "order_id",
+            "tenant_id",
+            "event_type"
+          ],
+          "properties": {
+            "event_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "custody_events row id."
+            },
+            "order_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "field_orders row the event is about (UUID)."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Tenant that owns the order (ADR-25). Repeated inside data because the producer copies the telemetry metadata verbatim."
+            },
+            "context_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 36
+            },
+            "event_type": {
+              "type": "string",
+              "description": "Custody event type. Today one of picked_up, transferred, arrived_site, handed_off, seal_verified, seal_broken, rejected (CustodyEvent @event_types). Consumers must tolerate new values (additive)."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

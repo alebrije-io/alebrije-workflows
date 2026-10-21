@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/field_ops.sla.breached.v1.json",
+  "title": "field_ops.sla.breached v1",
+  "description": "Emitted when a field order crosses its SLA target and a SlaBreachLog row with event='breached' is inserted. This is the event_type the producer stamps today: alebrije-mod-field-ops-ex Workers.EventPublisher maps the [:alebrije_field_ops, :sla, :breached] telemetry event (Slas.log_event) to 'field_ops.sla.breached', and build_envelope/3 nests every field under `data`. The older field_ops.sla.breach.v1.json documents the alias that agentic also subscribes to; agentic accepts both names.",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "field_ops.sla.breached"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "order_id",
+            "sla_id",
+            "tenant_id"
+          ],
+          "properties": {
+            "order_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "field_orders row the event is about (UUID)."
+            },
+            "sla_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Sla definition the order is measured against (UUID)."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Tenant that owns the order (ADR-25). Repeated inside data because the producer copies the telemetry metadata verbatim."
+            },
+            "context_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 36
+            },
+            "sla_name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "target_minutes": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "event": {
+              "type": "string",
+              "description": "Always 'breached' for this event."
+            },
+            "m_elapsed_minutes": {
+              "type": [
+                "integer",
+                "number"
+              ],
+              "minimum": 0
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}
