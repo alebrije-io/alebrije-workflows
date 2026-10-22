@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/approval.cancelled.v1.json",
+  "title": "approval.cancelled v1",
+  "description": "An approval request was cancelled by its owning module because the subject stopped existing (the sale was cancelled) (ADR-179 D2). Published by alebrije-svc-notifications-ex (AlebrijeNotifications.Approvals.Publisher) on the events:approvals stream, relayed from notifications.approval_outbox, which is written in the SAME transaction as the transition (ADR-179 D7). The envelope is built by AlebrijeCommon.Events.Publish.build_envelope/3, so every field below lives under `data`; the envelope event_id is the outbox row id, so a consumer dedupes by event_id (a crash between the XADD and the stamp can publish a row twice). The owning module (subject_module) applies the effect in its own database; this capability never writes another module's tables. Amounts are decimal strings, never floats.",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "approval.cancelled"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "approval_id",
+            "kind",
+            "subject_module",
+            "subject_type",
+            "subject_id",
+            "status",
+            "level",
+            "policy_version",
+            "idempotency_key"
+          ],
+          "properties": {
+            "approval_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The notifications.approval_requests row; the same id the internal API returned when the module created it."
+            },
+            "kind": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+              "maxLength": 100,
+              "description": "Namespaced kind chosen by the owning module (field_ops.sale_discount). Opaque to the platform: no giro is encoded in code (ADR-127)."
+            },
+            "subject_module": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "Module that owns the subject and must apply the outcome (field_ops)."
+            },
+            "subject_type": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "What the subject is inside its module (sale, settlement, credit_line)."
+            },
+            "subject_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "The subject's id in its own module."
+            },
+            "context_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 36,
+              "description": "Branch (context) of the request, when it has one."
+            },
+            "status": {
+              "const": "cancelled",
+              "description": "Always cancelled."
+            },
+            "level": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "The level the request was at when this happened."
+            },
+            "amount": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^\\d+(\\.\\d{1,2})?$",
+              "description": "The amount the request was about, when it has one."
+            },
+            "currency": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[A-Z]{3}$",
+              "description": "ISO 4217 code of amount."
+            },
+            "decided_by_user_id": {
+              "type": "null",
+              "description": "Nobody decided."
+            },
+            "decided_at": {
+              "type": "null",
+              "description": "Nobody decided."
+            },
+            "decision_channel": {
+              "type": "null",
+              "description": "Nobody decided."
+            },
+            "policy_version": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Version of the tenant policy frozen into the request at creation; 0 is the platform default in code."
+            },
+            "idempotency_key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "The key the owning module created the request with (sale:<id>:discount), so it can find its subject without a lookup."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

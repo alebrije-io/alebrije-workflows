@@ -477,6 +477,84 @@ def test_appointment_rescheduled_validates_and_requires_the_new_place():
         assert list(v.iter_errors(bad)), bad
 
 
+# ===========================================================================
+# ADR-179 (2026-10-21): approvals. notifications-ex Approvals.Publisher relays
+# notifications.approval_outbox to events:approvals with the
+# Publish.build_envelope/3 shape (event_id = the outbox row id, context_id
+# when the request has one); `data` is Approvals.Record.payload/1.
+# ===========================================================================
+def _approval_envelope(event_type: str, data: dict) -> dict:
+    return {
+        "event_id": "0190b8c0-4444-7a4b-9c2d-3e4f5a6b7c8d",
+        "event_type": event_type,
+        "event_version": "1.0",
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
+        "timestamp": "2026-10-21T20:00:00Z",
+        "producer": {"service": "alebrije-svc-notifications-ex", "version": "0.3.244"},
+        "context_id": "22222222-2222-2222-2222-222222222222",
+        "data": data,
+    }
+
+
+def _approval_data(**overrides) -> dict:
+    data = {
+        "approval_id": "0190b8c0-5555-7a4b-9c2d-3e4f5a6b7c8d",
+        "kind": "field_ops.sale_discount",
+        "subject_module": "field_ops",
+        "subject_type": "sale",
+        "subject_id": "0190b8c0-6666-7a4b-9c2d-3e4f5a6b7c8d",
+        "context_id": "22222222-2222-2222-2222-222222222222",
+        "status": "approved",
+        "level": 1,
+        "amount": "1240.00",
+        "currency": "MXN",
+        "decided_by_user_id": "0190b8c0-7777-7a4b-9c2d-3e4f5a6b7c8d",
+        "decided_at": "2026-10-21T20:00:00.123456Z",
+        "decision_channel": "panel",
+        "policy_version": 0,
+        "idempotency_key": "sale:0190b8c0-6666-7a4b-9c2d-3e4f5a6b7c8d:discount",
+    }
+    data.update(overrides)
+    return data
+
+
+_UNDECIDED = {"decided_by_user_id": None, "decided_at": None, "decision_channel": None}
+
+
+def test_approval_decided_validates_and_needs_who_decided():
+    """ADR-179 D7: a person decided; who, when and where travel with it."""
+    v = _validator_for("approval.decided.v1.json")
+    for data in (_approval_data(), _approval_data(status="rejected", amount=None, currency=None)):
+        assert [e.message for e in v.iter_errors(_approval_envelope("approval.decided", data))] == []
+
+    for bad in (
+        _approval_data(status="expired"),
+        _approval_data(decided_by_user_id=None),
+        _approval_data(decision_channel="sms"),
+        _approval_data(kind="discount"),
+        _approval_data(amount=1240.0),
+        _approval_data(level=0),
+        {k: val for k, val in _approval_data().items() if k != "idempotency_key"},
+    ):
+        assert list(v.iter_errors(_approval_envelope("approval.decided", bad))), bad
+
+
+def test_approval_expired_and_cancelled_carry_no_decider():
+    """ADR-179 D3/§7.1: expired is nobody answering (counts as a rejection);
+    cancelled is the subject gone. Neither names a decider."""
+    for event_type, status in (("approval.expired", "expired"), ("approval.cancelled", "cancelled")):
+        v = _validator_for(f"{event_type}.v1.json")
+        data = _approval_data(status=status, **_UNDECIDED)
+        assert [e.message for e in v.iter_errors(_approval_envelope(event_type, data))] == []
+
+        for bad in (
+            _approval_data(status="approved", **_UNDECIDED),
+            _approval_data(status=status),
+            dict(data, policy_version=-1),
+        ):
+            assert list(v.iter_errors(_approval_envelope(event_type, bad))), (event_type, bad)
+
+
 def test_all_event_schemas_still_structurally_valid():
     """Regression of validate-self.yml AUDIT 11 (no schema broken by the edit).
 
