@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/agentic.staff_report.answered.v1.json",
+  "title": "agentic.staff_report.answered v1",
+  "description": "FLAT payload (does NOT use the envelope.v1 data-nested shape). The vigía answered a report a staff member filed through the staff agent (ADR-183 D7/D8): it confirmed or dismissed the finding (source \"personal\") with a note, and that note is the answer for whoever reported. Published by alebrije-mod-agentic (app/services/staff_report_publisher.py, from bitacora_vigia_cli op contestar_reporte and its hourly retry in run_bitacora_reconcile) on the events:notifications stream, not on the EventBus: like agentic.correction_expired it travels in the notification-trigger envelope that notifications-ex Events.Pipeline consumes (the stream field `payload` holds this JSON object), so this schema describes that flat object. Pipeline reads event_name; event_type carries the same constant for this registry (ADR-31). origin is \"system\" because Pipeline's OriginGuard accepts only human, system or synthetic, and synthetic would suppress the whole event; the QA marker travels only in payload.qa_origin. notifications-ex Workers.StaffReportAnsweredWorker delivers it to subscriber_id (the reporter): always in the bell, and by WhatsApp in the reporter's branch hours, only to a QA WhatsApp when qa_origin. Nothing clinical travels: the report's title and the vigía's note.",
+  "type": "object",
+  "required": ["tenant_id", "event_type", "event_name", "subscriber_id", "origin", "payload"],
+  "properties": {
+    "tenant_id": { "type": "string", "format": "uuid", "description": "Tenant of the report." },
+    "event_type": { "const": "agentic.staff_report.answered", "description": "ADR-31 event type, the same constant as event_name." },
+    "event_name": { "const": "agentic.staff_report.answered", "description": "The key notifications-ex Events.Pipeline routes on." },
+    "subscriber_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The reporter's user_id (the same value as payload.reporter_user_id): who receives the answer."
+    },
+    "origin": { "const": "system", "description": "Pipeline OriginGuard origin; never synthetic (that suppresses the event)." },
+    "payload": {
+      "type": "object",
+      "description": "What the vigía answered and where to deliver it.",
+      "required": ["finding_id", "decision", "nota", "titulo", "reporter_user_id", "qa_origin", "answered_at"],
+      "properties": {
+        "finding_id": { "type": "string", "format": "uuid", "description": "agentic.findings id of the report (source \"personal\")." },
+        "decision": { "enum": ["confirmado", "descartado"], "description": "The vigía confirmed or dismissed the report." },
+        "nota": { "type": "string", "description": "The vigía's note: the answer for whoever reported." },
+        "titulo": { "type": "string", "minLength": 1, "description": "One line with what the report said." },
+        "reporter_user_id": { "type": "string", "format": "uuid", "description": "Who reported." },
+        "reporter_phone": { "type": ["string", "null"], "description": "E.164 of the reporter, when the report came by WhatsApp." },
+        "reporter_context_id": { "type": ["string", "null"], "format": "uuid", "description": "The reporter's branch: its clock decides the WhatsApp hours." },
+        "patient_conversation_id": { "type": ["string", "null"], "format": "uuid", "description": "The patient's chat the report points at." },
+        "staff_conversation_id": { "type": ["string", "null"], "format": "uuid", "description": "The reporter's chat with the staff agent; null when the report came from the panel." },
+        "qa_origin": { "type": "boolean", "description": "True when the report came from a QA phone: the answer only reaches a QA WhatsApp." },
+        "answered_at": { "type": "string", "format": "date-time", "description": "When the vigía answered." }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

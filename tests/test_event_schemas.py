@@ -555,6 +555,65 @@ def test_approval_expired_and_cancelled_carry_no_decider():
             assert list(v.iter_errors(_approval_envelope(event_type, bad))), (event_type, bad)
 
 
+# ===========================================================================
+# ADR-183 D8 (2026-11-05): agentic.staff_report.answered travels on
+# events:notifications in the notification-trigger envelope (the stream field
+# `payload` holds this object), like agentic.correction_expired; origin is
+# "system" because notifications' OriginGuard drops anything but
+# human/system/synthetic, and synthetic would suppress the whole event.
+# ===========================================================================
+def _staff_report_answered(**payload_overrides) -> dict:
+    payload = {
+        "finding_id": "0190b8c0-8888-7a4b-9c2d-3e4f5a6b7c8d",
+        "decision": "confirmado",
+        "nota": "Ya corregimos el precio con la paciente.",
+        "titulo": "Le dijeron mal el precio del perfil tiroideo",
+        "reporter_user_id": "0190b8c0-9999-7a4b-9c2d-3e4f5a6b7c8d",
+        "reporter_phone": "+525555500001",
+        "reporter_context_id": "22222222-2222-2222-2222-222222222222",
+        "patient_conversation_id": "0190b8c0-aaaa-7a4b-9c2d-3e4f5a6b7c8d",
+        "staff_conversation_id": None,
+        "qa_origin": True,
+        "answered_at": "2026-11-05T06:00:00+00:00",
+    }
+    payload.update(payload_overrides)
+    return {
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
+        "event_type": "agentic.staff_report.answered",
+        "event_name": "agentic.staff_report.answered",
+        "subscriber_id": payload["reporter_user_id"],
+        "origin": "system",
+        "payload": payload,
+    }
+
+
+def test_staff_report_answered_validates_the_real_envelope_and_rejects_the_rest():
+    """ADR-183 D8: the object staff_report_publisher.envelope() builds passes;
+    another origin, event name, decision or a missing field does not."""
+    v = _validator_for("agentic.staff_report.answered.v1.json")
+    for event in (
+        _staff_report_answered(),
+        _staff_report_answered(
+            decision="descartado", reporter_phone=None, reporter_context_id=None, qa_origin=False
+        ),
+    ):
+        assert [e.message for e in v.iter_errors(event)] == []
+
+    good = _staff_report_answered()
+    for bad in (
+        dict(good, origin="agentic"),
+        dict(good, origin="synthetic"),
+        dict(good, event_name="agentic.correction_expired"),
+        {k: val for k, val in good.items() if k != "event_type"},
+        {k: val for k, val in good.items() if k != "subscriber_id"},
+        dict(good, payload=dict(good["payload"], decision="quizá")),
+        dict(good, payload={k: val for k, val in good["payload"].items() if k != "nota"}),
+        dict(good, payload=dict(good["payload"], qa_origin="si")),
+        dict(good, extra="x"),
+    ):
+        assert list(v.iter_errors(bad)), bad
+
+
 def test_all_event_schemas_still_structurally_valid():
     """Regression of validate-self.yml AUDIT 11 (no schema broken by the edit).
 
