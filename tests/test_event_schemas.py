@@ -614,6 +614,80 @@ def test_staff_report_answered_validates_the_real_envelope_and_rejects_the_rest(
         assert list(v.iter_errors(bad)), bad
 
 
+
+# ===========================================================================
+# ADR-183 D6/D8 (2026-11-06) — catalog.custom_field_change_resolved: how a
+# pending custom-field change asked through the staff agent ended. Published by
+# catalog-go on events:notifications in the notification-trigger envelope, like
+# agentic.staff_report.answered above (origin "system", QA marker in payload).
+# ===========================================================================
+def _custom_field_change_resolved(**payload_overrides) -> dict:
+    payload = {
+        "change_id": "0190b8c0-bbbb-7a4b-9c2d-3e4f5a6b7c8d",
+        "approval_id": "0190b8c0-cccc-7a4b-9c2d-3e4f5a6b7c8d",
+        "item_id": "0190b8c0-dddd-7a4b-9c2d-3e4f5a6b7c8d",
+        "item_name": "Perfil tiroideo",
+        "field_label": "Para quién es",
+        "before": "Todos",
+        "after": "Mujeres",
+        "outcome": "aplicado",
+        "requester_user_id": "0190b8c0-eeee-7a4b-9c2d-3e4f5a6b7c8d",
+        "requester_name": "Recepción QA",
+        "requester_phone": "+525555500001",
+        "requester_context_id": "22222222-2222-2222-2222-222222222222",
+        "conversation_id": "0190b8c0-ffff-7a4b-9c2d-3e4f5a6b7c8d",
+        "qa_origin": True,
+        "decided_by_user_id": "0190b8c0-1212-7a4b-9c2d-3e4f5a6b7c8d",
+        "resolved_at": "2026-11-06T06:00:00Z",
+    }
+    payload.update(payload_overrides)
+    return {
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
+        "event_type": "catalog.custom_field_change_resolved",
+        "event_name": "catalog.custom_field_change_resolved",
+        "subscriber_id": payload["requester_user_id"],
+        "origin": "system",
+        "payload": payload,
+    }
+
+
+def test_custom_field_change_resolved_validates_the_real_envelope_and_rejects_the_rest():
+    """ADR-183 D6/D8: the object catalog-go builds passes (with and without the
+    optional fields); another origin, event name, outcome or a missing field does not."""
+    v = _validator_for("catalog.custom_field_change_resolved.v1.json")
+    for event in (
+        _custom_field_change_resolved(),
+        _custom_field_change_resolved(
+            outcome="vencido",
+            approval_id=None,
+            before=None,
+            requester_name=None,
+            requester_phone=None,
+            requester_context_id=None,
+            conversation_id=None,
+            decided_by_user_id=None,
+            qa_origin=False,
+        ),
+        _custom_field_change_resolved(outcome="no_aplicado_valor_cambio"),
+        _custom_field_change_resolved(outcome="rechazado"),
+        _custom_field_change_resolved(outcome="cancelado"),
+    ):
+        assert [e.message for e in v.iter_errors(event)] == []
+
+    good = _custom_field_change_resolved()
+    for bad in (
+        dict(good, origin="catalog"),
+        dict(good, origin="synthetic"),
+        dict(good, event_name="agentic.staff_report.answered"),
+        {k: val for k, val in good.items() if k != "event_type"},
+        {k: val for k, val in good.items() if k != "subscriber_id"},
+        dict(good, payload=dict(good["payload"], outcome="aprobado")),
+        dict(good, payload={k: val for k, val in good["payload"].items() if k != "change_id"}),
+        dict(good, payload=dict(good["payload"], qa_origin="si")),
+        dict(good, extra="x"),
+    ):
+        assert list(v.iter_errors(bad)), bad
+
 def test_all_event_schemas_still_structurally_valid():
     """Regression of validate-self.yml AUDIT 11 (no schema broken by the edit).
 

@@ -1,0 +1,159 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/catalog.custom_field_change_resolved.v1.json",
+  "title": "catalog.custom_field_change_resolved v1",
+  "description": "FLAT payload (does NOT use the envelope.v1 data-nested shape). A pending custom-field change that a staff member asked the staff agent for without catalog:custom_fields:write (ADR-183 D6) reached its end: approved and applied, approved but not applied because the value had changed since the request (double read, D3.3), rejected, expired or cancelled (ADR-179 approval.decided/expired/cancelled). Published by alebrije-mod-catalog-go (internal/service/custom_field_changes.go, from its events:approvals consumer and its reconciler, which re-publishes a resolved change without notified_at) on the events:notifications stream, not on the EventBus: like agentic.staff_report.answered it travels in the notification-trigger envelope that notifications-ex Events.Pipeline consumes (the stream field `payload` holds this JSON object), so this schema describes that flat object. Pipeline reads event_name; event_type carries the same constant for this registry (ADR-31). origin is \"system\" because Pipeline's OriginGuard accepts only human, system or synthetic, and synthetic would suppress the whole event; the QA marker travels only in payload.qa_origin. notifications-ex Workers.CustomFieldChangeResolvedWorker delivers it to subscriber_id (whoever asked): always in the bell, and by WhatsApp (template reporte_atendido) in the requester's branch hours, only to a QA WhatsApp when qa_origin. Nothing clinical travels: the catalog item, the field, the value before and after.",
+  "type": "object",
+  "required": [
+    "tenant_id",
+    "event_type",
+    "event_name",
+    "subscriber_id",
+    "origin",
+    "payload"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Tenant of the change."
+    },
+    "event_type": {
+      "const": "catalog.custom_field_change_resolved",
+      "description": "ADR-31 event type, the same constant as event_name."
+    },
+    "event_name": {
+      "const": "catalog.custom_field_change_resolved",
+      "description": "The key notifications-ex Events.Pipeline routes on."
+    },
+    "subscriber_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Whoever asked for the change (the same value as payload.requester_user_id): who receives the result."
+    },
+    "origin": {
+      "const": "system",
+      "description": "Pipeline OriginGuard origin; never synthetic (that suppresses the event)."
+    },
+    "payload": {
+      "type": "object",
+      "description": "How the pending change ended and where to deliver it.",
+      "required": [
+        "change_id",
+        "item_id",
+        "item_name",
+        "field_label",
+        "outcome",
+        "requester_user_id",
+        "qa_origin",
+        "resolved_at"
+      ],
+      "properties": {
+        "change_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "catalog.custom_field_changes id: the subject of the approval."
+        },
+        "approval_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid",
+          "description": "The ADR-179 approval request of the change."
+        },
+        "item_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "The catalog item."
+        },
+        "item_name": {
+          "type": "string",
+          "description": "The catalog item's name."
+        },
+        "field_label": {
+          "type": "string",
+          "description": "The custom field's label (e.g. «Para quién es»)."
+        },
+        "before": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The value when it was requested (null = empty)."
+        },
+        "after": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The value that was requested (null = empty)."
+        },
+        "outcome": {
+          "enum": [
+            "aplicado",
+            "no_aplicado_valor_cambio",
+            "rechazado",
+            "vencido",
+            "cancelado"
+          ],
+          "description": "How it ended."
+        },
+        "requester_user_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Who asked."
+        },
+        "requester_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Who asked, by name (≤80), when the staff agent knew it."
+        },
+        "requester_phone": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "E.164 of whoever asked, when the request came by WhatsApp."
+        },
+        "requester_context_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid",
+          "description": "The requester's branch: its clock decides the WhatsApp hours."
+        },
+        "conversation_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid",
+          "description": "The requester's chat with the staff agent."
+        },
+        "qa_origin": {
+          "type": "boolean",
+          "description": "True when the request came from a QA phone: the result only reaches a QA WhatsApp."
+        },
+        "decided_by_user_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid",
+          "description": "Who decided the approval; null when it expired or was cancelled."
+        },
+        "resolved_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the change was closed."
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}
