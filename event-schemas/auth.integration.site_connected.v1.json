@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/auth.integration.site_connected.v1.json",
+  "title": "auth.integration.site_connected v1",
+  "description": "Se conectó un sitio de WordPress; aviso a los administradores del tenant (D16.5). Productor: alebrije-svc-auth. ADR-186, contrato v1 (alebrije-adapt-wordpress/docs/CONTRATO-v1.md).",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "auth.integration.site_connected"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "site_id",
+            "site_url"
+          ],
+          "properties": {
+            "site_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "site_url": {
+              "type": "string"
+            },
+            "context_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "approved_by_user_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

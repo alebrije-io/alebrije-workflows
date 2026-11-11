@@ -1,0 +1,218 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/commerce.order.cancelled.v1.json",
+  "title": "commerce.order.cancelled v1",
+  "description": "El pedido pasó a cancelled (D19.7). Productor: alebrije-adapt-wordpress. ADR-186, contrato v1 (alebrije-adapt-wordpress/docs/CONTRATO-v1.md).",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "commerce.order.cancelled"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "site_id",
+            "source",
+            "origin",
+            "occurred_at",
+            "order",
+            "contact"
+          ],
+          "properties": {
+            "site_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Sitio de WordPress que originó el evento (lo genera svc-auth al conectar)."
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "woocommerce",
+                "wordpress"
+              ]
+            },
+            "origin": {
+              "type": "string",
+              "enum": [
+                "live",
+                "reconcile",
+                "import"
+              ],
+              "description": "live = en vivo; reconcile = lo recuperó el reconciliador; import = primera carga. Con import no corre nada automático (ADR-186 D19.6)."
+            },
+            "occurred_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Cuándo pasó en el sitio, en GMT."
+            },
+            "messaging": {
+              "type": "object",
+              "description": "Si de este evento puede salir un mensaje (contrato §6). Cada consumidor manda solo si allowed y su pieza son true.",
+              "properties": {
+                "allowed": {
+                  "type": "boolean"
+                },
+                "test_mode": {
+                  "type": "boolean"
+                },
+                "pieces": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "required": [
+                "allowed",
+                "pieces"
+              ],
+              "additionalProperties": true
+            },
+            "order": {
+              "type": "object",
+              "description": "Resumen del pedido, sin direcciones (ADR-186 D17.4 y D19.3).",
+              "required": [
+                "order_id",
+                "status",
+                "currency",
+                "total"
+              ],
+              "properties": {
+                "order_id": {
+                  "type": "integer"
+                },
+                "number": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                "currency": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{3}$"
+                },
+                "total": {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]{1,6})?$",
+                  "description": "Monto en texto decimal, nunca float."
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "product_id",
+                      "quantity"
+                    ],
+                    "properties": {
+                      "product_id": {
+                        "type": "integer"
+                      },
+                      "variation_id": {
+                        "type": "integer"
+                      },
+                      "quantity": {
+                        "type": "number"
+                      },
+                      "total": {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(\\.[0-9]{1,6})?$",
+                        "description": "Monto en texto decimal, nunca float."
+                      }
+                    },
+                    "additionalProperties": true
+                  }
+                },
+                "created_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "modified_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "paid_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "completed_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "cart_token": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 64
+                },
+                "attribution": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            },
+            "contact": {
+              "type": "object",
+              "description": "Contacto admitido: teléfono válido por ADR-142 con el país del pedido (ADR-186 D7 y D19.9).",
+              "required": [
+                "phone_e164"
+              ],
+              "properties": {
+                "phone_e164": {
+                  "type": "string",
+                  "pattern": "^\\+[1-9][0-9]{7,14}$"
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 200
+                },
+                "email": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 254
+                },
+                "country": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^[A-Z]{2}$"
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}
