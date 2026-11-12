@@ -22,10 +22,12 @@
           "properties": {
             "site_id": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "description": "Sitio de WordPress conectado (lo genera svc-auth al conectar)."
             },
             "site_url": {
-              "type": "string"
+              "type": "string",
+              "description": "URL del sitio con la que se conectó."
             },
             "context_id": {
               "type": [

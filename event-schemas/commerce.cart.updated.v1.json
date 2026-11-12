@@ -34,7 +34,8 @@
               "enum": [
                 "woocommerce",
                 "wordpress"
-              ]
+              ],
+              "description": "woocommerce (webhook de la tienda) o wordpress (evento propio del plugin); contrato v1 §6."
             },
             "origin": {
               "type": "string",
@@ -55,7 +56,8 @@
               "description": "Si de este evento puede salir un mensaje (contrato §6). Cada consumidor manda solo si allowed y su pieza son true.",
               "properties": {
                 "allowed": {
-                  "type": "boolean"
+                  "type": "boolean",
+                  "description": "false si el sitio tiene los mensajes apagados, está frenado, en cuarentena o en modo de prueba con un teléfono que no es de prueba."
                 },
                 "test_mode": {
                   "type": "boolean"
@@ -64,7 +66,8 @@
                   "type": "object",
                   "additionalProperties": {
                     "type": "boolean"
-                  }
+                  },
+                  "description": "Interruptor de cada pieza que puede mandar (notifications.order_updates, cadences.abandoned_cart, cadences.review_request, rewards.stamps)."
                 }
               },
               "required": [
@@ -83,14 +86,16 @@
               "properties": {
                 "cart_token": {
                   "type": "string",
-                  "maxLength": 64
+                  "maxLength": 64,
+                  "description": "Token del carrito que pone el plugin; une el carrito con el pedido."
                 },
                 "items": {
                   "type": "array",
                   "items": {
                     "type": "object",
                     "additionalProperties": true
-                  }
+                  },
+                  "description": "Renglones del carrito: producto, variación y cantidad."
                 },
                 "totals": {
                   "type": "object",
@@ -106,13 +111,16 @@
                     },
                     "currency": {
                       "type": "string",
-                      "pattern": "^[A-Z]{3}$"
+                      "pattern": "^[A-Z]{3}$",
+                      "description": "Moneda ISO-4217 del total."
                     }
                   },
-                  "additionalProperties": true
+                  "additionalProperties": true,
+                  "description": "Total del carrito con su moneda."
                 }
               },
-              "additionalProperties": true
+              "additionalProperties": true,
+              "description": "Carrito de la tienda en el momento del cambio."
             },
             "contact": {
               "type": "object",
@@ -123,7 +131,8 @@
               "properties": {
                 "phone_e164": {
                   "type": "string",
-                  "pattern": "^\\+[1-9][0-9]{7,14}$"
+                  "pattern": "^\\+[1-9][0-9]{7,14}$",
+                  "description": "Teléfono admitido en E.164, normalizado con el país del pedido (ADR-142; ADR-186 D7 y D19.9)."
                 },
                 "name": {
                   "type": [

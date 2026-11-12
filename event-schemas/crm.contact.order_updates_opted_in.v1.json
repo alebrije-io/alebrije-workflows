@@ -22,7 +22,8 @@
           "properties": {
             "contact_id": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "description": "Contacto de CRM al que aplica el cambio de permiso."
             },
             "tenant_id": {
               "type": "string",
@@ -35,7 +36,8 @@
               ]
             },
             "phone": {
-              "type": "string"
+              "type": "string",
+              "description": "Teléfono canónico del contacto (ADR-142)."
             }
           },
           "additionalProperties": true

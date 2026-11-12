@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/web.site.alert_raised.v1.json",
+  "title": "web.site.alert_raised v1",
+  "description": "Aviso al tenant: el sitio entró en cuarentena o en freno de contactos nuevos. Sin contacto ni dato personal. Lo consume notifications (correo a los administradores). Productor: alebrije-adapt-wordpress. ADR-186 §10.4 AVISO-AL-TENANT-01, contrato v1 §6.",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "web.site.alert_raised"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "site_id",
+            "source",
+            "origin",
+            "occurred_at",
+            "alert"
+          ],
+          "properties": {
+            "site_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Sitio de WordPress que originó el evento (lo genera svc-auth al conectar)."
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "woocommerce",
+                "wordpress"
+              ],
+              "description": "woocommerce (webhook de la tienda) o wordpress (evento propio del plugin); contrato v1 §6."
+            },
+            "origin": {
+              "type": "string",
+              "enum": [
+                "live",
+                "reconcile",
+                "import"
+              ],
+              "description": "live = en vivo; reconcile = lo recuperó el reconciliador; import = primera carga. Con import no corre nada automático (ADR-186 D19.6)."
+            },
+            "occurred_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Cuándo pasó en el sitio, en GMT."
+            },
+            "alert": {
+              "type": "object",
+              "description": "El sitio entró en cuarentena (D16.2) o en freno de contactos nuevos (D15.5/D15.6); una vez por entrada.",
+              "required": [
+                "kind",
+                "since"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "quarantine",
+                    "new_contacts_paused"
+                  ],
+                  "description": "quarantine (cuarentena, D16.2) o new_contacts_paused (freno de contactos nuevos, D15.5/D15.6)."
+                },
+                "reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 300
+                },
+                "since": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Desde cuándo rige, en GMT."
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

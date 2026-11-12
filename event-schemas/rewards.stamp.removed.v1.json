@@ -1,0 +1,123 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/rewards.stamp.removed.v1.json",
+  "title": "rewards.stamp.removed v1",
+  "description": "A purchase stamp was taken back (full refund or cancellation). Source: alebrije-mod-rewards-go (ADR-186 D19.4 / D19.7), written to the rewards outbox in the SAME transaction as the ledger row (internal/service/stamps.go emitStampEvent) and relayed to the enveloped events:rewards stream. Emitted only when the site's CONTRATO-v1 \u00a76 data.messaging allows the notice (allowed and pieces[\"rewards.stamps\"]). rewards sends no message itself: each tenant's cadences/notifications rule decides (ADR-152). contact_id / contact_phone are the member's CRM contact and canonical phone (ADR-142), present when known.",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "rewards.stamp.removed"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "user_id",
+            "metadata"
+          ],
+          "properties": {
+            "event_type": {
+              "const": "rewards.stamp.removed"
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "user_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Rewards member id."
+            },
+            "contact_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "contact_phone": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{6,14}$"
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Stamps counted toward the card after this event."
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "removed: refunded or cancelled; reward_pending_email: no_email."
+            },
+            "reference": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The order id, when the event has one."
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "site_id",
+                "order_id"
+              ],
+              "properties": {
+                "site_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "CONTRATO-v1 \u00a76 site id: the store of the order. A card event names the store where the reward coupon is valid."
+                },
+                "order_id": {
+                  "type": "string",
+                  "description": "The WooCommerce order of the stamp (absent on card events that come from the sweep)."
+                },
+                "stamps": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Stamps counted toward the open card."
+                },
+                "stamps_goal": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Stamps the card needs (the tenant's rule); 0 on events that do not carry the rule (removed)."
+                },
+                "reward_kind": {
+                  "type": "string",
+                  "enum": [
+                    "amount",
+                    "percent",
+                    ""
+                  ],
+                  "description": "Empty on events that do not carry the rule (removed)."
+                },
+                "reward_value": {
+                  "type": "string",
+                  "pattern": "^([0-9]+(\\.[0-9]+)?)?$",
+                  "description": "Decimal text (D17.3); empty on events that do not carry the rule (removed)."
+                },
+                "card_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "coupon_code": {
+                  "type": "string"
+                }
+              },
+              "description": "Datos del sello: tarjeta, regla, pedido y sitio que lo originaron."
+            },
+            "occurred_at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

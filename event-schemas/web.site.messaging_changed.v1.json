@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/web.site.messaging_changed.v1.json",
+  "title": "web.site.messaging_changed v1",
+  "description": "Cambió lo que el sitio permite mandar (panel, freno, cuarentena o modo de prueba). Sin contacto ni dato personal. Los consumidores sacan las inscripciones vivas del sitio si allowed o su pieza quedan en false. Productor: alebrije-adapt-wordpress. ADR-186 §10.4 CADENCES-MENSAJES-APAGADOS-01, contrato v1 §6.",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "web.site.messaging_changed"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "site_id",
+            "source",
+            "origin",
+            "occurred_at",
+            "messaging"
+          ],
+          "properties": {
+            "site_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Sitio de WordPress que originó el evento (lo genera svc-auth al conectar)."
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "woocommerce",
+                "wordpress"
+              ],
+              "description": "woocommerce (webhook de la tienda) o wordpress (evento propio del plugin); contrato v1 §6."
+            },
+            "origin": {
+              "type": "string",
+              "enum": [
+                "live",
+                "reconcile",
+                "import"
+              ],
+              "description": "live = en vivo; reconcile = lo recuperó el reconciliador; import = primera carga. Con import no corre nada automático (ADR-186 D19.6)."
+            },
+            "occurred_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Cuándo pasó en el sitio, en GMT."
+            },
+            "messaging": {
+              "type": "object",
+              "description": "Cálculo A NIVEL SITIO (no depende del teléfono): allowed=false si los mensajes del sitio están apagados, frenado, en cuarentena o en modo de prueba. Misma forma que data.messaging de los eventos de tienda (contrato §6).",
+              "properties": {
+                "allowed": {
+                  "type": "boolean",
+                  "description": "false si el sitio tiene los mensajes apagados, está frenado, en cuarentena o en modo de prueba con un teléfono que no es de prueba."
+                },
+                "test_mode": {
+                  "type": "boolean",
+                  "description": "true si el sitio está en modo de prueba: solo se manda a los teléfonos de prueba del cliente."
+                },
+                "pieces": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "description": "Interruptor de cada pieza que puede mandar (notifications.order_updates, cadences.abandoned_cart, cadences.review_request, rewards.stamps)."
+                }
+              },
+              "required": [
+                "allowed",
+                "test_mode",
+                "pieces"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}
