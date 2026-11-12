@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://alebrije.io/schemas/auth.subscription.expiry_notice_requested.v1.json",
+  "title": "auth.subscription.expiry_notice_requested v1",
+  "description": "La suscripción de un tenant vence pronto o ya venció: aviso a sus administradores, uno por periodo (el expires_at para el que se manda). Productor: alebrije-svc-auth (app/services/billing_lifecycle.py, en la misma transacción que marca core.tenant_billing_state). Consumidor: alebrije-svc-notifications-ex. ADR-186 D17.8, decisión 28 de §10.3.",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "auth.subscription.expiry_notice_requested"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "estado",
+            "expires_at",
+            "pausa_desde",
+            "corte_desde"
+          ],
+          "properties": {
+            "estado": {
+              "type": "string",
+              "enum": [
+                "aviso",
+                "gracia",
+                "pausa"
+              ],
+              "description": "Estado de pago al mandar el aviso: aviso (vence en los próximos días del plan), gracia (ya venció y los sitios siguen activos) o pausa (los sitios ya están en paused_billing)."
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Vencimiento de la suscripción (tenant_subscriptions.expires_at), en UTC."
+            },
+            "pausa_desde": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Desde cuándo los sitios quedan en pausa por pago: expires_at más billing_grace_days del plan, en UTC."
+            },
+            "corte_desde": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Desde cuándo se desconectan los sitios: pausa_desde más billing_cut_days del plan, en UTC."
+            },
+            "dias_restantes": {
+              "type": "integer",
+              "description": "Días completos hasta expires_at; negativo si ya pasó."
+            },
+            "plan": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Slug del plan de la suscripción (core.plans.slug)."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}
