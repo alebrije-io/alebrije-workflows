@@ -2,36 +2,58 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://alebrije.io/schemas/catalog.item_deactivated.v1.json",
   "title": "catalog.item_deactivated v1",
-  "description": "FLAT payload (does NOT use the envelope.v1 data-nested shape) — fields are top-level, matching the real producer. Emitted when a catalog item is deactivated (soft-disabled). Source publisher: alebrije-mod-catalog-go RedisPublisher.PublishItemDeactivated (internal/service/redis_publisher.go:233-235), which XADDs the SAME itemPayload(it) helper (redis_publisher.go:212-220) used by PublishItemCreated/PublishItemUpdated to the configured stream (default 'catalog.item_deactivated', config.go:190, env EVENTBUS_STREAM_CATALOG_ITEM_DEACTIVATED). Registered under the producer's real event_type key ('catalog.item_deactivated', underscore) — no schema previously existed for this event type at all (ErrNoSchema fail-open); the pre-existing 'catalog.item.stock_depleted.v1.json' schema is a different, orphaned name with zero producers found in this service (out of scope here — additive-only task). 'event_type' is documentary only per catalog.item_created.v1.json's precedent — itemPayload never embeds it. DEBT-AUDIT-20260701-019-catalog-crm-agenda.",
-  "type": "object",
-  "required": ["item_id", "tenant_id", "sku", "name", "item_type"],
-  "properties": {
-    "event_type": {
-      "const": "catalog.item_deactivated",
-      "description": "Documentary only — never present on the real wire payload; itemPayload (redis_publisher.go:212-220) does not set this key."
+  "description": "Emitted when a catalog item is deactivated (soft delete) in alebrije-mod-catalog-go. Real producer in prod: the transactional outbox (cmd/server/integration.go wires WithOutbox when EVENTBUS_URL is set, k8s/deployment.yml EVENTBUS_URL). service.go DeactivateItem writes outboxItemPayload (internal/service/outbox_publisher.go) into catalog.outbox in the same tx as the write, and the poller relays it as this ADR-31 envelope inside the stream field `payload` (internal/service/outbox_poller.go). data = outboxItemPayload: item_id, tenant_id, sku, name, item_type, occurred_at. The direct RedisPublisher path (internal/service/redis_publisher.go itemPayload, used only without an EventBus: local dev and unit tests) XADDs the same body flat; validators wrap it in the equivalent envelope (same rule crm-go uses for direct XADDs of enveloped schemas). Consumer: alebrije-mod-field-ops-ex MirrorEventConsumer (decodes payload -> envelope -> data). Until 2026-11-12 this schema was FLAT and described only the dev path; the prod wire never matched it (ADR-186 §10.4, audit of the catalog envelope-validation lane).",
+  "allOf": [
+    {
+      "$ref": "https://alebrije.io/schemas/envelope.v1.json"
     },
-    "item_id": {
-      "type": "string",
-      "format": "uuid",
-      "description": "UUID of the deactivated catalog item (it.ID.String(), redis_publisher.go:214)."
-    },
-    "tenant_id": {
-      "type": "string",
-      "format": "uuid",
-      "description": "Owning tenant (it.TenantID.String(), redis_publisher.go:215; ADR-25)."
-    },
-    "sku": {
-      "type": "string",
-      "description": "Stock Keeping Unit code, unique per tenant (it.SKU, redis_publisher.go:216)."
-    },
-    "name": {
-      "type": "string",
-      "description": "Item display name at deactivation time (it.Name, redis_publisher.go:217)."
-    },
-    "item_type": {
-      "type": "string",
-      "description": "Catalog entry kind (it.ItemType, redis_publisher.go:218). Left unconstrained — see catalog.item_created.v1.json for the enum-ambiguity rationale."
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "catalog.item_deactivated"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "item_id",
+            "tenant_id",
+            "sku",
+            "name",
+            "item_type"
+          ],
+          "properties": {
+            "item_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the deactivated catalog item (it.ID.String(), redis_publisher.go:214)."
+            },
+            "tenant_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Owning tenant (it.TenantID.String(), redis_publisher.go:215; ADR-25)."
+            },
+            "sku": {
+              "type": "string",
+              "description": "Stock Keeping Unit code, unique per tenant (it.SKU, redis_publisher.go:216)."
+            },
+            "name": {
+              "type": "string",
+              "description": "Item display name at deactivation time (it.Name, redis_publisher.go:217)."
+            },
+            "item_type": {
+              "type": "string",
+              "description": "Catalog entry kind (it.ItemType, redis_publisher.go:218). Left unconstrained — see catalog.item_created.v1.json for the enum-ambiguity rationale."
+            },
+            "occurred_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "RFC 3339 UTC time the outbox row was written (outboxItemPayload). Only the outbox path sets it; the direct RedisPublisher path (local dev, no EventBus) does not, so it is optional."
+            }
+          },
+          "additionalProperties": true
+        }
+      }
     }
-  },
-  "additionalProperties": true
+  ]
 }

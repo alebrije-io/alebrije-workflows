@@ -688,6 +688,43 @@ def test_custom_field_change_resolved_validates_the_real_envelope_and_rejects_th
     ):
         assert list(v.iter_errors(bad)), bad
 
+def _catalog_item_outbox(event_type: str, **data_overrides) -> dict:
+    """What catalog-go relays in prod: outboxItemPayload (outbox_publisher.go) inside
+    buildOutboxEnvelope (outbox_poller.go), producer alebrije-mod-catalog-go."""
+    data = {
+        "item_id": "44444444-4444-4444-4444-444444444444",
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
+        "sku": "BH-001",
+        "name": "Biometría hemática",
+        "item_type": "service",
+        "occurred_at": "2026-11-12T16:00:00Z",
+    }
+    data.update(data_overrides)
+    return dict(_outbox_envelope(event_type, data), producer={"service": "alebrije-mod-catalog-go"})
+
+
+def test_catalog_items_validate_the_real_outbox_envelope_and_reject_the_rest():
+    """ADR-186 §10.4 (2026-11-12): in prod catalog.item_* travel through the outbox as an
+    envelope; the old FLAT schema described only the dev path and never the prod wire."""
+    for kind in ("created", "updated", "deactivated"):
+        event_type = f"catalog.item_{kind}"
+        v = _validator_for(f"{event_type}.v1.json")
+        good = _catalog_item_outbox(event_type)
+        assert [e.message for e in v.iter_errors(good)] == [], event_type
+        # The direct dev path (no EventBus) has no occurred_at: still valid once enveloped.
+        sin_hora = _catalog_item_outbox(event_type)
+        del sin_hora["data"]["occurred_at"]
+        assert [e.message for e in v.iter_errors(sin_hora)] == [], event_type
+        for bad in (
+            dict(good, event_type="catalog.item_otro"),
+            {k: val for k, val in good.items() if k != "producer"},
+            dict(good, data={k: val for k, val in good["data"].items() if k != "sku"}),
+            dict(good, data={k: val for k, val in good["data"].items() if k != "item_id"}),
+            dict(good["data"], event_type=event_type),  # the old flat wire, not enveloped
+        ):
+            assert list(v.iter_errors(bad)), (event_type, bad)
+
+
 def test_all_event_schemas_still_structurally_valid():
     """Regression of validate-self.yml AUDIT 11 (no schema broken by the edit).
 
